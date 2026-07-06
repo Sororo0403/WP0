@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{351F35BC-A47D-47AC-A569-2820394B3A5C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{950A259B-9EC5-496D-8A2E-DC21184A8449}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\scene">
+      <UniqueIdentifier>{3F55552E-65B9-4059-8B71-7AC61F2F96D6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\scene">
+      <UniqueIdentifier>{B97A460C-88EA-4B72-B2DE-7A74256E2C6E}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\scene\GameScene.cpp">
+      <Filter>src\scene</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\scene\GameScene.h">
+      <Filter>include\scene</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
