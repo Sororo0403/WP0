@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# imGui .ini file (can be regenerated, contains window layout)
+imgui.ini
