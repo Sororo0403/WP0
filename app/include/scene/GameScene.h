@@ -44,11 +44,15 @@ private:
         F2,
         F3,
         F4,
+        EnemyPoke,
     };
 
     enum class CombatState {
         Idle,
         Attack,
+        Guard,
+        GuardStun,
+        Dodge,
         HitStun,
         Down,
     };
@@ -89,7 +93,15 @@ private:
         float halfWidth = 0.35f;
         int damage = 10;
         int hitstun = 14;
+        int blockstun = 9;
         int hitstop = 5;
+    };
+
+    struct DodgeData {
+        int total = 22;
+        int invulFrom = 5;
+        int invulTo = 13;
+        float distance = 0.8f;
     };
 
     struct CombatActor {
@@ -101,6 +113,7 @@ private:
         int frameInState = 0;
         int hp = 100;
         int hitstunFrames = 0;
+        int guardStunFrames = 0;
         bool hitApplied = false;
 
         bool IsAlive() const;
@@ -109,7 +122,10 @@ private:
     struct CombatDebugState {
         bool lastHitboxActive = false;
         bool lastHitConnected = false;
+        bool lastBlocked = false;
+        bool lastDodged = false;
         float lastDistance = 0.0f;
+        const char* lastDefense = "None";
         int fixedStepsThisFrame = 0;
         uint64_t combatFrame = 0;
     };
@@ -119,13 +135,27 @@ private:
     void StepCombat();
     void UpdatePlayerIdle();
     void UpdatePlayerAttack();
+    void UpdatePlayerGuard();
+    void UpdateGuardStun(CombatActor& actor);
+    void UpdateDodge(CombatActor& actor);
     void UpdateHitStun(CombatActor& actor);
+    void UpdateEnemyTraining();
     void StartAttack(CombatActor& actor, MoveId move);
+    void StartGuard(CombatActor& actor);
+    void StartDodge(CombatActor& actor);
     bool TryChainPlayerAttack(const AttackData& attack);
-    void TryResolvePlayerHit();
+    bool TryCancelPlayerAttackToDodge(const AttackData& attack);
+    void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
+    void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    bool IsGuardHeld() const;
+    bool IsDodgeRequested() const;
+    static bool IsDodgeInvulnerable(const CombatActor& actor);
+    static bool IsFacingIncomingAttack(const CombatActor& defender,
+                                       const CombatActor& attacker);
     static const AttackData& GetAttackData(MoveId move);
+    static const DodgeData& GetDodgeData();
     static MoveId ResolveChainMove(const AttackData& attack, CombatCommand command);
     static float Distance(const Vec2& a, const Vec2& b);
     static float Dot(const Vec2& a, const Vec2& b);
@@ -136,6 +166,7 @@ private:
     float elapsedSeconds_ = 0.0f;
     float combatAccumulator_ = 0.0f;
     int hitstopFrames_ = 0;
+    int enemyTrainingCooldown_ = 45;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};
