@@ -131,8 +131,10 @@ private:
     };
 
     void ResetPhaseOne();
+    void InitializeVisuals();
     void CaptureFrameInput();
     void StepCombat();
+    void UpdateCombatCamera();
     void UpdatePlayerIdle();
     void UpdatePlayerAttack();
     void UpdatePlayerGuard();
@@ -162,6 +164,13 @@ private:
     static Vec2 Normalize(Vec2 value);
     static const char* StateName(CombatState state);
     static const char* CommandName(CombatCommand command);
+    static Material MakeMaterial(float r, float g, float b, float a = 1.0f);
+    static Transform MakeActorTransform(const CombatActor& actor, float height,
+                                        float widthScale = 1.0f);
+    static Transform MakeFloorTransform();
+    static Transform MakeAttackRangeTransform(const CombatActor& actor,
+                                              const AttackData& attack);
+    static float FacingYaw(const Vec2& facing);
 
     float elapsedSeconds_ = 0.0f;
     float combatAccumulator_ = 0.0f;
@@ -172,4 +181,11 @@ private:
     CombatActor player_{};
     CombatActor enemy_{};
     CombatDebugState debug_{};
+
+    Camera combatCamera_{};
+    ModelHandle playerModel_{};
+    ModelHandle enemyModel_{};
+    ModelHandle floorModel_{};
+    ModelHandle attackRangeModel_{};
+    ModelHandle guardMarkerModel_{};
 };

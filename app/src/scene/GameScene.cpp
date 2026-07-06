@@ -20,10 +20,12 @@ constexpr int kInputBufferFrames = 8;
 constexpr float kPlayerMoveSpeed = 2.4f;
 constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
+constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
 void GameScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
+    InitializeVisuals();
     ResetPhaseOne();
 }
 
@@ -47,7 +49,40 @@ void GameScene::Update() {
     }
 }
 
-void GameScene::Draw() {}
+void GameScene::Draw() {
+    if (!ctx_ || !ctx_->rendering.model) {
+        return;
+    }
+
+    ModelManager& models = *ctx_->rendering.model;
+    if (!models.IsReady()) {
+        return;
+    }
+
+    models.PreDraw();
+    models.Draw(floorModel_, MakeFloorTransform(), combatCamera_);
+    models.Draw(playerModel_, MakeActorTransform(player_, 1.7f), combatCamera_);
+    models.Draw(enemyModel_, MakeActorTransform(enemy_, 1.55f, 0.9f), combatCamera_);
+
+    if (player_.state == CombatState::Attack) {
+        models.Draw(attackRangeModel_,
+                    MakeAttackRangeTransform(player_, GetAttackData(player_.currentMove)),
+                    combatCamera_);
+    }
+
+    if (enemy_.state == CombatState::Attack) {
+        models.Draw(attackRangeModel_,
+                    MakeAttackRangeTransform(enemy_, GetAttackData(enemy_.currentMove)),
+                    combatCamera_);
+    }
+
+    if (player_.state == CombatState::Guard || player_.state == CombatState::GuardStun) {
+        Transform guard = MakeActorTransform(player_, 0.25f, 1.25f);
+        guard.position.y = 1.85f;
+        models.Draw(guardMarkerModel_, guard, combatCamera_);
+    }
+    models.PostDraw();
+}
 
 void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
@@ -163,6 +198,38 @@ void GameScene::ResetPhaseOne() {
     enemy_.position = {0.0f, 1.0f};
     enemy_.facing = {0.0f, -1.0f};
     enemy_.hp = 100;
+
+    UpdateCombatCamera();
+}
+
+void GameScene::InitializeVisuals() {
+    combatCamera_.Initialize(16.0f / 9.0f);
+    combatCamera_.SetPerspectiveFovDeg(50.0f);
+    combatCamera_.SetClipRange(0.05f, 200.0f);
+    UpdateCombatCamera();
+
+    if (!ctx_ || !ctx_->rendering.model) {
+        return;
+    }
+
+    ModelManager& models = *ctx_->rendering.model;
+    if (!models.IsReady()) {
+        return;
+    }
+
+    playerModel_ = models.CreateBoxHandle(kInvalidResourceId,
+                                          MakeMaterial(0.18f, 0.45f, 1.0f), 0.55f,
+                                          1.7f, 0.45f);
+    enemyModel_ = models.CreateBoxHandle(kInvalidResourceId,
+                                         MakeMaterial(1.0f, 0.28f, 0.18f), 0.55f,
+                                         1.55f, 0.45f);
+    floorModel_ = models.CreatePlaneHandle(kInvalidResourceId,
+                                           MakeMaterial(0.18f, 0.20f, 0.20f));
+    attackRangeModel_ = models.CreateBoxHandle(
+        kInvalidResourceId, MakeMaterial(1.0f, 0.86f, 0.20f, 0.34f), 1.0f, 0.08f, 1.0f);
+    guardMarkerModel_ = models.CreateBoxHandle(kInvalidResourceId,
+                                               MakeMaterial(0.15f, 0.9f, 1.0f), 0.8f,
+                                               0.25f, 0.12f);
 }
 
 void GameScene::CaptureFrameInput() {
@@ -236,6 +303,16 @@ void GameScene::StepCombat() {
     }
 
     inputBuffer_.Tick();
+    UpdateCombatCamera();
+}
+
+void GameScene::UpdateCombatCamera() {
+    const Vec2 center{(player_.position.x + enemy_.position.x) * 0.5f,
+                      (player_.position.z + enemy_.position.z) * 0.5f};
+    const float distance = Distance(player_.position, enemy_.position);
+    const float cameraDistance = (std::max)(6.5f, distance + 5.0f);
+    combatCamera_.SetPosition({center.x, 4.4f, center.z - cameraDistance});
+    combatCamera_.SetRotation({0.55f, 0.0f, 0.0f});
 }
 
 void GameScene::UpdatePlayerIdle() {
@@ -618,4 +695,58 @@ const char* GameScene::CommandName(CombatCommand command) {
     default:
         return "Unknown";
     }
+}
+
+Material GameScene::MakeMaterial(float r, float g, float b, float a) {
+    Material material{};
+    material.color = {r, g, b, a};
+    material.enableTexture = 0;
+    material.roughness = 0.72f;
+    material.reflectionStrength = 0.0f;
+    material.blendMode =
+        static_cast<int32_t>(a < 1.0f ? BlendMode::Transparent : BlendMode::Opaque);
+    material.depthWrite = a < 1.0f ? 0 : 1;
+    material.cullMode = static_cast<int32_t>(MaterialCullMode::Back);
+    return material;
+}
+
+Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
+                                        float widthScale) {
+    Transform transform{};
+    transform.position = {actor.position.x, height * 0.5f, actor.position.z};
+    transform.scale = {widthScale, 1.0f, widthScale};
+
+    const DirectX::XMVECTOR rotation =
+        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(actor.facing), 0.0f);
+    DirectX::XMStoreFloat4(&transform.rotation, rotation);
+    return transform;
+}
+
+Transform GameScene::MakeFloorTransform() {
+    Transform transform{};
+    transform.position = {0.0f, 0.0f, 2.0f};
+    transform.scale = {12.0f, 12.0f, 1.0f};
+
+    const DirectX::XMVECTOR rotation =
+        DirectX::XMQuaternionRotationRollPitchYaw(kPi * 0.5f, 0.0f, 0.0f);
+    DirectX::XMStoreFloat4(&transform.rotation, rotation);
+    return transform;
+}
+
+Transform GameScene::MakeAttackRangeTransform(const CombatActor& actor,
+                                              const AttackData& attack) {
+    Transform transform{};
+    transform.position = {actor.position.x + actor.facing.x * (attack.range * 0.5f),
+                          0.08f,
+                          actor.position.z + actor.facing.z * (attack.range * 0.5f)};
+    transform.scale = {attack.halfWidth * 2.0f, 1.0f, attack.range};
+
+    const DirectX::XMVECTOR rotation =
+        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(actor.facing), 0.0f);
+    DirectX::XMStoreFloat4(&transform.rotation, rotation);
+    return transform;
+}
+
+float GameScene::FacingYaw(const Vec2& facing) {
+    return std::atan2(facing.x, facing.z);
 }
