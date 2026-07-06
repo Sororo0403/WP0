@@ -31,6 +31,19 @@ public:
 private:
     enum class CombatCommand {
         Light,
+        Heavy,
+    };
+
+    enum class MoveId {
+        None,
+        L1,
+        L2,
+        L3,
+        L4,
+        F1,
+        F2,
+        F3,
+        F4,
     };
 
     enum class CombatState {
@@ -62,11 +75,16 @@ private:
     };
 
     struct AttackData {
-        const char* id = "L1";
+        MoveId id = MoveId::L1;
+        const char* name = "L1";
         int startup = 12;
         int active = 3;
         int recovery = 13;
         int total = 28;
+        int cancelFrom = 15;
+        int cancelTo = 22;
+        MoveId lightChain = MoveId::None;
+        MoveId heavyChain = MoveId::None;
         float range = 1.1f;
         float halfWidth = 0.35f;
         int damage = 10;
@@ -79,8 +97,10 @@ private:
         Vec2 position{};
         Vec2 facing{0.0f, 1.0f};
         CombatState state = CombatState::Idle;
+        MoveId currentMove = MoveId::None;
         int frameInState = 0;
         int hp = 100;
+        int hitstunFrames = 0;
         bool hitApplied = false;
 
         bool IsAlive() const;
@@ -100,21 +120,24 @@ private:
     void UpdatePlayerIdle();
     void UpdatePlayerAttack();
     void UpdateHitStun(CombatActor& actor);
-    void StartAttack(CombatActor& actor, const AttackData& attack);
+    void StartAttack(CombatActor& actor, MoveId move);
+    bool TryChainPlayerAttack(const AttackData& attack);
     void TryResolvePlayerHit();
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    static const AttackData& GetAttackData(MoveId move);
+    static MoveId ResolveChainMove(const AttackData& attack, CombatCommand command);
     static float Distance(const Vec2& a, const Vec2& b);
     static float Dot(const Vec2& a, const Vec2& b);
     static Vec2 Normalize(Vec2 value);
     static const char* StateName(CombatState state);
+    static const char* CommandName(CombatCommand command);
 
     float elapsedSeconds_ = 0.0f;
     float combatAccumulator_ = 0.0f;
     int hitstopFrames_ = 0;
 
     InputBuffer inputBuffer_{};
-    AttackData lightAttack_{};
     CombatActor player_{};
     CombatActor enemy_{};
     CombatDebugState debug_{};

@@ -52,21 +52,29 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 1")) {
-        ImGui::Text("Controls: WASD move / J or Gamepad X light / R reset");
+    if (ImGui::Begin("Combat Phase 2")) {
+        ImGui::Text("Controls: WASD move / J or Gamepad X light / K or Y heavy / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
         ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
         ImGui::Separator();
-        ImGui::Text("Player: %s  frame=%d  hp=%d", StateName(player_.state),
-                    player_.frameInState, player_.hp);
-        ImGui::Text("Enemy : %s  frame=%d  hp=%d", StateName(enemy_.state),
+        ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
+                    GetAttackData(player_.currentMove).name, player_.frameInState,
+                    player_.hp);
+        ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
+                    GetAttackData(enemy_.currentMove).name,
                     enemy_.frameInState, enemy_.hp);
         ImGui::Text("Distance: %.2f", debug_.lastDistance);
         ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
         ImGui::Text("Last hit connected: %s", debug_.lastHitConnected ? "yes" : "no");
+        ImGui::Text("Buffered inputs:");
+        for (const BufferedInput& entry : inputBuffer_.entries) {
+            if (entry.active) {
+                ImGui::BulletText("%s %df", CommandName(entry.command), entry.framesLeft);
+            }
+        }
 
         const float playerHp = static_cast<float>((std::max)(player_.hp, 0)) / 100.0f;
         const float enemyHp = static_cast<float>((std::max)(enemy_.hp, 0)) / 100.0f;
@@ -165,6 +173,11 @@ void GameScene::CaptureFrameInput() {
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_X))) {
         inputBuffer_.Push(CombatCommand::Light, kInputBufferFrames);
     }
+
+    if (input.IsKeyTrigger(DIK_K) ||
+        input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_Y))) {
+        inputBuffer_.Push(CombatCommand::Heavy, kInputBufferFrames);
+    }
 }
 
 void GameScene::StepCombat() {
@@ -223,16 +236,22 @@ void GameScene::UpdatePlayerIdle() {
     player_.position.z += move.z * kPlayerMoveSpeed * kFixedCombatDt;
 
     if (inputBuffer_.Consume(CombatCommand::Light)) {
-        StartAttack(player_, lightAttack_);
+        StartAttack(player_, MoveId::L1);
     }
 }
 
 void GameScene::UpdatePlayerAttack() {
     ++player_.frameInState;
+    const AttackData& attack = GetAttackData(player_.currentMove);
     TryResolvePlayerHit();
 
-    if (player_.frameInState >= lightAttack_.total) {
+    if (TryChainPlayerAttack(attack)) {
+        return;
+    }
+
+    if (player_.frameInState >= attack.total) {
         player_.state = CombatState::Idle;
+        player_.currentMove = MoveId::None;
         player_.frameInState = 0;
         player_.hitApplied = false;
     }
@@ -240,23 +259,46 @@ void GameScene::UpdatePlayerAttack() {
 
 void GameScene::UpdateHitStun(CombatActor& actor) {
     ++actor.frameInState;
-    if (actor.frameInState >= lightAttack_.hitstun) {
+    if (actor.frameInState >= actor.hitstunFrames) {
         actor.state = actor.IsAlive() ? CombatState::Idle : CombatState::Down;
+        actor.currentMove = MoveId::None;
         actor.frameInState = 0;
+        actor.hitstunFrames = 0;
     }
 }
 
-void GameScene::StartAttack(CombatActor& actor, const AttackData& attack) {
-    (void)attack;
+void GameScene::StartAttack(CombatActor& actor, MoveId move) {
     actor.state = CombatState::Attack;
+    actor.currentMove = move;
     actor.frameInState = 0;
     actor.hitApplied = false;
 }
 
+bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
+    const int frame = player_.frameInState;
+    if (frame < attack.cancelFrom || frame > attack.cancelTo) {
+        return false;
+    }
+
+    for (CombatCommand command : {CombatCommand::Heavy, CombatCommand::Light}) {
+        const MoveId next = ResolveChainMove(attack, command);
+        if (next == MoveId::None) {
+            continue;
+        }
+
+        if (inputBuffer_.Consume(command)) {
+            StartAttack(player_, next);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void GameScene::TryResolvePlayerHit() {
     const int frame = player_.frameInState;
-    const bool active = frame >= lightAttack_.startup &&
-                        frame < lightAttack_.startup + lightAttack_.active;
+    const AttackData& attack = GetAttackData(player_.currentMove);
+    const bool active = frame >= attack.startup && frame < attack.startup + attack.active;
     debug_.lastHitboxActive = active;
     debug_.lastDistance = Distance(player_.position, enemy_.position);
 
@@ -270,9 +312,9 @@ void GameScene::TryResolvePlayerHit() {
     const Vec2 right{player_.facing.z, -player_.facing.x};
     const float sideDistance = std::abs(Dot(toEnemy, right));
 
-    if (forwardDistance >= 0.0f && forwardDistance <= lightAttack_.range &&
-        sideDistance <= lightAttack_.halfWidth) {
-        ApplyHit(player_, enemy_, lightAttack_);
+    if (forwardDistance >= 0.0f && forwardDistance <= attack.range &&
+        sideDistance <= attack.halfWidth) {
+        ApplyHit(player_, enemy_, attack);
     }
 }
 
@@ -281,7 +323,9 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     attacker.hitApplied = true;
     defender.hp = (std::max)(0, defender.hp - attack.damage);
     defender.state = defender.IsAlive() ? CombatState::HitStun : CombatState::Down;
+    defender.currentMove = MoveId::None;
     defender.frameInState = 0;
+    defender.hitstunFrames = attack.hitstun;
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
 }
@@ -289,6 +333,50 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
 void GameScene::FaceActorToward(CombatActor& actor, const CombatActor& target) {
     actor.facing = Normalize(
         Vec2{target.position.x - actor.position.x, target.position.z - actor.position.z});
+}
+
+const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
+    static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
+                                      MoveId::None, MoveId::None, 0.0f, 0.0f,
+                                      0, 0, 0};
+    static constexpr std::array<AttackData, 8> kAttacks{{
+        {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
+         0.35f, 10, 14, 5},
+        {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
+         0.38f, 11, 15, 5},
+        {MoveId::L3, "L3", 16, 4, 18, 38, 22, 30, MoveId::L4, MoveId::F3, 1.20f,
+         0.42f, 12, 18, 6},
+        {MoveId::L4, "L4", 18, 4, 22, 44, 26, 34, MoveId::None, MoveId::F4,
+         1.28f, 0.48f, 14, 20, 6},
+        {MoveId::F1, "F1", 18, 4, 24, 46, 46, 46, MoveId::None, MoveId::None,
+         1.20f, 0.42f, 18, 22, 8},
+        {MoveId::F2, "F2", 20, 5, 26, 51, 51, 51, MoveId::None, MoveId::None,
+         1.25f, 0.46f, 21, 24, 8},
+        {MoveId::F3, "F3", 22, 6, 28, 56, 56, 56, MoveId::None, MoveId::None,
+         1.30f, 0.52f, 24, 26, 9},
+        {MoveId::F4, "F4", 24, 8, 30, 62, 62, 62, MoveId::None, MoveId::None,
+         1.40f, 0.58f, 30, 30, 10},
+    }};
+
+    for (const AttackData& attack : kAttacks) {
+        if (attack.id == move) {
+            return attack;
+        }
+    }
+
+    return kNone;
+}
+
+GameScene::MoveId GameScene::ResolveChainMove(const AttackData& attack,
+                                              CombatCommand command) {
+    switch (command) {
+    case CombatCommand::Light:
+        return attack.lightChain;
+    case CombatCommand::Heavy:
+        return attack.heavyChain;
+    default:
+        return MoveId::None;
+    }
 }
 
 float GameScene::Distance(const Vec2& a, const Vec2& b) {
@@ -321,6 +409,17 @@ const char* GameScene::StateName(CombatState state) {
         return "HitStun";
     case CombatState::Down:
         return "Down";
+    default:
+        return "Unknown";
+    }
+}
+
+const char* GameScene::CommandName(CombatCommand command) {
+    switch (command) {
+    case CombatCommand::Light:
+        return "Light";
+    case CombatCommand::Heavy:
+        return "Heavy";
     default:
         return "Unknown";
     }
