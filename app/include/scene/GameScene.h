@@ -47,6 +47,7 @@ private:
         SwayAttack,
         CounterAttack,
         DownAttack,
+        ExAction,
         EnemyPoke,
     };
 
@@ -156,6 +157,9 @@ private:
     void StartDodge(CombatActor& actor);
     bool TryStartCounter();
     bool TryStartDownAttack();
+    bool TryStartExAction();
+    bool TryActivateExBoost();
+    bool IsExBoostActive() const;
     bool TryChainPlayerAttack(const AttackData& attack);
     bool TryCancelPlayerAttackToDodge(const AttackData& attack);
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
@@ -201,6 +205,8 @@ private:
     int comboCount_ = 0;
     int comboTimerFrames_ = 0;
     int cameraShakeFrames_ = 0;
+    int exBoostFrames_ = 0;
+    bool exBoostRequested_ = false;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};

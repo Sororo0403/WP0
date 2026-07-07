@@ -24,6 +24,11 @@ constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr float kDownAttackDistance = 1.5f;
 constexpr float kMaxExGauge = 100.0f;
+constexpr float kExBoostCost = 50.0f;
+constexpr float kExActionCost = 25.0f;
+constexpr int kExBoostFrames = 300;
+constexpr float kExActionDistance = 1.45f;
+constexpr bool kEnemyInvincibleForDebug = true;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
@@ -85,6 +90,12 @@ void GameScene::Draw() {
         guard.position.y = 1.85f;
         models.Draw(guardMarkerModel_, guard, combatCamera_);
     }
+
+    if (IsExBoostActive()) {
+        Transform boost = MakeActorTransform(player_, 0.18f, 1.55f);
+        boost.position.y = 2.15f;
+        models.Draw(attackRangeModel_, boost, combatCamera_);
+    }
     models.PostDraw();
 }
 
@@ -92,15 +103,18 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 6")) {
+    if (ImGui::Begin("Combat Phase 7")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
         ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
         ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
+        ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
+                    IsExBoostActive() ? "active" : "off", exBoostFrames_,
+                    exGauge_ >= kExBoostCost ? "yes" : "no");
         ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
         ImGui::Separator();
         ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
@@ -197,6 +211,8 @@ void GameScene::ResetPhaseOne() {
     comboCount_ = 0;
     comboTimerFrames_ = 0;
     cameraShakeFrames_ = 0;
+    exBoostFrames_ = 0;
+    exBoostRequested_ = false;
     inputBuffer_.Clear();
     debug_ = {};
 
@@ -266,6 +282,10 @@ void GameScene::CaptureFrameInput() {
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_Y))) {
         inputBuffer_.Push(CombatCommand::Heavy, kInputBufferFrames);
     }
+
+    if (input.IsKeyTrigger(DIK_E) || input.IsGamepadRightTriggerTrigger()) {
+        exBoostRequested_ = true;
+    }
 }
 
 void GameScene::StepCombat() {
@@ -277,6 +297,11 @@ void GameScene::StepCombat() {
     debug_.lastDefense = "None";
     debug_.lastDistance = Distance(player_.position, enemy_.position);
     UpdateFeedbackTimers();
+
+    if (exBoostRequested_) {
+        TryActivateExBoost();
+        exBoostRequested_ = false;
+    }
 
     if (hitstopFrames_ > 0) {
         --hitstopFrames_;
@@ -296,7 +321,7 @@ void GameScene::StepCombat() {
             enemyTrainingCooldown_ = kEnemyTrainingAttackCooldown;
         }
         if (!counterStarted) {
-        TryResolveAttackHit(enemy_, player_);
+            TryResolveAttackHit(enemy_, player_);
         }
         const AttackData& attack = GetAttackData(enemy_.currentMove);
         if (enemy_.frameInState >= attack.total) {
@@ -362,6 +387,13 @@ void GameScene::UpdateFeedbackTimers() {
             cameraShakeMagnitude_ = 0.0f;
         }
     }
+
+    if (exBoostFrames_ > 0) {
+        --exBoostFrames_;
+        if (exGauge_ <= 0.0f) {
+            exBoostFrames_ = 0;
+        }
+    }
 }
 
 void GameScene::UpdatePlayerIdle() {
@@ -371,6 +403,10 @@ void GameScene::UpdatePlayerIdle() {
     FaceActorToward(player_, enemy_);
 
     if (TryStartDownAttack()) {
+        return;
+    }
+
+    if (TryStartExAction()) {
         return;
     }
 
@@ -391,6 +427,11 @@ void GameScene::UpdatePlayerIdle() {
 
 void GameScene::UpdatePlayerAttack() {
     ++player_.frameInState;
+    if (IsExBoostActive() && player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
+        debug_.combatFrame % 2 == 0) {
+        ++player_.frameInState;
+    }
+
     const AttackData& attack = GetAttackData(player_.currentMove);
     TryResolveAttackHit(player_, enemy_);
 
@@ -561,6 +602,45 @@ bool GameScene::TryStartDownAttack() {
     return true;
 }
 
+bool GameScene::TryStartExAction() {
+    if (!IsExBoostActive() || !enemy_.IsAlive() || enemy_.state == CombatState::Down) {
+        return false;
+    }
+
+    if (exGauge_ < kExActionCost ||
+        Distance(player_.position, enemy_.position) > kExActionDistance) {
+        return false;
+    }
+
+    if (!inputBuffer_.Consume(CombatCommand::Heavy)) {
+        return false;
+    }
+
+    exGauge_ = std::clamp(exGauge_ - kExActionCost, 0.0f, kMaxExGauge);
+    FaceActorToward(player_, enemy_);
+    StartAttack(player_, MoveId::ExAction);
+    hitstopFrames_ = 4;
+    StartCameraShake(11, 0.08f);
+    return true;
+}
+
+bool GameScene::TryActivateExBoost() {
+    if (IsExBoostActive() || exGauge_ < kExBoostCost) {
+        return false;
+    }
+
+    exGauge_ = std::clamp(exGauge_ - kExBoostCost, 0.0f, kMaxExGauge);
+    exBoostFrames_ = kExBoostFrames;
+    hitstopFrames_ = (std::max)(hitstopFrames_, 4);
+    debug_.lastDefense = "EX Boost";
+    StartCameraShake(11, 0.08f);
+    return true;
+}
+
+bool GameScene::IsExBoostActive() const {
+    return exBoostFrames_ > 0;
+}
+
 bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
     const int frame = player_.frameInState;
     if (frame < attack.cancelFrom || frame > attack.cancelTo) {
@@ -577,6 +657,10 @@ bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
             StartAttack(player_, next);
             return true;
         }
+    }
+
+    if (TryStartExAction()) {
+        return true;
     }
 
     return false;
@@ -637,7 +721,18 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
 void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
                          const AttackData& attack) {
     attacker.hitApplied = true;
-    defender.hp = (std::max)(0, defender.hp - attack.damage);
+    int damage = attack.damage;
+    if (&defender == &player_ && IsExBoostActive()) {
+        const int absorbed = (attack.damage + 1) / 2;
+        damage -= absorbed;
+        exGauge_ = std::clamp(exGauge_ - static_cast<float>(absorbed), 0.0f,
+                              kMaxExGauge);
+        debug_.lastDefense = "EX absorb";
+    }
+
+    if (!(&defender == &enemy_ && kEnemyInvincibleForDebug)) {
+        defender.hp = (std::max)(0, defender.hp - damage);
+    }
     const bool knockdown = IsKnockdownAttack(attack.id);
     defender.state = defender.IsAlive() && !knockdown ? CombatState::HitStun : CombatState::Down;
     defender.currentMove = MoveId::None;
@@ -767,14 +862,15 @@ bool GameScene::IsFacingIncomingAttack(const CombatActor& defender,
 }
 
 bool GameScene::IsKnockdownAttack(MoveId move) {
-    return move == MoveId::F4 || move == MoveId::CounterAttack || move == MoveId::DownAttack;
+    return move == MoveId::F4 || move == MoveId::CounterAttack ||
+           move == MoveId::DownAttack || move == MoveId::ExAction;
 }
 
 const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
                                       0, 0, 0, 0};
-    static constexpr std::array<AttackData, 12> kAttacks{{
+    static constexpr std::array<AttackData, 13> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
          0.35f, 10, 14, 9, 5},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
@@ -797,6 +893,8 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12},
         {MoveId::DownAttack, "DWN", 15, 5, 18, 38, 38, 38, MoveId::None,
          MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8},
+        {MoveId::ExAction, "EX", 4, 6, 32, 42, 42, 42, MoveId::None,
+         MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
          MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
     }};
