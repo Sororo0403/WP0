@@ -511,11 +511,9 @@ void GameScene::UpdatePlayerAttack() {
     }
 
     const AttackData& attack = GetAttackData(player_.currentMove);
-    TryResolveAttackHit(player_, TargetEnemy());
-    if (combatStyle_ == CombatStyle::Crowd) {
-        for (CombatActor& enemy : supportEnemies_) {
-            TryResolveAttackHit(player_, enemy);
-        }
+    TryResolveAttackHit(player_, enemy_);
+    for (CombatActor& enemy : supportEnemies_) {
+        TryResolveAttackHit(player_, enemy);
     }
 
     if (TryCancelPlayerAttackToDodge(attack)) {
