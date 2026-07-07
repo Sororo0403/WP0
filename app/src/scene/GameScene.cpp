@@ -197,6 +197,7 @@ void GameScene::ResetPhaseOne() {
     enemy_.name = "Enemy";
     enemy_.position = {0.0f, 1.0f};
     enemy_.facing = {0.0f, -1.0f};
+    enemy_.attackFacing = enemy_.facing;
     enemy_.hp = 100;
 
     UpdateCombatCamera();
@@ -316,30 +317,10 @@ void GameScene::UpdateCombatCamera() {
 }
 
 void GameScene::UpdatePlayerIdle() {
-    if (!ctx_ || !ctx_->systems.input) {
-        return;
-    }
-
-    const Input& input = *ctx_->systems.input;
-    Vec2 move{};
-    if (input.IsKeyPress(DIK_A)) {
-        move.x -= 1.0f;
-    }
-    if (input.IsKeyPress(DIK_D)) {
-        move.x += 1.0f;
-    }
-    if (input.IsKeyPress(DIK_W)) {
-        move.z += 1.0f;
-    }
-    if (input.IsKeyPress(DIK_S)) {
-        move.z -= 1.0f;
-    }
-
-    move.x += input.GetGamepadLeftStickX();
-    move.z += input.GetGamepadLeftStickY();
-    move = Normalize(move);
+    const Vec2 move = ReadMovementInput();
     player_.position.x += move.x * kPlayerMoveSpeed * kFixedCombatDt;
     player_.position.z += move.z * kPlayerMoveSpeed * kFixedCombatDt;
+    FaceActorToward(player_, enemy_);
 
     if (IsDodgeRequested()) {
         StartDodge(player_);
@@ -403,8 +384,8 @@ void GameScene::UpdateDodge(CombatActor& actor) {
     ++actor.frameInState;
     const DodgeData& dodge = GetDodgeData();
     const float stepDistance = dodge.distance / static_cast<float>(dodge.total);
-    actor.position.x -= actor.facing.x * stepDistance;
-    actor.position.z -= actor.facing.z * stepDistance;
+    actor.position.x += actor.dodgeDirection.x * stepDistance;
+    actor.position.z += actor.dodgeDirection.z * stepDistance;
 
     if (actor.frameInState >= dodge.total) {
         actor.state = CombatState::Idle;
@@ -442,6 +423,8 @@ void GameScene::StartAttack(CombatActor& actor, MoveId move) {
     actor.currentMove = move;
     actor.frameInState = 0;
     actor.hitApplied = false;
+    actor.attackOrigin = actor.position;
+    actor.attackFacing = NormalizeOr(actor.facing, {0.0f, 1.0f});
 }
 
 void GameScene::StartGuard(CombatActor& actor) {
@@ -455,6 +438,9 @@ void GameScene::StartDodge(CombatActor& actor) {
     actor.currentMove = MoveId::None;
     actor.frameInState = 0;
     actor.hitApplied = false;
+    const Vec2 inputDirection = &actor == &player_ ? ReadMovementInput() : Vec2{};
+    actor.dodgeDirection =
+        NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
 }
 
 bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
@@ -503,10 +489,12 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
         return;
     }
 
-    const Vec2 toDefender{defender.position.x - attacker.position.x,
-                          defender.position.z - attacker.position.z};
-    const float forwardDistance = Dot(toDefender, attacker.facing);
-    const Vec2 right{attacker.facing.z, -attacker.facing.x};
+    const Vec2 origin = AttackOrigin(attacker);
+    const Vec2 facing = AttackFacing(attacker);
+    const Vec2 toDefender{defender.position.x - origin.x,
+                          defender.position.z - origin.z};
+    const float forwardDistance = Dot(toDefender, facing);
+    const Vec2 right{facing.z, -facing.x};
     const float sideDistance = std::abs(Dot(toDefender, right));
 
     if (forwardDistance >= 0.0f && forwardDistance <= attack.range &&
@@ -553,8 +541,42 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
 }
 
 void GameScene::FaceActorToward(CombatActor& actor, const CombatActor& target) {
-    actor.facing = Normalize(
-        Vec2{target.position.x - actor.position.x, target.position.z - actor.position.z});
+    if (actor.state == CombatState::Attack) {
+        return;
+    }
+
+    const Vec2 toTarget{target.position.x - actor.position.x,
+                        target.position.z - actor.position.z};
+    if (!HasDirection(toTarget)) {
+        return;
+    }
+
+    actor.facing = Normalize(toTarget);
+}
+
+GameScene::Vec2 GameScene::ReadMovementInput() const {
+    if (!ctx_ || !ctx_->systems.input) {
+        return {};
+    }
+
+    const Input& input = *ctx_->systems.input;
+    Vec2 move{};
+    if (input.IsKeyPress(DIK_A)) {
+        move.x -= 1.0f;
+    }
+    if (input.IsKeyPress(DIK_D)) {
+        move.x += 1.0f;
+    }
+    if (input.IsKeyPress(DIK_W)) {
+        move.z += 1.0f;
+    }
+    if (input.IsKeyPress(DIK_S)) {
+        move.z -= 1.0f;
+    }
+
+    move.x += input.GetGamepadLeftStickX();
+    move.z += input.GetGamepadLeftStickY();
+    return Normalize(move);
 }
 
 bool GameScene::IsGuardHeld() const {
@@ -589,8 +611,8 @@ bool GameScene::IsDodgeInvulnerable(const CombatActor& actor) {
 bool GameScene::IsFacingIncomingAttack(const CombatActor& defender,
                                        const CombatActor& attacker) {
     const Vec2 toAttacker =
-        Normalize(Vec2{attacker.position.x - defender.position.x,
-                       attacker.position.z - defender.position.z});
+        Normalize(Vec2{AttackOrigin(attacker).x - defender.position.x,
+                       AttackOrigin(attacker).z - defender.position.z});
     return Dot(defender.facing, toAttacker) >= 0.25f;
 }
 
@@ -665,6 +687,28 @@ GameScene::Vec2 GameScene::Normalize(Vec2 value) {
     return {value.x * invLength, value.z * invLength};
 }
 
+bool GameScene::HasDirection(Vec2 value) {
+    return value.x * value.x + value.z * value.z > 0.0001f;
+}
+
+GameScene::Vec2 GameScene::NormalizeOr(Vec2 value, Vec2 fallback) {
+    const Vec2 normalized = Normalize(value);
+    if (HasDirection(normalized)) {
+        return normalized;
+    }
+    const Vec2 normalizedFallback = Normalize(fallback);
+    return HasDirection(normalizedFallback) ? normalizedFallback : Vec2{0.0f, 1.0f};
+}
+
+GameScene::Vec2 GameScene::AttackOrigin(const CombatActor& actor) {
+    return actor.state == CombatState::Attack ? actor.attackOrigin : actor.position;
+}
+
+GameScene::Vec2 GameScene::AttackFacing(const CombatActor& actor) {
+    return actor.state == CombatState::Attack ? NormalizeOr(actor.attackFacing, actor.facing)
+                                              : NormalizeOr(actor.facing, {0.0f, 1.0f});
+}
+
 const char* GameScene::StateName(CombatState state) {
     switch (state) {
     case CombatState::Idle:
@@ -712,8 +756,9 @@ Material GameScene::MakeMaterial(float r, float g, float b, float a) {
 
 Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
                                         float widthScale) {
+    (void)height;
     Transform transform{};
-    transform.position = {actor.position.x, height * 0.5f, actor.position.z};
+    transform.position = {actor.position.x, 0.0f, actor.position.z};
     transform.scale = {widthScale, 1.0f, widthScale};
 
     const DirectX::XMVECTOR rotation =
@@ -735,14 +780,16 @@ Transform GameScene::MakeFloorTransform() {
 
 Transform GameScene::MakeAttackRangeTransform(const CombatActor& actor,
                                               const AttackData& attack) {
+    const Vec2 origin = AttackOrigin(actor);
+    const Vec2 facing = AttackFacing(actor);
     Transform transform{};
-    transform.position = {actor.position.x + actor.facing.x * (attack.range * 0.5f),
-                          0.08f,
-                          actor.position.z + actor.facing.z * (attack.range * 0.5f)};
+    transform.position = {origin.x + facing.x * (attack.range * 0.5f),
+                          0.03f,
+                          origin.z + facing.z * (attack.range * 0.5f)};
     transform.scale = {attack.halfWidth * 2.0f, 1.0f, attack.range};
 
     const DirectX::XMVECTOR rotation =
-        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(actor.facing), 0.0f);
+        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(facing), 0.0f);
     DirectX::XMStoreFloat4(&transform.rotation, rotation);
     return transform;
 }

@@ -108,6 +108,9 @@ private:
         const char* name = "";
         Vec2 position{};
         Vec2 facing{0.0f, 1.0f};
+        Vec2 attackOrigin{};
+        Vec2 attackFacing{0.0f, 1.0f};
+        Vec2 dodgeDirection{0.0f, -1.0f};
         CombatState state = CombatState::Idle;
         MoveId currentMove = MoveId::None;
         int frameInState = 0;
@@ -151,6 +154,7 @@ private:
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
     static bool IsDodgeInvulnerable(const CombatActor& actor);
@@ -162,6 +166,10 @@ private:
     static float Distance(const Vec2& a, const Vec2& b);
     static float Dot(const Vec2& a, const Vec2& b);
     static Vec2 Normalize(Vec2 value);
+    static bool HasDirection(Vec2 value);
+    static Vec2 NormalizeOr(Vec2 value, Vec2 fallback);
+    static Vec2 AttackOrigin(const CombatActor& actor);
+    static Vec2 AttackFacing(const CombatActor& actor);
     static const char* StateName(CombatState state);
     static const char* CommandName(CombatCommand command);
     static Material MakeMaterial(float r, float g, float b, float a = 1.0f);
