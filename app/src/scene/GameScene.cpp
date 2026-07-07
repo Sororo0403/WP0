@@ -21,6 +21,8 @@ constexpr float kPlayerMoveSpeed = 2.4f;
 constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
 constexpr int kComboTimerFrames = 90;
+constexpr int kKnockdownFrames = 90;
+constexpr float kDownAttackDistance = 1.5f;
 constexpr float kMaxExGauge = 100.0f;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
@@ -90,9 +92,9 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 5")) {
+    if (ImGui::Begin("Combat Phase 6")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
@@ -306,10 +308,14 @@ void GameScene::StepCombat() {
         }
     } else if (enemy_.state == CombatState::HitStun) {
         UpdateHitStun(enemy_);
+    } else if (enemy_.state == CombatState::Down) {
+        UpdateDown(enemy_);
     }
 
     if (player_.state == CombatState::HitStun) {
         UpdateHitStun(player_);
+    } else if (player_.state == CombatState::Down) {
+        UpdateDown(player_);
     } else if (player_.state == CombatState::GuardStun) {
         UpdateGuardStun(player_);
     } else if (player_.state == CombatState::Dodge) {
@@ -363,6 +369,10 @@ void GameScene::UpdatePlayerIdle() {
     player_.position.x += move.x * kPlayerMoveSpeed * kFixedCombatDt;
     player_.position.z += move.z * kPlayerMoveSpeed * kFixedCombatDt;
     FaceActorToward(player_, enemy_);
+
+    if (TryStartDownAttack()) {
+        return;
+    }
 
     if (IsDodgeRequested()) {
         StartDodge(player_);
@@ -451,6 +461,22 @@ void GameScene::UpdateHitStun(CombatActor& actor) {
     }
 }
 
+void GameScene::UpdateDown(CombatActor& actor) {
+    if (!actor.IsAlive()) {
+        return;
+    }
+
+    ++actor.frameInState;
+    if (actor.downFrames > 0) {
+        --actor.downFrames;
+    }
+
+    if (actor.downFrames <= 0) {
+        actor.state = CombatState::Idle;
+        actor.frameInState = 0;
+    }
+}
+
 void GameScene::UpdateEnemyTraining() {
     if (!enemy_.IsAlive() || enemy_.state != CombatState::Idle) {
         return;
@@ -514,6 +540,24 @@ bool GameScene::TryStartCounter() {
     hitstopFrames_ = 4;
     debug_.lastDefense = "Counter";
     StartCameraShake(10, 0.06f);
+    return true;
+}
+
+bool GameScene::TryStartDownAttack() {
+    if (enemy_.state != CombatState::Down || !enemy_.IsAlive()) {
+        return false;
+    }
+
+    if (Distance(player_.position, enemy_.position) > kDownAttackDistance) {
+        return false;
+    }
+
+    if (!inputBuffer_.Consume(CombatCommand::Heavy)) {
+        return false;
+    }
+
+    FaceActorToward(player_, enemy_);
+    StartAttack(player_, MoveId::DownAttack);
     return true;
 }
 
@@ -594,10 +638,12 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
                          const AttackData& attack) {
     attacker.hitApplied = true;
     defender.hp = (std::max)(0, defender.hp - attack.damage);
-    defender.state = defender.IsAlive() ? CombatState::HitStun : CombatState::Down;
+    const bool knockdown = IsKnockdownAttack(attack.id);
+    defender.state = defender.IsAlive() && !knockdown ? CombatState::HitStun : CombatState::Down;
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
+    defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
     AddHitFeedback(attacker, attack);
@@ -720,11 +766,15 @@ bool GameScene::IsFacingIncomingAttack(const CombatActor& defender,
     return Dot(defender.facing, toAttacker) >= 0.25f;
 }
 
+bool GameScene::IsKnockdownAttack(MoveId move) {
+    return move == MoveId::F4 || move == MoveId::CounterAttack || move == MoveId::DownAttack;
+}
+
 const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
                                       0, 0, 0, 0};
-    static constexpr std::array<AttackData, 11> kAttacks{{
+    static constexpr std::array<AttackData, 12> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
          0.35f, 10, 14, 9, 5},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
@@ -745,6 +795,8 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7},
         {MoveId::CounterAttack, "CTR", 1, 12, 29, 42, 42, 42, MoveId::None,
          MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12},
+        {MoveId::DownAttack, "DWN", 15, 5, 18, 38, 38, 38, MoveId::None,
+         MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
          MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
     }};

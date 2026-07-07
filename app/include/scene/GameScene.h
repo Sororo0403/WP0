@@ -46,6 +46,7 @@ private:
         F4,
         SwayAttack,
         CounterAttack,
+        DownAttack,
         EnemyPoke,
     };
 
@@ -119,6 +120,7 @@ private:
         int hp = 100;
         int hitstunFrames = 0;
         int guardStunFrames = 0;
+        int downFrames = 0;
         bool hitApplied = false;
 
         bool IsAlive() const;
@@ -147,11 +149,13 @@ private:
     void UpdateGuardStun(CombatActor& actor);
     void UpdateDodge(CombatActor& actor);
     void UpdateHitStun(CombatActor& actor);
+    void UpdateDown(CombatActor& actor);
     void UpdateEnemyTraining();
     void StartAttack(CombatActor& actor, MoveId move);
     void StartGuard(CombatActor& actor);
     void StartDodge(CombatActor& actor);
     bool TryStartCounter();
+    bool TryStartDownAttack();
     bool TryChainPlayerAttack(const AttackData& attack);
     bool TryCancelPlayerAttackToDodge(const AttackData& attack);
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
@@ -167,6 +171,7 @@ private:
     static bool IsDodgeInvulnerable(const CombatActor& actor);
     static bool IsFacingIncomingAttack(const CombatActor& defender,
                                        const CombatActor& attacker);
+    static bool IsKnockdownAttack(MoveId move);
     static const AttackData& GetAttackData(MoveId move);
     static const DodgeData& GetDodgeData();
     static MoveId ResolveChainMove(const AttackData& attack, CombatCommand command);
