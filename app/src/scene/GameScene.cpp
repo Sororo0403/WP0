@@ -90,9 +90,9 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 4")) {
+    if (ImGui::Begin("Combat Phase 5")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / L or LB guard / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
@@ -289,7 +289,13 @@ void GameScene::StepCombat() {
 
     if (enemy_.state == CombatState::Attack) {
         ++enemy_.frameInState;
+        const bool counterStarted = TryStartCounter();
+        if (counterStarted) {
+            enemyTrainingCooldown_ = kEnemyTrainingAttackCooldown;
+        }
+        if (!counterStarted) {
         TryResolveAttackHit(enemy_, player_);
+        }
         const AttackData& attack = GetAttackData(enemy_.currentMove);
         if (enemy_.frameInState >= attack.total) {
             enemy_.state = CombatState::Idle;
@@ -483,6 +489,32 @@ void GameScene::StartDodge(CombatActor& actor) {
     const Vec2 inputDirection = &actor == &player_ ? ReadMovementInput() : Vec2{};
     actor.dodgeDirection =
         NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
+}
+
+bool GameScene::TryStartCounter() {
+    if (player_.state != CombatState::Guard || enemy_.state != CombatState::Attack) {
+        return false;
+    }
+
+    const AttackData& enemyAttack = GetAttackData(enemy_.currentMove);
+    const int framesUntilImpact = enemyAttack.startup - enemy_.frameInState;
+    if (framesUntilImpact < 0 || framesUntilImpact > 5) {
+        return false;
+    }
+
+    if (!inputBuffer_.Consume(CombatCommand::Heavy)) {
+        return false;
+    }
+
+    enemy_.state = CombatState::Idle;
+    enemy_.currentMove = MoveId::None;
+    enemy_.frameInState = 0;
+    enemy_.hitApplied = false;
+    StartAttack(player_, MoveId::CounterAttack);
+    hitstopFrames_ = 4;
+    debug_.lastDefense = "Counter";
+    StartCameraShake(10, 0.06f);
+    return true;
 }
 
 bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
@@ -692,7 +724,7 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
                                       0, 0, 0, 0};
-    static constexpr std::array<AttackData, 10> kAttacks{{
+    static constexpr std::array<AttackData, 11> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
          0.35f, 10, 14, 9, 5},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
@@ -711,6 +743,8 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          1.40f, 0.58f, 30, 30, 22, 10},
         {MoveId::SwayAttack, "SWA", 11, 4, 17, 32, 32, 32, MoveId::None,
          MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7},
+        {MoveId::CounterAttack, "CTR", 1, 12, 29, 42, 42, 42, MoveId::None,
+         MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
          MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
     }};

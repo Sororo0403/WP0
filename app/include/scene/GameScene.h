@@ -45,6 +45,7 @@ private:
         F3,
         F4,
         SwayAttack,
+        CounterAttack,
         EnemyPoke,
     };
 
@@ -150,6 +151,7 @@ private:
     void StartAttack(CombatActor& actor, MoveId move);
     void StartGuard(CombatActor& actor);
     void StartDodge(CombatActor& actor);
+    bool TryStartCounter();
     bool TryChainPlayerAttack(const AttackData& attack);
     bool TryCancelPlayerAttackToDodge(const AttackData& attack);
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
