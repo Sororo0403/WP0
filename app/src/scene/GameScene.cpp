@@ -29,9 +29,11 @@ constexpr float kExActionCost = 25.0f;
 constexpr int kExBoostFrames = 300;
 constexpr float kExActionDistance = 1.45f;
 constexpr bool kEnemyInvincibleForDebug = true;
-constexpr float kCrowdStyleDamageScale = 0.75f;
-constexpr float kCrowdStyleRangeScale = 0.95f;
-constexpr float kCrowdStyleHalfWidthScale = 1.85f;
+constexpr float kSingleStyleFinisherDamageScale = 1.15f;
+constexpr int kSingleStyleFinisherBlockstunBonus = 6;
+constexpr float kCrowdStyleDamageScale = 0.65f;
+constexpr float kCrowdStyleRangeScale = 1.18f;
+constexpr float kCrowdStyleHalfWidthScale = 2.1f;
 constexpr size_t kEnemyCount = 3;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
@@ -81,10 +83,9 @@ void GameScene::Draw() {
     }
 
     if (player_.state == CombatState::Attack) {
-        models.Draw(attackRangeModel_,
-                    MakeAttackRangeTransform(
-                        player_,
-                        MakeEffectiveAttackData(player_, GetAttackData(player_.currentMove))),
+        const AttackData playerAttack =
+            MakeEffectiveAttackData(player_, GetAttackData(player_.currentMove));
+        models.Draw(attackRangeModel_, MakeAttackRangeTransform(player_, playerAttack),
                     combatCamera_);
     }
 
@@ -499,12 +500,6 @@ void GameScene::UpdatePlayerIdle() {
 
 void GameScene::UpdatePlayerAttack() {
     ++player_.frameInState;
-    if (combatStyle_ == CombatStyle::Crowd &&
-        player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
-        debug_.combatFrame % 3 == 0) {
-        ++player_.frameInState;
-    }
-
     if (IsExBoostActive() && player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
         debug_.combatFrame % 2 == 0) {
         ++player_.frameInState;
@@ -799,9 +794,11 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
     const float forwardDistance = Dot(toDefender, facing);
     const Vec2 right{facing.z, -facing.x};
     const float sideDistance = std::abs(Dot(toDefender, right));
+    const bool inHitArea = forwardDistance >= 0.0f &&
+                           forwardDistance <= attack.range &&
+                           sideDistance <= attack.halfWidth;
 
-    if (forwardDistance >= 0.0f && forwardDistance <= attack.range &&
-        sideDistance <= attack.halfWidth) {
+    if (inHitArea) {
         if (IsDodgeInvulnerable(defender)) {
             if (&attacker == &player_) {
                 defender.lastHitAttackSerial = attacker.attackSerial;
@@ -864,10 +861,17 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
     defender.guardStunFrames = attack.blockstun;
-    hitstopFrames_ = 3;
+    const bool guardBreak = &attacker == &player_ &&
+                            combatStyle_ == CombatStyle::Single &&
+                            (attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
+                             attack.id == MoveId::F3 || attack.id == MoveId::F4);
+    hitstopFrames_ = guardBreak ? 5 : 3;
     debug_.lastBlocked = true;
-    debug_.lastDefense = "Guard";
+    debug_.lastDefense = guardBreak ? "Guard break" : "Guard";
     AddBlockFeedback(attacker);
+    if (guardBreak) {
+        StartCameraShake(7, 0.032f);
+    }
 }
 
 void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& attack) {
@@ -1006,7 +1010,17 @@ bool GameScene::IsDodgeRequested() const {
 GameScene::AttackData GameScene::MakeEffectiveAttackData(
     const CombatActor& attacker, const AttackData& attack) const {
     AttackData effective = attack;
-    if (&attacker == &player_ && combatStyle_ == CombatStyle::Crowd) {
+    const bool playerAttack = &attacker == &player_;
+    const bool finisher = attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
+                          attack.id == MoveId::F3 || attack.id == MoveId::F4;
+    if (playerAttack && combatStyle_ == CombatStyle::Single && finisher) {
+        effective.damage =
+            (std::max)(1, static_cast<int>(std::round(
+                              static_cast<float>(effective.damage) *
+                              kSingleStyleFinisherDamageScale)));
+        effective.blockstun += kSingleStyleFinisherBlockstunBonus;
+        effective.hitstop += 1;
+    } else if (playerAttack && combatStyle_ == CombatStyle::Crowd) {
         effective.damage =
             (std::max)(1, static_cast<int>(std::round(
                               static_cast<float>(effective.damage) *
