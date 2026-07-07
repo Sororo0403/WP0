@@ -18,8 +18,11 @@ namespace {
 constexpr float kFixedCombatDt = 1.0f / 60.0f;
 constexpr int kInputBufferFrames = 8;
 constexpr float kPlayerMoveSpeed = 2.4f;
+constexpr float kEnemyMoveSpeed = 1.35f;
 constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
+constexpr int kEnemySupportAttackCooldown = 135;
+constexpr float kEnemyPreferredRange = 0.95f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr float kDownAttackDistance = 1.5f;
@@ -93,6 +96,13 @@ void GameScene::Draw() {
         models.Draw(attackRangeModel_,
                     MakeAttackRangeTransform(enemy_, GetAttackData(enemy_.currentMove)),
                     combatCamera_);
+    }
+    for (const CombatActor& enemy : supportEnemies_) {
+        if (enemy.state == CombatState::Attack) {
+            models.Draw(attackRangeModel_,
+                        MakeAttackRangeTransform(enemy, GetAttackData(enemy.currentMove)),
+                        combatCamera_);
+        }
     }
 
     if (player_.state == CombatState::Guard || player_.state == CombatState::GuardStun) {
@@ -260,6 +270,7 @@ void GameScene::ResetPhaseOne() {
     enemy_.facing = {0.0f, -1.0f};
     enemy_.attackFacing = enemy_.facing;
     enemy_.hp = 100;
+    enemy_.aiCooldownFrames = 45;
 
     supportEnemies_[0] = {};
     supportEnemies_[0].name = "Enemy2";
@@ -267,6 +278,7 @@ void GameScene::ResetPhaseOne() {
     supportEnemies_[0].facing = {0.0f, -1.0f};
     supportEnemies_[0].attackFacing = supportEnemies_[0].facing;
     supportEnemies_[0].hp = 100;
+    supportEnemies_[0].aiCooldownFrames = 80;
 
     supportEnemies_[1] = {};
     supportEnemies_[1].name = "Enemy3";
@@ -274,6 +286,7 @@ void GameScene::ResetPhaseOne() {
     supportEnemies_[1].facing = {0.0f, -1.0f};
     supportEnemies_[1].attackFacing = supportEnemies_[1].facing;
     supportEnemies_[1].hp = 100;
+    supportEnemies_[1].aiCooldownFrames = 120;
 
     UpdateCombatCamera();
 }
@@ -376,37 +389,9 @@ void GameScene::StepCombat() {
         FaceActorToward(enemy, player_);
     }
 
-    UpdateEnemyTraining();
-
-    if (enemy_.state == CombatState::Attack) {
-        ++enemy_.frameInState;
-        const bool counterStarted = TryStartCounter();
-        if (counterStarted) {
-            enemyTrainingCooldown_ = kEnemyTrainingAttackCooldown;
-        }
-        if (!counterStarted) {
-            TryResolveAttackHit(enemy_, player_);
-        }
-        const AttackData& attack = GetAttackData(enemy_.currentMove);
-        if (enemy_.frameInState >= attack.total) {
-            enemy_.state = CombatState::Idle;
-            enemy_.currentMove = MoveId::None;
-            enemy_.frameInState = 0;
-            enemy_.hitApplied = false;
-            enemyTrainingCooldown_ = kEnemyTrainingAttackCooldown;
-        }
-    } else if (enemy_.state == CombatState::HitStun) {
-        UpdateHitStun(enemy_);
-    } else if (enemy_.state == CombatState::Down) {
-        UpdateDown(enemy_);
-    }
-
+    UpdateEnemyActor(enemy_);
     for (CombatActor& enemy : supportEnemies_) {
-        if (enemy.state == CombatState::HitStun) {
-            UpdateHitStun(enemy);
-        } else if (enemy.state == CombatState::Down) {
-            UpdateDown(enemy);
-        }
+        UpdateEnemyActor(enemy);
     }
 
     if (player_.state == CombatState::HitStun) {
@@ -594,8 +579,48 @@ void GameScene::UpdateDown(CombatActor& actor) {
     }
 }
 
-void GameScene::UpdateEnemyTraining() {
-    if (!enemy_.IsAlive() || enemy_.state != CombatState::Idle) {
+void GameScene::UpdateEnemyActor(CombatActor& actor) {
+    if (actor.state == CombatState::Attack) {
+        ++actor.frameInState;
+        const bool counterStarted = TryStartCounter(actor);
+        if (!counterStarted) {
+            TryResolveAttackHit(actor, player_);
+        }
+
+        const AttackData& attack = GetAttackData(actor.currentMove);
+        if (actor.frameInState >= attack.total) {
+            actor.state = CombatState::Idle;
+            actor.currentMove = MoveId::None;
+            actor.frameInState = 0;
+            actor.hitApplied = false;
+            actor.aiCooldownFrames = kEnemyTrainingAttackCooldown;
+            enemyTrainingCooldown_ = kEnemyTrainingAttackCooldown;
+        }
+    } else if (actor.state == CombatState::HitStun) {
+        UpdateHitStun(actor);
+    } else if (actor.state == CombatState::Down) {
+        UpdateDown(actor);
+    } else if (actor.state == CombatState::Idle) {
+        UpdateEnemyTraining(actor);
+    }
+}
+
+void GameScene::UpdateEnemyTraining(CombatActor& actor) {
+    if (!actor.IsAlive()) {
+        return;
+    }
+
+    const float distance = Distance(actor.position, player_.position);
+    if (distance > kEnemyPreferredRange) {
+        const Vec2 toPlayer =
+            Normalize(Vec2{player_.position.x - actor.position.x,
+                           player_.position.z - actor.position.z});
+        actor.position.x += toPlayer.x * kEnemyMoveSpeed * kFixedCombatDt;
+        actor.position.z += toPlayer.z * kEnemyMoveSpeed * kFixedCombatDt;
+    }
+
+    if (actor.aiCooldownFrames > 0) {
+        --actor.aiCooldownFrames;
         return;
     }
 
@@ -604,8 +629,10 @@ void GameScene::UpdateEnemyTraining() {
         return;
     }
 
-    if (Distance(enemy_.position, player_.position) <= GetAttackData(MoveId::EnemyPoke).range) {
-        StartAttack(enemy_, MoveId::EnemyPoke);
+    if (!IsAnyEnemyAttacking() &&
+        distance <= GetAttackData(MoveId::EnemyPoke).range) {
+        StartAttack(actor, MoveId::EnemyPoke);
+        actor.aiCooldownFrames = kEnemySupportAttackCooldown;
     }
 }
 
@@ -635,13 +662,13 @@ void GameScene::StartDodge(CombatActor& actor) {
         NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
 }
 
-bool GameScene::TryStartCounter() {
-    if (player_.state != CombatState::Guard || enemy_.state != CombatState::Attack) {
+bool GameScene::TryStartCounter(CombatActor& attacker) {
+    if (player_.state != CombatState::Guard || attacker.state != CombatState::Attack) {
         return false;
     }
 
-    const AttackData& enemyAttack = GetAttackData(enemy_.currentMove);
-    const int framesUntilImpact = enemyAttack.startup - enemy_.frameInState;
+    const AttackData& enemyAttack = GetAttackData(attacker.currentMove);
+    const int framesUntilImpact = enemyAttack.startup - attacker.frameInState;
     if (framesUntilImpact < 0 || framesUntilImpact > 5) {
         return false;
     }
@@ -650,10 +677,11 @@ bool GameScene::TryStartCounter() {
         return false;
     }
 
-    enemy_.state = CombatState::Idle;
-    enemy_.currentMove = MoveId::None;
-    enemy_.frameInState = 0;
-    enemy_.hitApplied = false;
+    attacker.state = CombatState::Idle;
+    attacker.currentMove = MoveId::None;
+    attacker.frameInState = 0;
+    attacker.hitApplied = false;
+    attacker.aiCooldownFrames = kEnemySupportAttackCooldown;
     StartAttack(player_, MoveId::CounterAttack);
     hitstopFrames_ = 4;
     debug_.lastDefense = "Counter";
@@ -1005,6 +1033,20 @@ bool GameScene::IsDodgeRequested() const {
     const Input& input = *ctx_->systems.input;
     return input.IsKeyTrigger(DIK_SPACE) ||
            input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_B));
+}
+
+bool GameScene::IsAnyEnemyAttacking() const {
+    if (enemy_.state == CombatState::Attack) {
+        return true;
+    }
+
+    for (const CombatActor& enemy : supportEnemies_) {
+        if (enemy.state == CombatState::Attack) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 GameScene::AttackData GameScene::MakeEffectiveAttackData(

@@ -127,6 +127,7 @@ private:
         int hitstunFrames = 0;
         int guardStunFrames = 0;
         int downFrames = 0;
+        int aiCooldownFrames = 0;
         uint64_t attackSerial = 0;
         uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;
@@ -158,11 +159,12 @@ private:
     void UpdateDodge(CombatActor& actor);
     void UpdateHitStun(CombatActor& actor);
     void UpdateDown(CombatActor& actor);
-    void UpdateEnemyTraining();
+    void UpdateEnemyActor(CombatActor& actor);
+    void UpdateEnemyTraining(CombatActor& actor);
     void StartAttack(CombatActor& actor, MoveId move);
     void StartGuard(CombatActor& actor);
     void StartDodge(CombatActor& actor);
-    bool TryStartCounter();
+    bool TryStartCounter(CombatActor& attacker);
     bool TryStartDownAttack();
     bool TryStartExAction();
     bool TryActivateExBoost();
@@ -186,6 +188,7 @@ private:
     Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
+    bool IsAnyEnemyAttacking() const;
     AttackData MakeEffectiveAttackData(const CombatActor& attacker,
                                        const AttackData& attack) const;
     static bool IsDodgeInvulnerable(const CombatActor& actor);
