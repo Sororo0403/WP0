@@ -75,6 +75,9 @@ void GameScene::Draw() {
     models.Draw(floorModel_, MakeFloorTransform(), combatCamera_);
     models.Draw(playerModel_, MakeActorTransform(player_, 1.7f), combatCamera_);
     models.Draw(enemyModel_, MakeActorTransform(enemy_, 1.55f, 0.9f), combatCamera_);
+    for (const CombatActor& enemy : supportEnemies_) {
+        models.Draw(enemyModel_, MakeActorTransform(enemy, 1.55f, 0.9f), combatCamera_);
+    }
 
     if (player_.state == CombatState::Attack) {
         models.Draw(attackRangeModel_,
@@ -114,7 +117,7 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 8")) {
+    if (ImGui::Begin("Combat Phase 9")) {
         ImGui::Text(
             "Controls: WASD move / J/X light / K/Y heavy / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
@@ -135,6 +138,12 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
                     GetAttackData(enemy_.currentMove).name,
                     enemy_.frameInState, enemy_.hp);
+        for (size_t i = 0; i < supportEnemies_.size(); ++i) {
+            const CombatActor& enemy = supportEnemies_[i];
+            ImGui::Text("Enemy%zu: %s  move=%s  frame=%d  hp=%d", i + 2,
+                        StateName(enemy.state), GetAttackData(enemy.currentMove).name,
+                        enemy.frameInState, enemy.hp);
+        }
         ImGui::Text("Distance: %.2f", debug_.lastDistance);
         ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
         ImGui::Text("Last hit connected: %s", debug_.lastHitConnected ? "yes" : "no");
@@ -227,6 +236,7 @@ void GameScene::ResetPhaseOne() {
     exBoostRequested_ = false;
     styleSwitchRequested_ = false;
     combatStyle_ = CombatStyle::Single;
+    nextAttackSerial_ = 0;
     inputBuffer_.Clear();
     debug_ = {};
 
@@ -242,6 +252,20 @@ void GameScene::ResetPhaseOne() {
     enemy_.facing = {0.0f, -1.0f};
     enemy_.attackFacing = enemy_.facing;
     enemy_.hp = 100;
+
+    supportEnemies_[0] = {};
+    supportEnemies_[0].name = "Enemy2";
+    supportEnemies_[0].position = {-0.55f, 1.15f};
+    supportEnemies_[0].facing = {0.0f, -1.0f};
+    supportEnemies_[0].attackFacing = supportEnemies_[0].facing;
+    supportEnemies_[0].hp = 100;
+
+    supportEnemies_[1] = {};
+    supportEnemies_[1].name = "Enemy3";
+    supportEnemies_[1].position = {0.55f, 1.15f};
+    supportEnemies_[1].facing = {0.0f, -1.0f};
+    supportEnemies_[1].attackFacing = supportEnemies_[1].facing;
+    supportEnemies_[1].hp = 100;
 
     UpdateCombatCamera();
 }
@@ -335,6 +359,9 @@ void GameScene::StepCombat() {
 
     FaceActorToward(player_, enemy_);
     FaceActorToward(enemy_, player_);
+    for (CombatActor& enemy : supportEnemies_) {
+        FaceActorToward(enemy, player_);
+    }
 
     UpdateEnemyTraining();
 
@@ -359,6 +386,14 @@ void GameScene::StepCombat() {
         UpdateHitStun(enemy_);
     } else if (enemy_.state == CombatState::Down) {
         UpdateDown(enemy_);
+    }
+
+    for (CombatActor& enemy : supportEnemies_) {
+        if (enemy.state == CombatState::HitStun) {
+            UpdateHitStun(enemy);
+        } else if (enemy.state == CombatState::Down) {
+            UpdateDown(enemy);
+        }
     }
 
     if (player_.state == CombatState::HitStun) {
@@ -464,6 +499,11 @@ void GameScene::UpdatePlayerAttack() {
 
     const AttackData& attack = GetAttackData(player_.currentMove);
     TryResolveAttackHit(player_, enemy_);
+    if (combatStyle_ == CombatStyle::Crowd) {
+        for (CombatActor& enemy : supportEnemies_) {
+            TryResolveAttackHit(player_, enemy);
+        }
+    }
 
     if (TryCancelPlayerAttackToDodge(attack)) {
         return;
@@ -568,6 +608,7 @@ void GameScene::StartAttack(CombatActor& actor, MoveId move) {
     actor.currentMove = move;
     actor.frameInState = 0;
     actor.hitApplied = false;
+    actor.attackSerial = ++nextAttackSerial_;
     actor.attackOrigin = actor.position;
     actor.attackFacing = NormalizeOr(actor.facing, {0.0f, 1.0f});
 }
@@ -730,8 +771,11 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
     const bool active = frame >= attack.startup && frame < attack.startup + attack.active;
     debug_.lastHitboxActive = active;
     debug_.lastDistance = Distance(player_.position, enemy_.position);
+    const bool alreadyHit = &attacker == &player_
+                                ? defender.lastHitAttackSerial == attacker.attackSerial
+                                : attacker.hitApplied;
 
-    if (!active || attacker.hitApplied || !defender.IsAlive()) {
+    if (!active || alreadyHit || !defender.IsAlive()) {
         return;
     }
 
@@ -746,7 +790,11 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
     if (forwardDistance >= 0.0f && forwardDistance <= attack.range &&
         sideDistance <= attack.halfWidth) {
         if (IsDodgeInvulnerable(defender)) {
-            attacker.hitApplied = true;
+            if (&attacker == &player_) {
+                defender.lastHitAttackSerial = attacker.attackSerial;
+            } else {
+                attacker.hitApplied = true;
+            }
             debug_.lastDodged = true;
             debug_.lastDefense = "Sway invulnerable";
             return;
@@ -764,7 +812,11 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
 
 void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
                          const AttackData& attack) {
-    attacker.hitApplied = true;
+    if (&attacker == &player_) {
+        defender.lastHitAttackSerial = attacker.attackSerial;
+    } else {
+        attacker.hitApplied = true;
+    }
     int damage = attack.damage;
     if (&defender == &player_ && IsExBoostActive()) {
         const int absorbed = (attack.damage + 1) / 2;
@@ -774,7 +826,7 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
         debug_.lastDefense = "EX absorb";
     }
 
-    if (!(&defender == &enemy_ && kEnemyInvincibleForDebug)) {
+    if (!(IsEnemyActor(defender) && kEnemyInvincibleForDebug)) {
         defender.hp = (std::max)(0, defender.hp - damage);
     }
     const bool knockdown = IsKnockdownAttack(attack.id);
@@ -790,7 +842,11 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
 
 void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
                            const AttackData& attack) {
-    attacker.hitApplied = true;
+    if (&attacker == &player_) {
+        defender.lastHitAttackSerial = attacker.attackSerial;
+    } else {
+        attacker.hitApplied = true;
+    }
     defender.state = CombatState::GuardStun;
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
@@ -841,6 +897,20 @@ void GameScene::FaceActorToward(CombatActor& actor, const CombatActor& target) {
     }
 
     actor.facing = Normalize(toTarget);
+}
+
+bool GameScene::IsEnemyActor(const CombatActor& actor) const {
+    if (&actor == &enemy_) {
+        return true;
+    }
+
+    for (const CombatActor& enemy : supportEnemies_) {
+        if (&actor == &enemy) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 GameScene::Vec2 GameScene::ReadMovementInput() const {

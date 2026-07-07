@@ -127,6 +127,8 @@ private:
         int hitstunFrames = 0;
         int guardStunFrames = 0;
         int downFrames = 0;
+        uint64_t attackSerial = 0;
+        uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;
 
         bool IsAlive() const;
@@ -175,6 +177,7 @@ private:
     void AddBlockFeedback(const CombatActor& attacker);
     void StartCameraShake(int frames, float magnitude);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    bool IsEnemyActor(const CombatActor& actor) const;
     Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
@@ -218,10 +221,12 @@ private:
     bool exBoostRequested_ = false;
     bool styleSwitchRequested_ = false;
     CombatStyle combatStyle_ = CombatStyle::Single;
+    uint64_t nextAttackSerial_ = 0;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};
     CombatActor enemy_{};
+    std::array<CombatActor, 2> supportEnemies_{};
     CombatDebugState debug_{};
 
     Camera combatCamera_{};
