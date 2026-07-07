@@ -178,6 +178,11 @@ private:
     void StartCameraShake(int frames, float magnitude);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
     bool IsEnemyActor(const CombatActor& actor) const;
+    CombatActor& TargetEnemy();
+    const CombatActor& TargetEnemy() const;
+    CombatActor& EnemyAt(size_t index);
+    const CombatActor& EnemyAt(size_t index) const;
+    void CycleLockOnTarget(int direction);
     Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
@@ -222,6 +227,7 @@ private:
     bool styleSwitchRequested_ = false;
     CombatStyle combatStyle_ = CombatStyle::Single;
     uint64_t nextAttackSerial_ = 0;
+    size_t targetEnemyIndex_ = 0;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};

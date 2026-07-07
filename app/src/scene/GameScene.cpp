@@ -32,6 +32,7 @@ constexpr bool kEnemyInvincibleForDebug = true;
 constexpr float kCrowdStyleDamageScale = 0.75f;
 constexpr float kCrowdStyleRangeScale = 0.95f;
 constexpr float kCrowdStyleHalfWidthScale = 1.85f;
+constexpr size_t kEnemyCount = 3;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
@@ -110,6 +111,10 @@ void GameScene::Draw() {
         style.position.y = 2.38f;
         models.Draw(guardMarkerModel_, style, combatCamera_);
     }
+
+    Transform lock = MakeActorTransform(TargetEnemy(), 0.16f, 1.35f);
+    lock.position.y = 1.95f;
+    models.Draw(guardMarkerModel_, lock, combatCamera_);
     models.PostDraw();
 }
 
@@ -117,9 +122,9 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 9")) {
+    if (ImGui::Begin("Combat Phase 10")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / C or RB lock target / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
@@ -127,6 +132,7 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
         ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
         ImGui::Text("Style: %s", StyleName(combatStyle_));
+        ImGui::Text("Lock target: Enemy%zu", targetEnemyIndex_ + 1);
         ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
                     IsExBoostActive() ? "active" : "off", exBoostFrames_,
                     exGauge_ >= kExBoostCost ? "yes" : "no");
@@ -237,6 +243,7 @@ void GameScene::ResetPhaseOne() {
     styleSwitchRequested_ = false;
     combatStyle_ = CombatStyle::Single;
     nextAttackSerial_ = 0;
+    targetEnemyIndex_ = 0;
     inputBuffer_.Clear();
     debug_ = {};
 
@@ -329,6 +336,11 @@ void GameScene::CaptureFrameInput() {
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_DPAD_UP))) {
         styleSwitchRequested_ = true;
     }
+
+    if (input.IsKeyTrigger(DIK_C) ||
+        input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_RIGHT_SHOULDER))) {
+        CycleLockOnTarget(1);
+    }
 }
 
 void GameScene::StepCombat() {
@@ -338,7 +350,7 @@ void GameScene::StepCombat() {
     debug_.lastBlocked = false;
     debug_.lastDodged = false;
     debug_.lastDefense = "None";
-    debug_.lastDistance = Distance(player_.position, enemy_.position);
+    debug_.lastDistance = Distance(player_.position, TargetEnemy().position);
     UpdateFeedbackTimers();
 
     if (exBoostRequested_) {
@@ -357,7 +369,7 @@ void GameScene::StepCombat() {
         return;
     }
 
-    FaceActorToward(player_, enemy_);
+    FaceActorToward(player_, TargetEnemy());
     FaceActorToward(enemy_, player_);
     for (CombatActor& enemy : supportEnemies_) {
         FaceActorToward(enemy, player_);
@@ -417,9 +429,10 @@ void GameScene::StepCombat() {
 }
 
 void GameScene::UpdateCombatCamera() {
-    const Vec2 center{(player_.position.x + enemy_.position.x) * 0.5f,
-                      (player_.position.z + enemy_.position.z) * 0.5f};
-    const float distance = Distance(player_.position, enemy_.position);
+    const CombatActor& target = TargetEnemy();
+    const Vec2 center{(player_.position.x + target.position.x) * 0.5f,
+                      (player_.position.z + target.position.z) * 0.5f};
+    const float distance = Distance(player_.position, target.position);
     const float cameraDistance = (std::max)(6.5f, distance + 5.0f);
     combatCamera_.SetPosition({center.x, 4.4f, center.z - cameraDistance});
     if (cameraShakeFrames_ > 0) {
@@ -459,7 +472,7 @@ void GameScene::UpdatePlayerIdle() {
     const Vec2 move = ReadMovementInput();
     player_.position.x += move.x * kPlayerMoveSpeed * kFixedCombatDt;
     player_.position.z += move.z * kPlayerMoveSpeed * kFixedCombatDt;
-    FaceActorToward(player_, enemy_);
+    FaceActorToward(player_, TargetEnemy());
 
     if (TryStartDownAttack()) {
         return;
@@ -498,7 +511,7 @@ void GameScene::UpdatePlayerAttack() {
     }
 
     const AttackData& attack = GetAttackData(player_.currentMove);
-    TryResolveAttackHit(player_, enemy_);
+    TryResolveAttackHit(player_, TargetEnemy());
     if (combatStyle_ == CombatStyle::Crowd) {
         for (CombatActor& enemy : supportEnemies_) {
             TryResolveAttackHit(player_, enemy);
@@ -656,11 +669,12 @@ bool GameScene::TryStartCounter() {
 }
 
 bool GameScene::TryStartDownAttack() {
-    if (enemy_.state != CombatState::Down || !enemy_.IsAlive()) {
+    CombatActor& target = TargetEnemy();
+    if (target.state != CombatState::Down || !target.IsAlive()) {
         return false;
     }
 
-    if (Distance(player_.position, enemy_.position) > kDownAttackDistance) {
+    if (Distance(player_.position, target.position) > kDownAttackDistance) {
         return false;
     }
 
@@ -668,18 +682,19 @@ bool GameScene::TryStartDownAttack() {
         return false;
     }
 
-    FaceActorToward(player_, enemy_);
+    FaceActorToward(player_, TargetEnemy());
     StartAttack(player_, MoveId::DownAttack);
     return true;
 }
 
 bool GameScene::TryStartExAction() {
-    if (!IsExBoostActive() || !enemy_.IsAlive() || enemy_.state == CombatState::Down) {
+    CombatActor& target = TargetEnemy();
+    if (!IsExBoostActive() || !target.IsAlive() || target.state == CombatState::Down) {
         return false;
     }
 
     if (exGauge_ < kExActionCost ||
-        Distance(player_.position, enemy_.position) > kExActionDistance) {
+        Distance(player_.position, target.position) > kExActionDistance) {
         return false;
     }
 
@@ -688,7 +703,7 @@ bool GameScene::TryStartExAction() {
     }
 
     exGauge_ = std::clamp(exGauge_ - kExActionCost, 0.0f, kMaxExGauge);
-    FaceActorToward(player_, enemy_);
+    FaceActorToward(player_, TargetEnemy());
     StartAttack(player_, MoveId::ExAction);
     hitstopFrames_ = 4;
     StartCameraShake(11, 0.08f);
@@ -770,7 +785,7 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
         MakeEffectiveAttackData(attacker, GetAttackData(attacker.currentMove));
     const bool active = frame >= attack.startup && frame < attack.startup + attack.active;
     debug_.lastHitboxActive = active;
-    debug_.lastDistance = Distance(player_.position, enemy_.position);
+    debug_.lastDistance = Distance(player_.position, TargetEnemy().position);
     const bool alreadyHit = &attacker == &player_
                                 ? defender.lastHitAttackSerial == attacker.attackSerial
                                 : attacker.hitApplied;
@@ -911,6 +926,38 @@ bool GameScene::IsEnemyActor(const CombatActor& actor) const {
     }
 
     return false;
+}
+
+GameScene::CombatActor& GameScene::TargetEnemy() {
+    return EnemyAt(targetEnemyIndex_);
+}
+
+const GameScene::CombatActor& GameScene::TargetEnemy() const {
+    return EnemyAt(targetEnemyIndex_);
+}
+
+GameScene::CombatActor& GameScene::EnemyAt(size_t index) {
+    if (index == 0) {
+        return enemy_;
+    }
+
+    return supportEnemies_[(std::min)(index, kEnemyCount - 1) - 1];
+}
+
+const GameScene::CombatActor& GameScene::EnemyAt(size_t index) const {
+    if (index == 0) {
+        return enemy_;
+    }
+
+    return supportEnemies_[(std::min)(index, kEnemyCount - 1) - 1];
+}
+
+void GameScene::CycleLockOnTarget(int direction) {
+    const int current = static_cast<int>(targetEnemyIndex_);
+    const int count = static_cast<int>(kEnemyCount);
+    targetEnemyIndex_ = static_cast<size_t>((current + direction + count) % count);
+    debug_.lastDefense = "Lock target";
+    StartCameraShake(4, 0.018f);
 }
 
 GameScene::Vec2 GameScene::ReadMovementInput() const {
