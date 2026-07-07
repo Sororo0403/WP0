@@ -20,6 +20,8 @@ constexpr int kInputBufferFrames = 8;
 constexpr float kPlayerMoveSpeed = 2.4f;
 constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
+constexpr int kComboTimerFrames = 90;
+constexpr float kMaxExGauge = 100.0f;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
@@ -88,7 +90,7 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 3")) {
+    if (ImGui::Begin("Combat Phase 4")) {
         ImGui::Text(
             "Controls: WASD move / J/X light / K/Y heavy / L or LB guard / Space or B sway / R reset");
         ImGui::Separator();
@@ -96,6 +98,8 @@ void GameScene::DrawPostProcessOverlay() {
                     static_cast<unsigned long long>(debug_.combatFrame));
         ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
+        ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
+        ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
         ImGui::Separator();
         ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
                     GetAttackData(player_.currentMove).name, player_.frameInState,
@@ -119,8 +123,10 @@ void GameScene::DrawPostProcessOverlay() {
 
         const float playerHp = static_cast<float>((std::max)(player_.hp, 0)) / 100.0f;
         const float enemyHp = static_cast<float>((std::max)(enemy_.hp, 0)) / 100.0f;
+        const float exRatio = std::clamp(exGauge_ / kMaxExGauge, 0.0f, 1.0f);
         ImGui::ProgressBar(playerHp, ImVec2(-1.0f, 0.0f), "Player HP");
         ImGui::ProgressBar(enemyHp, ImVec2(-1.0f, 0.0f), "Enemy HP");
+        ImGui::ProgressBar(exRatio, ImVec2(-1.0f, 0.0f), "EX");
 
         ImGui::Separator();
         ImGui::Text("Player position: %.2f, %.2f", player_.position.x,
@@ -182,8 +188,13 @@ bool GameScene::CombatActor::IsAlive() const {
 
 void GameScene::ResetPhaseOne() {
     combatAccumulator_ = 0.0f;
+    exGauge_ = 0.0f;
+    cameraShakeMagnitude_ = 0.0f;
     hitstopFrames_ = 0;
     enemyTrainingCooldown_ = 45;
+    comboCount_ = 0;
+    comboTimerFrames_ = 0;
+    cameraShakeFrames_ = 0;
     inputBuffer_.Clear();
     debug_ = {};
 
@@ -263,9 +274,11 @@ void GameScene::StepCombat() {
     debug_.lastDodged = false;
     debug_.lastDefense = "None";
     debug_.lastDistance = Distance(player_.position, enemy_.position);
+    UpdateFeedbackTimers();
 
     if (hitstopFrames_ > 0) {
         --hitstopFrames_;
+        UpdateCombatCamera();
         return;
     }
 
@@ -313,7 +326,30 @@ void GameScene::UpdateCombatCamera() {
     const float distance = Distance(player_.position, enemy_.position);
     const float cameraDistance = (std::max)(6.5f, distance + 5.0f);
     combatCamera_.SetPosition({center.x, 4.4f, center.z - cameraDistance});
+    if (cameraShakeFrames_ > 0) {
+        const float phase = static_cast<float>(debug_.combatFrame);
+        const float xShake = std::sin(phase * 1.71f) * cameraShakeMagnitude_;
+        const float yShake = std::cos(phase * 2.17f) * cameraShakeMagnitude_ * 0.65f;
+        combatCamera_.SetPosition({center.x + xShake, 4.4f + yShake,
+                                   center.z - cameraDistance});
+    }
     combatCamera_.SetRotation({0.55f, 0.0f, 0.0f});
+}
+
+void GameScene::UpdateFeedbackTimers() {
+    if (comboTimerFrames_ > 0) {
+        --comboTimerFrames_;
+        if (comboTimerFrames_ == 0) {
+            comboCount_ = 0;
+        }
+    }
+
+    if (cameraShakeFrames_ > 0) {
+        --cameraShakeFrames_;
+        if (cameraShakeFrames_ == 0) {
+            cameraShakeMagnitude_ = 0.0f;
+        }
+    }
 }
 
 void GameScene::UpdatePlayerIdle() {
@@ -386,6 +422,12 @@ void GameScene::UpdateDodge(CombatActor& actor) {
     const float stepDistance = dodge.distance / static_cast<float>(dodge.total);
     actor.position.x += actor.dodgeDirection.x * stepDistance;
     actor.position.z += actor.dodgeDirection.z * stepDistance;
+
+    if (&actor == &player_ && actor.frameInState >= dodge.invulTo + 1 &&
+        inputBuffer_.Consume(CombatCommand::Heavy)) {
+        StartAttack(player_, MoveId::SwayAttack);
+        return;
+    }
 
     if (actor.frameInState >= dodge.total) {
         actor.state = CombatState::Idle;
@@ -526,6 +568,7 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     defender.hitstunFrames = attack.hitstun;
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
+    AddHitFeedback(attacker, attack);
 }
 
 void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
@@ -538,6 +581,35 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
     hitstopFrames_ = 3;
     debug_.lastBlocked = true;
     debug_.lastDefense = "Guard";
+    AddBlockFeedback(attacker);
+}
+
+void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& attack) {
+    if (&attacker != &player_) {
+        StartCameraShake(6, 0.018f);
+        return;
+    }
+
+    ++comboCount_;
+    comboTimerFrames_ = kComboTimerFrames;
+    exGauge_ = std::clamp(exGauge_ + static_cast<float>(attack.damage) * 0.8f, 0.0f,
+                          kMaxExGauge);
+
+    const bool finisher = attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
+                          attack.id == MoveId::F3 || attack.id == MoveId::F4;
+    StartCameraShake(finisher ? 10 : 6, finisher ? 0.045f : 0.028f);
+}
+
+void GameScene::AddBlockFeedback(const CombatActor& attacker) {
+    if (&attacker == &player_) {
+        exGauge_ = std::clamp(exGauge_ + 1.5f, 0.0f, kMaxExGauge);
+    }
+    StartCameraShake(4, 0.014f);
+}
+
+void GameScene::StartCameraShake(int frames, float magnitude) {
+    cameraShakeFrames_ = (std::max)(cameraShakeFrames_, frames);
+    cameraShakeMagnitude_ = (std::max)(cameraShakeMagnitude_, magnitude);
 }
 
 void GameScene::FaceActorToward(CombatActor& actor, const CombatActor& target) {
@@ -620,7 +692,7 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
                                       0, 0, 0, 0};
-    static constexpr std::array<AttackData, 9> kAttacks{{
+    static constexpr std::array<AttackData, 10> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
          0.35f, 10, 14, 9, 5},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
@@ -637,6 +709,8 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          1.30f, 0.52f, 24, 26, 19, 9},
         {MoveId::F4, "F4", 24, 8, 30, 62, 62, 62, MoveId::None, MoveId::None,
          1.40f, 0.58f, 30, 30, 22, 10},
+        {MoveId::SwayAttack, "SWA", 11, 4, 17, 32, 32, 32, MoveId::None,
+         MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
          MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
     }};
@@ -651,7 +725,7 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
 }
 
 const GameScene::DodgeData& GameScene::GetDodgeData() {
-    static constexpr DodgeData kDodge{};
+    static constexpr DodgeData kDodge{20, 4, 10, 0.75f};
     return kDodge;
 }
 

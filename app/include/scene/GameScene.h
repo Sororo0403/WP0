@@ -44,6 +44,7 @@ private:
         F2,
         F3,
         F4,
+        SwayAttack,
         EnemyPoke,
     };
 
@@ -138,6 +139,7 @@ private:
     void CaptureFrameInput();
     void StepCombat();
     void UpdateCombatCamera();
+    void UpdateFeedbackTimers();
     void UpdatePlayerIdle();
     void UpdatePlayerAttack();
     void UpdatePlayerGuard();
@@ -153,6 +155,9 @@ private:
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
+    void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
+    void AddBlockFeedback(const CombatActor& attacker);
+    void StartCameraShake(int frames, float magnitude);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
     Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
@@ -182,8 +187,13 @@ private:
 
     float elapsedSeconds_ = 0.0f;
     float combatAccumulator_ = 0.0f;
+    float exGauge_ = 0.0f;
+    float cameraShakeMagnitude_ = 0.0f;
     int hitstopFrames_ = 0;
     int enemyTrainingCooldown_ = 45;
+    int comboCount_ = 0;
+    int comboTimerFrames_ = 0;
+    int cameraShakeFrames_ = 0;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};
