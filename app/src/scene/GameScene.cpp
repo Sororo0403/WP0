@@ -39,7 +39,7 @@ constexpr int kSingleStyleFinisherBlockstunBonus = 6;
 constexpr float kCrowdStyleDamageScale = 0.65f;
 constexpr float kCrowdStyleRangeScale = 1.18f;
 constexpr float kCrowdStyleHalfWidthScale = 2.1f;
-constexpr size_t kEnemyCount = 3;
+constexpr size_t kEnemyCount = 1;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
@@ -84,6 +84,9 @@ void GameScene::Draw() {
     models.Draw(playerModel_, MakeActorTransform(player_, 1.7f), combatCamera_);
     models.Draw(enemyModel_, MakeActorTransform(enemy_, 1.55f, 0.9f), combatCamera_);
     for (const CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
         models.Draw(enemyModel_, MakeActorTransform(enemy, 1.55f, 0.9f), combatCamera_);
     }
 
@@ -100,6 +103,9 @@ void GameScene::Draw() {
                     combatCamera_);
     }
     for (const CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
         if (enemy.state == CombatState::Attack) {
             models.Draw(attackRangeModel_,
                         MakeAttackRangeTransform(enemy, GetAttackData(enemy.currentMove)),
@@ -135,7 +141,7 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 10")) {
+    if (ImGui::Begin("Combat Phase 11")) {
         ImGui::Text(
             "Controls: WASD move / J/X light / K/Y heavy / C or RB lock target / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
@@ -159,9 +165,12 @@ void GameScene::DrawPostProcessOverlay() {
                     enemy_.frameInState, enemy_.hp);
         for (size_t i = 0; i < supportEnemies_.size(); ++i) {
             const CombatActor& enemy = supportEnemies_[i];
-            ImGui::Text("Enemy%zu: %s  move=%s  frame=%d  hp=%d", i + 2,
+            if (!enemy.IsAlive()) {
+                continue;
+            }
+            ImGui::Text("Enemy%zu: %s  move=%s  frame=%d  hp=%d  attacks=%d", i + 2,
                         StateName(enemy.state), GetAttackData(enemy.currentMove).name,
-                        enemy.frameInState, enemy.hp);
+                        enemy.frameInState, enemy.hp, enemy.aiAttackCount);
         }
         ImGui::Text("Distance: %.2f", debug_.lastDistance);
         ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
@@ -273,22 +282,25 @@ void GameScene::ResetPhaseOne() {
     enemy_.attackFacing = enemy_.facing;
     enemy_.hp = 100;
     enemy_.aiCooldownFrames = 45;
+    enemy_.aiAttackCount = 0;
 
     supportEnemies_[0] = {};
     supportEnemies_[0].name = "Enemy2";
     supportEnemies_[0].position = {-0.55f, 1.15f};
     supportEnemies_[0].facing = {0.0f, -1.0f};
     supportEnemies_[0].attackFacing = supportEnemies_[0].facing;
-    supportEnemies_[0].hp = 100;
+    supportEnemies_[0].hp = 0;
     supportEnemies_[0].aiCooldownFrames = 80;
+    supportEnemies_[0].aiAttackCount = 1;
 
     supportEnemies_[1] = {};
     supportEnemies_[1].name = "Enemy3";
     supportEnemies_[1].position = {0.55f, 1.15f};
     supportEnemies_[1].facing = {0.0f, -1.0f};
     supportEnemies_[1].attackFacing = supportEnemies_[1].facing;
-    supportEnemies_[1].hp = 100;
+    supportEnemies_[1].hp = 0;
     supportEnemies_[1].aiCooldownFrames = 120;
+    supportEnemies_[1].aiAttackCount = 2;
 
     UpdateCombatCamera();
 }
@@ -388,11 +400,17 @@ void GameScene::StepCombat() {
     FaceActorToward(player_, TargetEnemy());
     FaceActorToward(enemy_, player_);
     for (CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
         FaceActorToward(enemy, player_);
     }
 
     UpdateEnemyActor(enemy_);
     for (CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
         UpdateEnemyActor(enemy);
     }
 
@@ -495,6 +513,9 @@ void GameScene::UpdatePlayerAttack() {
     const AttackData& attack = GetAttackData(player_.currentMove);
     TryResolveAttackHit(player_, enemy_);
     for (CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
         TryResolveAttackHit(player_, enemy);
     }
 
@@ -639,9 +660,19 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
         return;
     }
 
-    if (!IsAnyEnemyAttacking() &&
-        distance <= GetAttackData(MoveId::EnemyPoke).range) {
-        StartAttack(actor, MoveId::EnemyPoke);
+    const AttackData& poke = GetAttackData(MoveId::EnemyPoke);
+    const AttackData& heavy = GetAttackData(MoveId::EnemyHeavy);
+    const AttackData& playerAttack = GetAttackData(player_.currentMove);
+    const bool playerInRecovery =
+        player_.state == CombatState::Attack &&
+        player_.frameInState >= playerAttack.startup + playerAttack.active;
+    const bool shouldUseHeavy =
+        distance <= heavy.range &&
+        (playerInRecovery || actor.aiAttackCount >= 2);
+
+    if (!IsAnyEnemyAttacking() && (distance <= poke.range || shouldUseHeavy)) {
+        StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
+        actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
         actor.aiCooldownFrames = kEnemySupportAttackCooldown;
     }
 }
@@ -1057,7 +1088,7 @@ bool GameScene::IsAnyEnemyAttacking() const {
     }
 
     for (const CombatActor& enemy : supportEnemies_) {
-        if (enemy.state == CombatState::Attack) {
+        if (enemy.IsAlive() && enemy.state == CombatState::Attack) {
             return true;
         }
     }
@@ -1116,7 +1147,7 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
                                       0, 0, 0, 0};
-    static constexpr std::array<AttackData, 13> kAttacks{{
+    static constexpr std::array<AttackData, 14> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
          0.35f, 10, 14, 9, 5},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
@@ -1143,6 +1174,8 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
          MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
+        {MoveId::EnemyHeavy, "EnemyHeavy", 36, 7, 34, 77, 77, 77, MoveId::None,
+         MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9},
     }};
 
     for (const AttackData& attack : kAttacks) {

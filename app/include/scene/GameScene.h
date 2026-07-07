@@ -49,6 +49,7 @@ private:
         DownAttack,
         ExAction,
         EnemyPoke,
+        EnemyHeavy,
     };
 
     enum class CombatState {
@@ -128,6 +129,7 @@ private:
         int guardStunFrames = 0;
         int downFrames = 0;
         int aiCooldownFrames = 0;
+        int aiAttackCount = 0;
         int dodgeChainCount = 0;
         uint64_t attackSerial = 0;
         uint64_t lastHitAttackSerial = 0;
