@@ -23,6 +23,8 @@ constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
 constexpr int kEnemySupportAttackCooldown = 135;
 constexpr float kEnemyPreferredRange = 0.95f;
+constexpr int kDoubleSwayStartFrame = 11;
+constexpr int kMaxDodgeChainCount = 2;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr float kDownAttackDistance = 1.5f;
@@ -541,6 +543,13 @@ void GameScene::UpdateDodge(CombatActor& actor) {
     actor.position.x += actor.dodgeDirection.x * stepDistance;
     actor.position.z += actor.dodgeDirection.z * stepDistance;
 
+    if (&actor == &player_ && actor.dodgeChainCount < kMaxDodgeChainCount &&
+        actor.frameInState >= kDoubleSwayStartFrame && IsDodgeRequested()) {
+        StartDodge(player_);
+        debug_.lastDefense = "Double sway";
+        return;
+    }
+
     if (&actor == &player_ && actor.frameInState >= dodge.invulTo + 1 &&
         inputBuffer_.Consume(CombatCommand::Heavy)) {
         StartAttack(player_, MoveId::SwayAttack);
@@ -550,6 +559,7 @@ void GameScene::UpdateDodge(CombatActor& actor) {
     if (actor.frameInState >= dodge.total) {
         actor.state = CombatState::Idle;
         actor.frameInState = 0;
+        actor.dodgeChainCount = 0;
     }
 }
 
@@ -641,6 +651,7 @@ void GameScene::StartAttack(CombatActor& actor, MoveId move) {
     actor.currentMove = move;
     actor.frameInState = 0;
     actor.hitApplied = false;
+    actor.dodgeChainCount = 0;
     actor.attackSerial = ++nextAttackSerial_;
     actor.attackOrigin = actor.position;
     actor.attackFacing = NormalizeOr(actor.facing, {0.0f, 1.0f});
@@ -650,13 +661,16 @@ void GameScene::StartGuard(CombatActor& actor) {
     actor.state = CombatState::Guard;
     actor.currentMove = MoveId::None;
     actor.frameInState = 0;
+    actor.dodgeChainCount = 0;
 }
 
 void GameScene::StartDodge(CombatActor& actor) {
+    const bool chainedFromDodge = actor.state == CombatState::Dodge;
     actor.state = CombatState::Dodge;
     actor.currentMove = MoveId::None;
     actor.frameInState = 0;
     actor.hitApplied = false;
+    actor.dodgeChainCount = chainedFromDodge ? actor.dodgeChainCount + 1 : 1;
     const Vec2 inputDirection = &actor == &player_ ? ReadMovementInput() : Vec2{};
     actor.dodgeDirection =
         NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
@@ -788,7 +802,8 @@ bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
 
 bool GameScene::TryCancelPlayerAttackToDodge(const AttackData& attack) {
     const int frame = player_.frameInState;
-    if (frame < attack.cancelFrom || frame > attack.cancelTo) {
+    const int dodgeCancelFrom = attack.startup + attack.active;
+    if (frame < dodgeCancelFrom || frame >= attack.total) {
         return false;
     }
 
@@ -797,6 +812,7 @@ bool GameScene::TryCancelPlayerAttackToDodge(const AttackData& attack) {
     }
 
     StartDodge(player_);
+    debug_.lastDefense = "Cancel sway";
     return true;
 }
 
