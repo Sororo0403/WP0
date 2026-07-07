@@ -182,6 +182,7 @@ private:
     void AddBlockFeedback(const CombatActor& attacker);
     void StartCameraShake(int frames, float magnitude);
     void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    void FaceActorTowardMovement(CombatActor& actor, Vec2 movement);
     bool IsEnemyActor(const CombatActor& actor) const;
     CombatActor& TargetEnemy();
     const CombatActor& TargetEnemy() const;
@@ -231,6 +232,7 @@ private:
     int exBoostFrames_ = 0;
     bool exBoostRequested_ = false;
     bool styleSwitchRequested_ = false;
+    bool lockOnActive_ = false;
     CombatStyle combatStyle_ = CombatStyle::Single;
     uint64_t nextAttackSerial_ = 0;
     size_t targetEnemyIndex_ = 0;

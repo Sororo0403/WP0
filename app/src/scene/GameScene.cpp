@@ -131,9 +131,11 @@ void GameScene::Draw() {
         models.Draw(guardMarkerModel_, style, combatCamera_);
     }
 
-    Transform lock = MakeActorTransform(TargetEnemy(), 0.16f, 1.35f);
-    lock.position.y = 1.95f;
-    models.Draw(guardMarkerModel_, lock, combatCamera_);
+    if (lockOnActive_) {
+        Transform lock = MakeActorTransform(TargetEnemy(), 0.16f, 1.35f);
+        lock.position.y = 1.95f;
+        models.Draw(guardMarkerModel_, lock, combatCamera_);
+    }
     models.PostDraw();
 }
 
@@ -143,7 +145,7 @@ void GameScene::DrawPostProcessOverlay() {
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Combat Phase 11")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / C or RB lock target / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / C or RB lock toggle / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
@@ -151,7 +153,8 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
         ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
         ImGui::Text("Style: %s", StyleName(combatStyle_));
-        ImGui::Text("Lock target: Enemy%zu", targetEnemyIndex_ + 1);
+        ImGui::Text("Lock target: %s Enemy%zu", lockOnActive_ ? "on" : "off",
+                    targetEnemyIndex_ + 1);
         ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
                     IsExBoostActive() ? "active" : "off", exBoostFrames_,
                     exGauge_ >= kExBoostCost ? "yes" : "no");
@@ -263,6 +266,7 @@ void GameScene::ResetPhaseOne() {
     exBoostFrames_ = 0;
     exBoostRequested_ = false;
     styleSwitchRequested_ = false;
+    lockOnActive_ = false;
     combatStyle_ = CombatStyle::Single;
     nextAttackSerial_ = 0;
     targetEnemyIndex_ = 0;
@@ -272,7 +276,7 @@ void GameScene::ResetPhaseOne() {
     player_ = {};
     player_.name = "Player";
     player_.position = {0.0f, 0.0f};
-    player_.facing = {0.0f, 1.0f};
+    player_.facing = {0.0f, -1.0f};
     player_.hp = 100;
 
     enemy_ = {};
@@ -397,7 +401,9 @@ void GameScene::StepCombat() {
         return;
     }
 
-    FaceActorToward(player_, TargetEnemy());
+    if (lockOnActive_) {
+        FaceActorToward(player_, TargetEnemy());
+    }
     FaceActorToward(enemy_, player_);
     for (CombatActor& enemy : supportEnemies_) {
         if (!enemy.IsAlive()) {
@@ -478,7 +484,11 @@ void GameScene::UpdatePlayerIdle() {
     const Vec2 move = ReadMovementInput();
     player_.position.x += move.x * kPlayerMoveSpeed * kFixedCombatDt;
     player_.position.z += move.z * kPlayerMoveSpeed * kFixedCombatDt;
-    FaceActorToward(player_, TargetEnemy());
+    if (lockOnActive_) {
+        FaceActorToward(player_, TargetEnemy());
+    } else {
+        FaceActorTowardMovement(player_, move);
+    }
 
     if (TryStartDownAttack()) {
         return;
@@ -991,6 +1001,14 @@ void GameScene::FaceActorToward(CombatActor& actor, const CombatActor& target) {
     actor.facing = Normalize(toTarget);
 }
 
+void GameScene::FaceActorTowardMovement(CombatActor& actor, Vec2 movement) {
+    if (actor.state == CombatState::Attack || !HasDirection(movement)) {
+        return;
+    }
+
+    actor.facing = Normalize(movement);
+}
+
 bool GameScene::IsEnemyActor(const CombatActor& actor) const {
     if (&actor == &enemy_) {
         return true;
@@ -1030,10 +1048,18 @@ const GameScene::CombatActor& GameScene::EnemyAt(size_t index) const {
 }
 
 void GameScene::CycleLockOnTarget(int direction) {
+    if (lockOnActive_ && kEnemyCount == 1) {
+        lockOnActive_ = false;
+        debug_.lastDefense = "Lock off";
+        StartCameraShake(3, 0.012f);
+        return;
+    }
+
+    lockOnActive_ = true;
     const int current = static_cast<int>(targetEnemyIndex_);
     const int count = static_cast<int>(kEnemyCount);
     targetEnemyIndex_ = static_cast<size_t>((current + direction + count) % count);
-    debug_.lastDefense = "Lock target";
+    debug_.lastDefense = "Lock on";
     StartCameraShake(4, 0.018f);
 }
 
@@ -1043,23 +1069,32 @@ GameScene::Vec2 GameScene::ReadMovementInput() const {
     }
 
     const Input& input = *ctx_->systems.input;
-    Vec2 move{};
+    Vec2 inputMove{};
     if (input.IsKeyPress(DIK_A)) {
-        move.x -= 1.0f;
+        inputMove.x -= 1.0f;
     }
     if (input.IsKeyPress(DIK_D)) {
-        move.x += 1.0f;
+        inputMove.x += 1.0f;
     }
     if (input.IsKeyPress(DIK_W)) {
-        move.z += 1.0f;
+        inputMove.z += 1.0f;
     }
     if (input.IsKeyPress(DIK_S)) {
-        move.z -= 1.0f;
+        inputMove.z -= 1.0f;
     }
 
-    move.x += input.GetGamepadLeftStickX();
-    move.z += input.GetGamepadLeftStickY();
-    return Normalize(move);
+    inputMove.x += input.GetGamepadLeftStickX();
+    inputMove.z += input.GetGamepadLeftStickY();
+    inputMove = Normalize(inputMove);
+    if (!HasDirection(inputMove)) {
+        return {};
+    }
+
+    const float cameraYaw = combatCamera_.GetRotation().y;
+    const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
+    const Vec2 cameraRight{std::cos(cameraYaw), -std::sin(cameraYaw)};
+    return Normalize(Vec2{cameraRight.x * inputMove.x + cameraForward.x * inputMove.z,
+                          cameraRight.z * inputMove.x + cameraForward.z * inputMove.z});
 }
 
 bool GameScene::IsGuardHeld() const {
