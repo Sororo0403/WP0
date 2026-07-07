@@ -61,6 +61,11 @@ private:
         Down,
     };
 
+    enum class CombatStyle {
+        Single,
+        Crowd,
+    };
+
     struct Vec2 {
         float x = 0.0f;
         float z = 0.0f;
@@ -160,6 +165,7 @@ private:
     bool TryStartExAction();
     bool TryActivateExBoost();
     bool IsExBoostActive() const;
+    bool TryToggleCombatStyle();
     bool TryChainPlayerAttack(const AttackData& attack);
     bool TryCancelPlayerAttackToDodge(const AttackData& attack);
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
@@ -172,6 +178,8 @@ private:
     Vec2 ReadMovementInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
+    AttackData MakeEffectiveAttackData(const CombatActor& attacker,
+                                       const AttackData& attack) const;
     static bool IsDodgeInvulnerable(const CombatActor& actor);
     static bool IsFacingIncomingAttack(const CombatActor& defender,
                                        const CombatActor& attacker);
@@ -188,6 +196,7 @@ private:
     static Vec2 AttackFacing(const CombatActor& actor);
     static const char* StateName(CombatState state);
     static const char* CommandName(CombatCommand command);
+    static const char* StyleName(CombatStyle style);
     static Material MakeMaterial(float r, float g, float b, float a = 1.0f);
     static Transform MakeActorTransform(const CombatActor& actor, float height,
                                         float widthScale = 1.0f);
@@ -207,6 +216,8 @@ private:
     int cameraShakeFrames_ = 0;
     int exBoostFrames_ = 0;
     bool exBoostRequested_ = false;
+    bool styleSwitchRequested_ = false;
+    CombatStyle combatStyle_ = CombatStyle::Single;
 
     InputBuffer inputBuffer_{};
     CombatActor player_{};

@@ -29,6 +29,9 @@ constexpr float kExActionCost = 25.0f;
 constexpr int kExBoostFrames = 300;
 constexpr float kExActionDistance = 1.45f;
 constexpr bool kEnemyInvincibleForDebug = true;
+constexpr float kCrowdStyleDamageScale = 0.75f;
+constexpr float kCrowdStyleRangeScale = 0.95f;
+constexpr float kCrowdStyleHalfWidthScale = 1.85f;
 constexpr float kPi = 3.14159265358979323846f;
 } // namespace
 
@@ -75,7 +78,9 @@ void GameScene::Draw() {
 
     if (player_.state == CombatState::Attack) {
         models.Draw(attackRangeModel_,
-                    MakeAttackRangeTransform(player_, GetAttackData(player_.currentMove)),
+                    MakeAttackRangeTransform(
+                        player_,
+                        MakeEffectiveAttackData(player_, GetAttackData(player_.currentMove))),
                     combatCamera_);
     }
 
@@ -96,6 +101,12 @@ void GameScene::Draw() {
         boost.position.y = 2.15f;
         models.Draw(attackRangeModel_, boost, combatCamera_);
     }
+
+    if (combatStyle_ == CombatStyle::Crowd) {
+        Transform style = MakeActorTransform(player_, 0.12f, 1.85f);
+        style.position.y = 2.38f;
+        models.Draw(guardMarkerModel_, style, combatCamera_);
+    }
     models.PostDraw();
 }
 
@@ -103,15 +114,16 @@ void GameScene::DrawPostProcessOverlay() {
 #ifdef _DEBUG
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Combat Phase 7")) {
+    if (ImGui::Begin("Combat Phase 8")) {
         ImGui::Text(
-            "Controls: WASD move / J/X light / K/Y heavy / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
+            "Controls: WASD move / J/X light / K/Y heavy / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
         ImGui::Text("Combat frame: %llu",
                     static_cast<unsigned long long>(debug_.combatFrame));
         ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
         ImGui::Text("Hitstop frames: %d", hitstopFrames_);
         ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
+        ImGui::Text("Style: %s", StyleName(combatStyle_));
         ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
                     IsExBoostActive() ? "active" : "off", exBoostFrames_,
                     exGauge_ >= kExBoostCost ? "yes" : "no");
@@ -213,6 +225,8 @@ void GameScene::ResetPhaseOne() {
     cameraShakeFrames_ = 0;
     exBoostFrames_ = 0;
     exBoostRequested_ = false;
+    styleSwitchRequested_ = false;
+    combatStyle_ = CombatStyle::Single;
     inputBuffer_.Clear();
     debug_ = {};
 
@@ -286,6 +300,11 @@ void GameScene::CaptureFrameInput() {
     if (input.IsKeyTrigger(DIK_E) || input.IsGamepadRightTriggerTrigger()) {
         exBoostRequested_ = true;
     }
+
+    if (input.IsKeyTrigger(DIK_TAB) ||
+        input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_DPAD_UP))) {
+        styleSwitchRequested_ = true;
+    }
 }
 
 void GameScene::StepCombat() {
@@ -301,6 +320,11 @@ void GameScene::StepCombat() {
     if (exBoostRequested_) {
         TryActivateExBoost();
         exBoostRequested_ = false;
+    }
+
+    if (styleSwitchRequested_) {
+        TryToggleCombatStyle();
+        styleSwitchRequested_ = false;
     }
 
     if (hitstopFrames_ > 0) {
@@ -427,6 +451,12 @@ void GameScene::UpdatePlayerIdle() {
 
 void GameScene::UpdatePlayerAttack() {
     ++player_.frameInState;
+    if (combatStyle_ == CombatStyle::Crowd &&
+        player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
+        debug_.combatFrame % 3 == 0) {
+        ++player_.frameInState;
+    }
+
     if (IsExBoostActive() && player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
         debug_.combatFrame % 2 == 0) {
         ++player_.frameInState;
@@ -641,6 +671,19 @@ bool GameScene::IsExBoostActive() const {
     return exBoostFrames_ > 0;
 }
 
+bool GameScene::TryToggleCombatStyle() {
+    if (player_.state == CombatState::Attack && !IsExBoostActive()) {
+        return false;
+    }
+
+    combatStyle_ = combatStyle_ == CombatStyle::Single ? CombatStyle::Crowd
+                                                       : CombatStyle::Single;
+    hitstopFrames_ = (std::max)(hitstopFrames_, 5);
+    debug_.lastDefense = "Style switch";
+    StartCameraShake(8, 0.035f);
+    return true;
+}
+
 bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
     const int frame = player_.frameInState;
     if (frame < attack.cancelFrom || frame > attack.cancelTo) {
@@ -682,7 +725,8 @@ bool GameScene::TryCancelPlayerAttackToDodge(const AttackData& attack) {
 
 void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender) {
     const int frame = attacker.frameInState;
-    const AttackData& attack = GetAttackData(attacker.currentMove);
+    const AttackData attack =
+        MakeEffectiveAttackData(attacker, GetAttackData(attacker.currentMove));
     const bool active = frame >= attack.startup && frame < attack.startup + attack.active;
     debug_.lastHitboxActive = active;
     debug_.lastDistance = Distance(player_.position, enemy_.position);
@@ -844,6 +888,21 @@ bool GameScene::IsDodgeRequested() const {
            input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_B));
 }
 
+GameScene::AttackData GameScene::MakeEffectiveAttackData(
+    const CombatActor& attacker, const AttackData& attack) const {
+    AttackData effective = attack;
+    if (&attacker == &player_ && combatStyle_ == CombatStyle::Crowd) {
+        effective.damage =
+            (std::max)(1, static_cast<int>(std::round(
+                              static_cast<float>(effective.damage) *
+                              kCrowdStyleDamageScale)));
+        effective.range *= kCrowdStyleRangeScale;
+        effective.halfWidth *= kCrowdStyleHalfWidthScale;
+        effective.hitstop = (std::max)(3, effective.hitstop - 1);
+    }
+    return effective;
+}
+
 bool GameScene::IsDodgeInvulnerable(const CombatActor& actor) {
     if (actor.state != CombatState::Dodge) {
         return false;
@@ -994,6 +1053,17 @@ const char* GameScene::CommandName(CombatCommand command) {
         return "Light";
     case CombatCommand::Heavy:
         return "Heavy";
+    default:
+        return "Unknown";
+    }
+}
+
+const char* GameScene::StyleName(CombatStyle style) {
+    switch (style) {
+    case CombatStyle::Single:
+        return "Single";
+    case CombatStyle::Crowd:
+        return "Crowd";
     default:
         return "Unknown";
     }
