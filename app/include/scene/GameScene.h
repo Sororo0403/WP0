@@ -121,6 +121,11 @@ private:
         Vec2 attackOrigin{};
         Vec2 attackFacing{0.0f, 1.0f};
         Vec2 dodgeDirection{0.0f, -1.0f};
+        Vec2 orbitCenter{};
+        float dodgeDistance = 0.8f;
+        float orbitRadius = 1.0f;
+        float orbitStartAngle = 0.0f;
+        float orbitAngleDelta = 0.0f;
         CombatState state = CombatState::Idle;
         MoveId currentMove = MoveId::None;
         int frameInState = 0;
@@ -134,6 +139,7 @@ private:
         uint64_t attackSerial = 0;
         uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;
+        bool orbitDodgeActive = false;
 
         bool IsAlive() const;
     };
