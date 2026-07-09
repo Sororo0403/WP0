@@ -194,9 +194,9 @@ private:
     const CombatActor& TargetEnemy() const;
     CombatActor& EnemyAt(size_t index);
     const CombatActor& EnemyAt(size_t index) const;
+    const CombatActor* FindOrbitSwayTarget() const;
     void CycleLockOnTarget(int direction);
     Vec2 ReadMovementInput() const;
-    float ReadOrbitSwayInput() const;
     bool IsGuardHeld() const;
     bool IsDodgeRequested() const;
     bool IsAnyEnemyAttacking() const;
