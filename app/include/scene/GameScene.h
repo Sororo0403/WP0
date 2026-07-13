@@ -214,6 +214,8 @@ private:
     AttackData MakeEffectiveAttackData(const CombatActor& attacker,
                                        const AttackData& attack) const;
     static bool IsDodgeInvulnerable(const CombatActor& actor);
+    static bool IsAttackHitboxActive(const CombatActor& actor);
+    static bool IsSingleStyleFinisher(MoveId move);
     static bool IsFacingIncomingAttack(const CombatActor& defender,
                                        const CombatActor& attacker);
     static bool IsKnockdownAttack(MoveId move);

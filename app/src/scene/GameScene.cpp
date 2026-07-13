@@ -97,14 +97,14 @@ void GameScene::Draw() {
         models.Draw(enemyModel_, MakeActorTransform(enemy, 1.55f, 0.9f), combatCamera_);
     }
 
-    if (player_.state == CombatState::Attack) {
+    if (IsAttackHitboxActive(player_)) {
         const AttackData playerAttack =
             MakeEffectiveAttackData(player_, GetAttackData(player_.currentMove));
         models.Draw(attackRangeModel_, MakeAttackRangeTransform(player_, playerAttack),
                     combatCamera_);
     }
 
-    if (enemy_.state == CombatState::Attack) {
+    if (IsAttackHitboxActive(enemy_)) {
         models.Draw(attackRangeModel_,
                     MakeAttackRangeTransform(enemy_, GetAttackData(enemy_.currentMove)),
                     combatCamera_);
@@ -113,7 +113,7 @@ void GameScene::Draw() {
         if (!enemy.IsAlive()) {
             continue;
         }
-        if (enemy.state == CombatState::Attack) {
+        if (IsAttackHitboxActive(enemy)) {
             models.Draw(attackRangeModel_,
                         MakeAttackRangeTransform(enemy, GetAttackData(enemy.currentMove)),
                         combatCamera_);
@@ -170,6 +170,13 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
                     GetAttackData(player_.currentMove).name, player_.frameInState,
                     player_.hp);
+        if (player_.state == CombatState::Attack) {
+            const AttackData& attack = GetAttackData(player_.currentMove);
+            ImGui::Text("Attack frames: startup=%d active=%d-%d cancel=%d-%d total=%d",
+                        attack.startup, attack.startup,
+                        attack.startup + attack.active - 1, attack.cancelFrom,
+                        attack.cancelTo, attack.total);
+        }
         ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
                     GetAttackData(enemy_.currentMove).name,
                     enemy_.frameInState, enemy_.hp);
@@ -1067,6 +1074,10 @@ bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
         if (next == MoveId::None) {
             continue;
         }
+        if (command == CombatCommand::Heavy &&
+            (combatStyle_ != CombatStyle::Single || !IsSingleStyleFinisher(next))) {
+            continue;
+        }
 
         if (inputBuffer_.Consume(command)) {
             StartAttack(player_, next);
@@ -1188,8 +1199,7 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
     defender.guardStunFrames = attack.blockstun;
     const bool guardBreak = &attacker == &player_ &&
                             combatStyle_ == CombatStyle::Single &&
-                            (attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
-                             attack.id == MoveId::F3 || attack.id == MoveId::F4);
+                            IsSingleStyleFinisher(attack.id);
     hitstopFrames_ = guardBreak ? 5 : 3;
     debug_.lastBlocked = true;
     debug_.lastDefense = guardBreak ? "Guard break" : "Guard";
@@ -1210,8 +1220,7 @@ void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& at
     exGauge_ = std::clamp(exGauge_ + static_cast<float>(attack.damage) * 0.8f, 0.0f,
                           kMaxExGauge);
 
-    const bool finisher = attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
-                          attack.id == MoveId::F3 || attack.id == MoveId::F4;
+    const bool finisher = IsSingleStyleFinisher(attack.id);
     StartCameraShake(finisher ? 10 : 6, finisher ? 0.045f : 0.028f);
 }
 
@@ -1352,8 +1361,7 @@ GameScene::AttackData GameScene::MakeEffectiveAttackData(
     const CombatActor& attacker, const AttackData& attack) const {
     AttackData effective = attack;
     const bool playerAttack = &attacker == &player_;
-    const bool finisher = attack.id == MoveId::F1 || attack.id == MoveId::F2 ||
-                          attack.id == MoveId::F3 || attack.id == MoveId::F4;
+    const bool finisher = IsSingleStyleFinisher(attack.id);
     if (playerAttack && combatStyle_ == CombatStyle::Single && finisher) {
         effective.damage =
             (std::max)(1, static_cast<int>(std::round(
@@ -1380,6 +1388,21 @@ bool GameScene::IsDodgeInvulnerable(const CombatActor& actor) {
 
     const DodgeData& dodge = GetDodgeData();
     return actor.frameInState >= dodge.invulFrom && actor.frameInState <= dodge.invulTo;
+}
+
+bool GameScene::IsAttackHitboxActive(const CombatActor& actor) {
+    if (actor.state != CombatState::Attack) {
+        return false;
+    }
+
+    const AttackData& attack = GetAttackData(actor.currentMove);
+    return actor.frameInState >= attack.startup &&
+           actor.frameInState < attack.startup + attack.active;
+}
+
+bool GameScene::IsSingleStyleFinisher(MoveId move) {
+    return move == MoveId::F1 || move == MoveId::F2 ||
+           move == MoveId::F3 || move == MoveId::F4;
 }
 
 bool GameScene::IsFacingIncomingAttack(const CombatActor& defender,
