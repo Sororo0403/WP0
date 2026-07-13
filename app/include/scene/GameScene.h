@@ -122,6 +122,7 @@ private:
         Vec2 attackFacing{0.0f, 1.0f};
         Vec2 dodgeDirection{0.0f, -1.0f};
         Vec2 orbitCenter{};
+        Vec2 lastOrbitTarget{};
         float dodgeDistance = 0.8f;
         float orbitRadius = 1.0f;
         float orbitStartAngle = 0.0f;
@@ -140,6 +141,7 @@ private:
         uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;
         bool orbitDodgeActive = false;
+        bool hasLastOrbitTarget = false;
 
         bool IsAlive() const;
     };

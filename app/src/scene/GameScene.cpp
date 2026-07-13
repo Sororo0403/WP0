@@ -26,10 +26,13 @@ constexpr int kEnemySupportAttackCooldown = 135;
 constexpr float kEnemyPreferredRange = 0.95f;
 constexpr int kDoubleSwayStartFrame = 6;
 constexpr int kMaxDodgeChainCount = 2;
+constexpr int kDodgeRecoveryFrames = 5;
 constexpr float kOrbitSwayMinRadius = 0.45f;
 constexpr float kOrbitSwayMaxRadius = 0.65f;
 constexpr float kOrbitSwayArcRadians = kPi * 0.58f;
-constexpr float kOrbitSwayTargetRange = 1.65f;
+constexpr float kOrbitSwayTargetRange = 0.95f;
+constexpr float kOrbitSwayInputThreshold = 0.6f;
+constexpr float kOrbitSwayApproachThreshold = 0.55f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr float kDownAttackDistance = 1.5f;
@@ -574,7 +577,11 @@ void GameScene::UpdateGuardStun(CombatActor& actor) {
 void GameScene::UpdateDodge(CombatActor& actor) {
     ++actor.frameInState;
     const DodgeData& dodge = GetDodgeData();
-    if (actor.orbitDodgeActive) {
+    const bool moving = actor.frameInState <= dodge.total;
+    const bool recovery = actor.frameInState > dodge.total &&
+                          actor.frameInState <= dodge.total + kDodgeRecoveryFrames;
+
+    if (moving && actor.orbitDodgeActive) {
         const float t =
             std::clamp(static_cast<float>(actor.frameInState) /
                            static_cast<float>(dodge.total),
@@ -586,31 +593,41 @@ void GameScene::UpdateDodge(CombatActor& actor) {
         const Vec2 toCenter{actor.orbitCenter.x - actor.position.x,
                             actor.orbitCenter.z - actor.position.z};
         actor.facing = NormalizeOr(toCenter, actor.facing);
-    } else {
+    } else if (moving) {
         const float stepDistance = actor.dodgeDistance / static_cast<float>(dodge.total);
         actor.position.x += actor.dodgeDirection.x * stepDistance;
         actor.position.z += actor.dodgeDirection.z * stepDistance;
+    } else if (actor.hasLastOrbitTarget) {
+        const Vec2 toTarget{actor.lastOrbitTarget.x - actor.position.x,
+                            actor.lastOrbitTarget.z - actor.position.z};
+        actor.facing = NormalizeOr(toTarget, actor.facing);
     }
 
     if (&actor == &player_ && actor.dodgeChainCount < kMaxDodgeChainCount &&
-        actor.frameInState >= kDoubleSwayStartFrame && IsDodgeRequested()) {
+        moving && actor.frameInState >= kDoubleSwayStartFrame && IsDodgeRequested()) {
         StartDodge(player_);
         debug_.lastDefense = "Double sway";
         return;
     }
 
-    if (&actor == &player_ && actor.frameInState >= dodge.invulTo + 1 &&
-        inputBuffer_.Consume(CombatCommand::Heavy)) {
-        StartAttack(player_, MoveId::SwayAttack);
-        return;
+    if (&actor == &player_ && recovery && actor.hasLastOrbitTarget) {
+        if (inputBuffer_.Consume(CombatCommand::Heavy)) {
+            StartAttack(player_, MoveId::SwayAttack);
+            return;
+        }
+        if (inputBuffer_.Consume(CombatCommand::Light)) {
+            StartAttack(player_, MoveId::L1);
+            return;
+        }
     }
 
-    if (actor.frameInState >= dodge.total) {
+    if (actor.frameInState >= dodge.total + kDodgeRecoveryFrames) {
         actor.state = CombatState::Idle;
         actor.frameInState = 0;
         actor.dodgeChainCount = 0;
         actor.dodgeDistance = dodge.distance;
         actor.orbitDodgeActive = false;
+        actor.hasLastOrbitTarget = false;
     }
 }
 
@@ -701,6 +718,7 @@ void GameScene::StartAttack(CombatActor& actor, MoveId move) {
     actor.attackSerial = ++nextAttackSerial_;
     actor.attackOrigin = actor.position;
     actor.attackFacing = NormalizeOr(actor.facing, {0.0f, 1.0f});
+    actor.hasLastOrbitTarget = false;
 }
 
 void GameScene::StartGuard(CombatActor& actor) {
@@ -723,6 +741,9 @@ void GameScene::StartDodge(CombatActor& actor) {
     const Vec2 inputDirection = &actor == &player_ ? ReadMovementInput() : Vec2{};
     actor.dodgeDistance = GetDodgeData().distance;
     actor.orbitDodgeActive = false;
+    if (!chainedFromOrbitDodge) {
+        actor.hasLastOrbitTarget = false;
+    }
 
     const auto startOrbitDodge = [&](Vec2 center, float angleDelta, Vec2 fallbackDirection) {
         actor.orbitDodgeActive = true;
@@ -736,6 +757,8 @@ void GameScene::StartDodge(CombatActor& actor) {
         const float endAngle = actor.orbitStartAngle + actor.orbitAngleDelta;
         actor.dodgeDirection = NormalizeOr(
             Vec2{std::cos(endAngle), std::sin(endAngle)}, fallbackDirection);
+        actor.lastOrbitTarget = center;
+        actor.hasLastOrbitTarget = true;
         debug_.lastDefense = "Orbit sway";
     };
 
@@ -747,7 +770,19 @@ void GameScene::StartDodge(CombatActor& actor) {
                            target.position.z - actor.position.z});
         const Vec2 orbitRight{toTarget.z, -toTarget.x};
         const float orbitInput = Dot(inputDirection, orbitRight);
-        if (std::abs(orbitInput) < 0.35f) {
+        const float approachInput = Dot(inputDirection, toTarget);
+        if (std::abs(orbitInput) < kOrbitSwayInputThreshold) {
+            if (std::abs(approachInput) >= kOrbitSwayApproachThreshold) {
+                const Vec2 playerRight{actor.facing.z, -actor.facing.x};
+                const float sideBias = Dot(orbitRight, playerRight);
+                startOrbitDodge(target.position,
+                                sideBias >= 0.0f ? kOrbitSwayArcRadians
+                                                  : -kOrbitSwayArcRadians,
+                                orbitRight);
+                debug_.lastDefense =
+                    approachInput >= 0.0f ? "Slip orbit sway" : "Retreat orbit sway";
+                return;
+            }
             actor.dodgeDirection =
                 NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
             return;
@@ -774,6 +809,7 @@ void GameScene::StartDodge(CombatActor& actor) {
 
     actor.dodgeDirection =
         NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
+    actor.hasLastOrbitTarget = false;
 }
 
 bool GameScene::TryStartCounter(CombatActor& attacker) {
