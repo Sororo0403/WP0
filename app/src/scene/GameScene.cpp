@@ -273,11 +273,18 @@ void GameScene::ResetPhaseOne() {
     exBoostFrames_ = 0;
     exBoostRequested_ = false;
     styleSwitchRequested_ = false;
+    pendingLightInput_ = false;
+    pendingHeavyInput_ = false;
+    pendingExBoostInput_ = false;
+    pendingStyleSwitchInput_ = false;
+    pendingLockCycleInput_ = false;
     lockOnActive_ = false;
     combatStyle_ = CombatStyle::Single;
     nextAttackSerial_ = 0;
     targetEnemyIndex_ = 0;
     inputBuffer_.Clear();
+    pendingInput_ = {};
+    combatInput_ = {};
     debug_ = {};
 
     player_ = {};
@@ -357,28 +364,65 @@ void GameScene::CaptureFrameInput() {
         return;
     }
 
+    Vec2 inputMove{};
+    if (input.IsKeyPress(DIK_A)) {
+        inputMove.x -= 1.0f;
+    }
+    if (input.IsKeyPress(DIK_D)) {
+        inputMove.x += 1.0f;
+    }
+    if (input.IsKeyPress(DIK_W)) {
+        inputMove.z += 1.0f;
+    }
+    if (input.IsKeyPress(DIK_S)) {
+        inputMove.z -= 1.0f;
+    }
+
+    inputMove.x += input.GetGamepadLeftStickX();
+    inputMove.z += input.GetGamepadLeftStickY();
+    inputMove = Normalize(inputMove);
+    if (HasDirection(inputMove)) {
+        const float cameraYaw = combatCamera_.GetRotation().y;
+        const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
+        const Vec2 cameraRight{std::cos(cameraYaw), -std::sin(cameraYaw)};
+        pendingInput_.movement =
+            Normalize(Vec2{cameraRight.x * inputMove.x + cameraForward.x * inputMove.z,
+                           cameraRight.z * inputMove.x + cameraForward.z * inputMove.z});
+    } else {
+        pendingInput_.movement = {};
+    }
+
+    pendingInput_.guardHeld =
+        input.IsKeyPress(DIK_L) ||
+        input.IsGamepadButtonPress(static_cast<WORD>(XINPUT_GAMEPAD_LEFT_SHOULDER));
+
+    if (input.IsKeyTrigger(DIK_SPACE) ||
+        input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_B))) {
+        pendingInput_.dodgeRequested = true;
+    }
+
     if (input.IsKeyTrigger(DIK_J) ||
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_X))) {
-        inputBuffer_.Push(CombatCommand::Light, kInputBufferFrames);
+        pendingLightInput_ = true;
     }
 
     if (input.IsKeyTrigger(DIK_K) ||
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_Y))) {
-        inputBuffer_.Push(CombatCommand::Heavy, kInputBufferFrames);
+        pendingHeavyInput_ = true;
     }
 
     if (input.IsKeyTrigger(DIK_E) || input.IsGamepadRightTriggerTrigger()) {
-        exBoostRequested_ = true;
+        pendingExBoostInput_ = true;
     }
 
     if (input.IsKeyTrigger(DIK_TAB) ||
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_DPAD_UP))) {
-        styleSwitchRequested_ = true;
+        pendingStyleSwitchInput_ = true;
     }
 
     if (input.IsKeyTrigger(DIK_C) ||
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_RIGHT_SHOULDER))) {
-        CycleLockOnTarget(1);
+        pendingLockCycleInput_ = true;
     }
 }
 
@@ -390,6 +434,31 @@ void GameScene::StepCombat() {
     debug_.lastDodged = false;
     debug_.lastDefense = "None";
     debug_.lastDistance = Distance(player_.position, TargetEnemy().position);
+
+    combatInput_ = pendingInput_;
+    pendingInput_.dodgeRequested = false;
+
+    if (pendingLightInput_) {
+        inputBuffer_.Push(CombatCommand::Light, kInputBufferFrames);
+        pendingLightInput_ = false;
+    }
+    if (pendingHeavyInput_) {
+        inputBuffer_.Push(CombatCommand::Heavy, kInputBufferFrames);
+        pendingHeavyInput_ = false;
+    }
+    if (pendingExBoostInput_) {
+        exBoostRequested_ = true;
+        pendingExBoostInput_ = false;
+    }
+    if (pendingStyleSwitchInput_) {
+        styleSwitchRequested_ = true;
+        pendingStyleSwitchInput_ = false;
+    }
+    if (pendingLockCycleInput_) {
+        CycleLockOnTarget(1);
+        pendingLockCycleInput_ = false;
+    }
+
     UpdateFeedbackTimers();
 
     if (exBoostRequested_) {
@@ -1178,57 +1247,15 @@ void GameScene::CycleLockOnTarget(int direction) {
 }
 
 GameScene::Vec2 GameScene::ReadMovementInput() const {
-    if (!ctx_ || !ctx_->systems.input) {
-        return {};
-    }
-
-    const Input& input = *ctx_->systems.input;
-    Vec2 inputMove{};
-    if (input.IsKeyPress(DIK_A)) {
-        inputMove.x -= 1.0f;
-    }
-    if (input.IsKeyPress(DIK_D)) {
-        inputMove.x += 1.0f;
-    }
-    if (input.IsKeyPress(DIK_W)) {
-        inputMove.z += 1.0f;
-    }
-    if (input.IsKeyPress(DIK_S)) {
-        inputMove.z -= 1.0f;
-    }
-
-    inputMove.x += input.GetGamepadLeftStickX();
-    inputMove.z += input.GetGamepadLeftStickY();
-    inputMove = Normalize(inputMove);
-    if (!HasDirection(inputMove)) {
-        return {};
-    }
-
-    const float cameraYaw = combatCamera_.GetRotation().y;
-    const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
-    const Vec2 cameraRight{std::cos(cameraYaw), -std::sin(cameraYaw)};
-    return Normalize(Vec2{cameraRight.x * inputMove.x + cameraForward.x * inputMove.z,
-                          cameraRight.z * inputMove.x + cameraForward.z * inputMove.z});
+    return combatInput_.movement;
 }
 
 bool GameScene::IsGuardHeld() const {
-    if (!ctx_ || !ctx_->systems.input) {
-        return false;
-    }
-
-    const Input& input = *ctx_->systems.input;
-    return input.IsKeyPress(DIK_L) ||
-           input.IsGamepadButtonPress(static_cast<WORD>(XINPUT_GAMEPAD_LEFT_SHOULDER));
+    return combatInput_.guardHeld;
 }
 
 bool GameScene::IsDodgeRequested() const {
-    if (!ctx_ || !ctx_->systems.input) {
-        return false;
-    }
-
-    const Input& input = *ctx_->systems.input;
-    return input.IsKeyTrigger(DIK_SPACE) ||
-           input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_B));
+    return combatInput_.dodgeRequested;
 }
 
 bool GameScene::IsAnyEnemyAttacking() const {

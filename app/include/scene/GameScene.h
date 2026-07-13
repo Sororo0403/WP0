@@ -88,6 +88,12 @@ private:
         void Clear();
     };
 
+    struct FrameInput {
+        Vec2 movement{};
+        bool guardHeld = false;
+        bool dodgeRequested = false;
+    };
+
     struct AttackData {
         MoveId id = MoveId::L1;
         const char* name = "L1";
@@ -241,12 +247,19 @@ private:
     int exBoostFrames_ = 0;
     bool exBoostRequested_ = false;
     bool styleSwitchRequested_ = false;
+    bool pendingLightInput_ = false;
+    bool pendingHeavyInput_ = false;
+    bool pendingExBoostInput_ = false;
+    bool pendingStyleSwitchInput_ = false;
+    bool pendingLockCycleInput_ = false;
     bool lockOnActive_ = false;
     CombatStyle combatStyle_ = CombatStyle::Single;
     uint64_t nextAttackSerial_ = 0;
     size_t targetEnemyIndex_ = 0;
 
     InputBuffer inputBuffer_{};
+    FrameInput pendingInput_{};
+    FrameInput combatInput_{};
     CombatActor player_{};
     CombatActor enemy_{};
     std::array<CombatActor, 2> supportEnemies_{};
