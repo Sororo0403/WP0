@@ -195,6 +195,9 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("Last defense: %s", debug_.lastDefense);
         ImGui::Text("Blocked: %s  Dodged: %s", debug_.lastBlocked ? "yes" : "no",
                     debug_.lastDodged ? "yes" : "no");
+        ImGui::Text("Guard front: %s  Sway invul: %s",
+                    IsFacingIncomingAttack(player_, TargetEnemy()) ? "yes" : "no",
+                    IsDodgeInvulnerable(player_) ? "yes" : "no");
         ImGui::Text("Enemy training cooldown: %d", enemyTrainingCooldown_);
         ImGui::Text("Buffered inputs:");
         for (const BufferedInput& entry : inputBuffer_.entries) {
@@ -1094,8 +1097,7 @@ bool GameScene::TryChainPlayerAttack(const AttackData& attack) {
 
 bool GameScene::TryCancelPlayerAttackToDodge(const AttackData& attack) {
     const int frame = player_.frameInState;
-    const int dodgeCancelFrom = attack.startup + attack.active;
-    if (frame < dodgeCancelFrom || frame >= attack.total) {
+    if (frame < attack.cancelFrom || frame > attack.cancelTo) {
         return false;
     }
 
@@ -1152,6 +1154,9 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
             return;
         }
 
+        if (defender.state == CombatState::Guard) {
+            debug_.lastDefense = "Back attack";
+        }
         ApplyHit(attacker, defender, attack);
     }
 }
