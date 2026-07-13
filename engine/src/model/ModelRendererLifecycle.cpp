@@ -135,10 +135,11 @@ void ModelRenderer::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager,
     }
 }
 
-bool ModelRenderer::HasValidInitializeDependencies(DirectXCommon* dxCommon, SrvManager* srvManager,
-                                                   MeshManager* meshManager,
-                                                   TextureManager* textureManager,
-                                                   MaterialManager* materialManager) const {
+bool ModelRenderer::HasValidInitializeDependencies(const DirectXCommon* dxCommon,
+                                                    const SrvManager* srvManager,
+                                                    const MeshManager* meshManager,
+                                                    const TextureManager* textureManager,
+                                                    const MaterialManager* materialManager) {
     return dxCommon && dxCommon->GetDevice() && srvManager && meshManager && textureManager &&
            materialManager;
 }

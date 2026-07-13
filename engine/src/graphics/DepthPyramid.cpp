@@ -277,8 +277,7 @@ bool DepthPyramid::CreatePipeline() {
 }
 
 bool DepthPyramid::CreateResources(uint32_t width, uint32_t height) {
-    if (dxCommon_ == nullptr || dxCommon_->GetDevice() == nullptr || srvManager_ == nullptr ||
-        width == 0u || height == 0u) {
+    if (!CanCreateResources(width, height)) {
         return false;
     }
 
@@ -313,11 +312,9 @@ bool DepthPyramid::CreateResources(uint32_t width, uint32_t height) {
     const auto descriptorGpuHandle = [&](uint32_t offset) {
         return srvManager_->GetGpuHandle(nextDescriptorStart + offset);
     };
-    for (uint32_t offset = 0; offset < newDescriptorCount; ++offset) {
-        if (descriptorCpuHandle(offset).ptr == 0 || descriptorGpuHandle(offset).ptr == 0) {
-            rollbackDescriptorAllocation();
-            return false;
-        }
+    if (!HasValidDescriptorRange(nextDescriptorStart, newDescriptorCount)) {
+        rollbackDescriptorAllocation();
+        return false;
     }
 
     std::vector<D3D12_RESOURCE_STATES> nextSubresourceStates;
@@ -383,6 +380,21 @@ bool DepthPyramid::CreateResources(uint32_t width, uint32_t height) {
     resources_->subresourceStates = std::move(nextSubresourceStates);
     resources_->srvGpuHandle = srvManager_->GetGpuHandle(resources_->descriptorStart);
     return resources_->srvGpuHandle.ptr != 0;
+}
+
+bool DepthPyramid::CanCreateResources(uint32_t width, uint32_t height) const {
+    return dxCommon_ != nullptr && dxCommon_->GetDevice() != nullptr && srvManager_ != nullptr &&
+           width != 0u && height != 0u;
+}
+
+bool DepthPyramid::HasValidDescriptorRange(uint32_t start, uint32_t count) const {
+    for (uint32_t offset = 0; offset < count; ++offset) {
+        if (srvManager_->GetCpuHandle(start + offset).ptr == 0 ||
+            srvManager_->GetGpuHandle(start + offset).ptr == 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool DepthPyramid::ReleaseResources() {

@@ -297,7 +297,7 @@ bool ImguiManager::IsReady() const {
            win32Initialized_ && dx12Initialized_;
 }
 
-void ImguiManager::Begin(ID3D12GraphicsCommandList* commandList) {
+void ImguiManager::Begin(ID3D12GraphicsCommandList* commandList) const {
     if (!IsReady() || commandList == nullptr) {
         return;
     }
@@ -310,7 +310,7 @@ void ImguiManager::Begin(ID3D12GraphicsCommandList* commandList) {
     ImGui::NewFrame();
 }
 
-void ImguiManager::End(ID3D12GraphicsCommandList* commandList) {
+void ImguiManager::End(ID3D12GraphicsCommandList* commandList) const {
     if (!IsReady() || commandList == nullptr) {
         return;
     }

@@ -44,7 +44,7 @@ bool RetainDynamicUploadBuffer(TextureManagerState& state, UINT frameIndex,
     return true;
 }
 
-bool CreateDynamicTextureUploadBuffer(DirectXCommon* dxCommon, UINT64 uploadSize,
+bool CreateDynamicTextureUploadBuffer(const DirectXCommon* dxCommon, UINT64 uploadSize,
                                       ComPtr<ID3D12Resource>& uploadBuffer) {
     CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);

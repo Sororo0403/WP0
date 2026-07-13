@@ -229,7 +229,7 @@ void WinApp::Initialize(HINSTANCE hInstance, int nCmdShow, int width, int height
     UpdateClientSize();
 }
 
-bool WinApp::ProcessMessage() {
+bool WinApp::ProcessMessage() const {
     if (hwnd_ == nullptr) {
         return false;
     }
@@ -257,7 +257,7 @@ void WinApp::RequestClose() {
     }
 }
 
-void WinApp::SetCursorVisible(bool visible) {
+void WinApp::SetCursorVisible(bool visible) const {
     requestedCursorVisible_ = visible;
     ApplyRequestedCursorState(hwnd_);
 }

@@ -61,6 +61,7 @@ private:
     /// </summary>
     void UpdateFrameContext();
     ResizeResult ResizeIfNeeded();
+    bool ResizeDependentRenderTargets(int width, int height);
     bool RenderFrame();
     void BeginRenderFrameSystems();
     bool EnsureSpotLightShadowRenderer();

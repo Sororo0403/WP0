@@ -32,6 +32,37 @@ bool AppendCodepoint(std::vector<char32_t>& codepoints, uint32_t value) {
     return true;
 }
 
+struct Utf8Sequence {
+    uint32_t value = 0u;
+    size_t length = 0u;
+    uint32_t minimum = 0u;
+};
+
+bool DecodeSequenceHeader(uint8_t first, Utf8Sequence& sequence) {
+    if ((first & 0xE0u) == 0xC0u) {
+        sequence = {first & 0x1Fu, 2u, 0x80u};
+    } else if ((first & 0xF0u) == 0xE0u) {
+        sequence = {first & 0x0Fu, 3u, 0x800u};
+    } else if ((first & 0xF8u) == 0xF0u) {
+        sequence = {first & 0x07u, 4u, 0x10000u};
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool DecodeContinuationBytes(std::string_view text, size_t index, const Utf8Sequence& sequence,
+                             uint32_t& value) {
+    for (size_t offset = 1u; offset < sequence.length; ++offset) {
+        const uint8_t next = static_cast<uint8_t>(text[index + offset]);
+        if (!IsContinuationByte(next)) {
+            return false;
+        }
+        value = (value << 6u) | static_cast<uint32_t>(next & 0x3Fu);
+    }
+    return true;
+}
+
 std::vector<char32_t> DecodeUtf8(std::string_view text) {
     std::vector<char32_t> codepoints;
     try {
@@ -53,54 +84,25 @@ std::vector<char32_t> DecodeUtf8(std::string_view text) {
             continue;
         }
 
-        uint32_t value = 0u;
-        size_t length = 0u;
-        uint32_t minimum = 0u;
-        if ((first & 0xE0u) == 0xC0u) {
-            value = first & 0x1Fu;
-            length = 2u;
-            minimum = 0x80u;
-        } else if ((first & 0xF0u) == 0xE0u) {
-            value = first & 0x0Fu;
-            length = 3u;
-            minimum = 0x800u;
-        } else if ((first & 0xF8u) == 0xF0u) {
-            value = first & 0x07u;
-            length = 4u;
-            minimum = 0x10000u;
-        } else {
-            try {
-                codepoints.push_back(kReplacementCodepoint);
-            } catch (const std::exception&) {
+        Utf8Sequence sequence;
+        if (!DecodeSequenceHeader(first, sequence)) {
+            if (!AppendCodepoint(codepoints, kReplacementCodepoint)) {
                 return {};
             }
             ++index;
             continue;
         }
 
-        if (index + length > text.size()) {
-            try {
-                codepoints.push_back(kReplacementCodepoint);
-            } catch (const std::exception&) {
+        if (index + sequence.length > text.size()) {
+            if (!AppendCodepoint(codepoints, kReplacementCodepoint)) {
                 return {};
             }
             break;
         }
 
-        bool valid = true;
-        for (size_t offset = 1u; offset < length; ++offset) {
-            const uint8_t next = static_cast<uint8_t>(text[index + offset]);
-            if (!IsContinuationByte(next)) {
-                valid = false;
-                break;
-            }
-            value = (value << 6u) | static_cast<uint32_t>(next & 0x3Fu);
-        }
-
-        if (!valid || value < minimum) {
-            try {
-                codepoints.push_back(kReplacementCodepoint);
-            } catch (const std::exception&) {
+        uint32_t value = sequence.value;
+        if (!DecodeContinuationBytes(text, index, sequence, value) || value < sequence.minimum) {
+            if (!AppendCodepoint(codepoints, kReplacementCodepoint)) {
                 return {};
             }
             ++index;
@@ -110,7 +112,7 @@ std::vector<char32_t> DecodeUtf8(std::string_view text) {
         if (!AppendCodepoint(codepoints, value)) {
             return {};
         }
-        index += length;
+        index += sequence.length;
     }
 
     return codepoints;

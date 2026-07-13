@@ -48,6 +48,32 @@ bool BuildNodeMap(const aiNode* root, std::unordered_map<std::string, const aiNo
     return true;
 }
 
+void VisitBoneHierarchy(size_t rootIndex, int rootParentIndex,
+                        const std::vector<std::vector<size_t>>& children,
+                        const std::vector<BoneInfo>& sourceBones,
+                        std::vector<BoneInfo>& orderedBones, std::vector<int>& oldToNew) {
+    std::vector<std::pair<size_t, int>> stack;
+    stack.reserve(64u);
+    stack.push_back({rootIndex, rootParentIndex});
+    while (!stack.empty()) {
+        const auto [oldIndex, newParentIndex] = stack.back();
+        stack.pop_back();
+        if (oldIndex >= sourceBones.size() || oldToNew[oldIndex] >= 0) {
+            continue;
+        }
+        const int newIndex =
+            CheckedIntSize(orderedBones.size(), "AssimpMeshLoader reordered bone count overflow");
+        BoneInfo bone = sourceBones[oldIndex];
+        bone.parentIndex = newParentIndex;
+        orderedBones.push_back(std::move(bone));
+        oldToNew[oldIndex] = newIndex;
+        const std::vector<size_t>& childList = children[oldIndex];
+        for (size_t i = childList.size(); i > 0; --i) {
+            stack.push_back({childList[i - 1u], newIndex});
+        }
+    }
+}
+
 } // namespace
 
 void AssimpMeshLoader::BuildBoneHierarchy(const aiScene* scene, Model& model) {
@@ -136,46 +162,13 @@ void AssimpMeshLoader::ReorderBonesParentFirst(Model& model) {
     std::vector<int> oldToNew;
     oldToNew.assign(boneCount, -1);
     orderedBones.reserve(boneCount);
-    auto visit = [&](size_t rootIndex, int rootParentIndex) {
-        std::vector<std::pair<size_t, int>> stack;
-        stack.reserve(64u);
-        stack.push_back({rootIndex, rootParentIndex});
-        while (!stack.empty()) {
-            const auto entry = stack.back();
-            stack.pop_back();
-            const size_t oldIndex = entry.first;
-            const int newParentIndex = entry.second;
-
-            if (oldIndex >= boneCount || oldToNew[oldIndex] >= 0) {
-                continue;
-            }
-
-            const int newIndex = CheckedIntSize(orderedBones.size(),
-                                                "AssimpMeshLoader reordered bone count overflow");
-            BoneInfo bone = model.bones[oldIndex];
-            bone.parentIndex = newParentIndex;
-            orderedBones.push_back(std::move(bone));
-            oldToNew[oldIndex] = newIndex;
-
-            const std::vector<size_t>& childList = children[oldIndex];
-            for (size_t i = childList.size(); i > 0; --i) {
-                stack.push_back({childList[i - 1u], newIndex});
-            }
-        }
-        return true;
-    };
-
     for (size_t rootIndex : roots) {
-        if (!visit(rootIndex, -1)) {
-            return;
-        }
+        VisitBoneHierarchy(rootIndex, -1, children, model.bones, orderedBones, oldToNew);
     }
 
     for (size_t boneIndex = 0; boneIndex < boneCount; ++boneIndex) {
         if (oldToNew[boneIndex] < 0) {
-            if (!visit(boneIndex, -1)) {
-                return;
-            }
+            VisitBoneHierarchy(boneIndex, -1, children, model.bones, orderedBones, oldToNew);
         }
     }
 

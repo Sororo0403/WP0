@@ -147,6 +147,33 @@ std::filesystem::path CanonicalPathBestEffort(const std::filesystem::path& path)
 }
 
 bool HashShaderDependencyFile(const std::filesystem::path& path, uint64_t& hash,
+                              std::unordered_set<std::wstring>& visited, uint32_t depth);
+
+bool HashIncludedShaderLine(const std::string& line, const std::filesystem::path& parent,
+                            uint64_t& hash, std::unordered_set<std::wstring>& visited,
+                            uint32_t depth) {
+    const size_t includePos = line.find("#include");
+    if (includePos == std::string::npos) {
+        return true;
+    }
+    const size_t quoteStart = line.find('"', includePos);
+    const size_t quoteEnd = quoteStart == std::string::npos
+                                ? std::string::npos
+                                : line.find('"', quoteStart + 1u);
+    if (quoteStart == std::string::npos || quoteEnd == std::string::npos ||
+        quoteEnd <= quoteStart + 1u) {
+        return true;
+    }
+    try {
+        const std::string includeName =
+            line.substr(quoteStart + 1u, quoteEnd - quoteStart - 1u);
+        return HashShaderDependencyFile(parent / Widen(includeName), hash, visited, depth + 1u);
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool HashShaderDependencyFile(const std::filesystem::path& path, uint64_t& hash,
                               std::unordered_set<std::wstring>& visited, uint32_t depth) {
     if (depth > 16u) {
         return false;
@@ -187,26 +214,8 @@ bool HashShaderDependencyFile(const std::filesystem::path& path, uint64_t& hash,
         } catch (const std::exception&) {
             return false;
         }
-        const size_t includePos = line.find("#include");
-        if (includePos != std::string::npos) {
-            const size_t quoteStart = line.find('"', includePos);
-            const size_t quoteEnd = quoteStart == std::string::npos
-                                        ? std::string::npos
-                                        : line.find('"', quoteStart + 1u);
-            if (quoteStart != std::string::npos && quoteEnd != std::string::npos &&
-                quoteEnd > quoteStart + 1u) {
-                std::filesystem::path includePath;
-                try {
-                    const std::string includeName =
-                        line.substr(quoteStart + 1u, quoteEnd - quoteStart - 1u);
-                    includePath = canonical.parent_path() / Widen(includeName);
-                } catch (const std::exception&) {
-                    return false;
-                }
-                if (!HashShaderDependencyFile(includePath, hash, visited, depth + 1u)) {
-                    return false;
-                }
-            }
+        if (!HashIncludedShaderLine(line, canonical.parent_path(), hash, visited, depth)) {
+            return false;
         }
         if (lineEnd == std::string::npos) {
             break;

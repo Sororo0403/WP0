@@ -269,7 +269,7 @@ private:
     bool InitializeTextureCreationWork(const DirectX::Image* images, size_t imageCount,
                                        const DirectX::TexMetadata& metadata,
                                        uint32_t fallbackTextureId, TextureCreationWork& work);
-    bool BeginTextureCreationUpload(TextureCreationWork& work);
+    bool BeginTextureCreationUpload(const TextureCreationWork& work);
     bool CreateTextureGpuResources(TextureCreationWork& work);
     bool AllocateAndStoreTexture(TextureCreationWork& work);
     bool CopyAndCreateTextureSrv(TextureCreationWork& work);

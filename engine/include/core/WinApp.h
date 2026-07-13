@@ -28,7 +28,7 @@ public:
     /// Windowsメッセージを処理する
     /// </summary>
     /// <returns>true: アプリケーション継続 / false: 終了要求あり</returns>
-    bool ProcessMessage();
+    bool ProcessMessage() const;
 
     /// <summary>
     /// 次のメッセージ処理でアプリケーションを終了するよう要求する。
@@ -39,7 +39,7 @@ public:
     /// ウィンドウ上のOSマウスカーソル表示を切り替える。
     /// </summary>
     /// <param name="visible">表示する場合はtrue、隠す場合はfalse。</param>
-    void SetCursorVisible(bool visible);
+    void SetCursorVisible(bool visible) const;
 
     /// <summary>
     /// ボーダーレス全画面と通常ウィンドウを切り替える。
@@ -86,13 +86,13 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static bool TryHandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
                                        LRESULT& result);
-    static LRESULT HandleSetCursorMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleActivateAppMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleFocusMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleKillFocusMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleKeyDownMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleSysCommandMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
-    static LRESULT HandleDestroyMessage(HWND hwnd, WPARAM wParam, LPARAM lParam, bool& handled);
+    static LRESULT HandleSetCursorMessage(HWND hwnd, WPARAM, LPARAM lParam, bool& handled);
+    static LRESULT HandleActivateAppMessage(HWND, WPARAM wParam, LPARAM, bool& handled);
+    static LRESULT HandleFocusMessage(HWND, WPARAM, LPARAM, bool& handled);
+    static LRESULT HandleKillFocusMessage(HWND, WPARAM, LPARAM, bool& handled);
+    static LRESULT HandleKeyDownMessage(HWND, WPARAM wParam, LPARAM, bool& handled);
+    static LRESULT HandleSysCommandMessage(HWND, WPARAM wParam, LPARAM, bool& handled);
+    static LRESULT HandleDestroyMessage(HWND hwnd, WPARAM, LPARAM, bool& handled);
     static void ApplyHiddenCursorState(HWND hwnd, bool lockToClient);
     static void ApplyVisibleCursorState();
     static void ApplyRequestedCursorState(HWND hwnd);

@@ -35,6 +35,9 @@ constexpr float kOrbitSwayInputThreshold = 0.6f;
 constexpr float kOrbitSwayApproachThreshold = 0.55f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
+constexpr float kHitKnockbackDistance = 0.18f;
+constexpr float kFinisherKnockbackDistance = 0.34f;
+constexpr float kBlockKnockbackDistance = 0.08f;
 constexpr float kDownAttackDistance = 1.5f;
 constexpr float kMaxExGauge = 100.0f;
 constexpr float kExBoostCost = 50.0f;
@@ -87,6 +90,13 @@ void GameScene::Draw() {
     }
 
     models.PreDraw();
+    DrawActors(models);
+    DrawAttackRanges(models);
+    DrawCombatMarkers(models);
+    models.PostDraw();
+}
+
+void GameScene::DrawActors(ModelManager& models) const {
     models.Draw(floorModel_, MakeFloorTransform(), combatCamera_);
     models.Draw(playerModel_, MakeActorTransform(player_, 1.7f), combatCamera_);
     models.Draw(enemyModel_, MakeActorTransform(enemy_, 1.55f, 0.9f), combatCamera_);
@@ -96,7 +106,9 @@ void GameScene::Draw() {
         }
         models.Draw(enemyModel_, MakeActorTransform(enemy, 1.55f, 0.9f), combatCamera_);
     }
+}
 
+void GameScene::DrawAttackRanges(ModelManager& models) const {
     if (IsAttackHitboxActive(player_)) {
         const AttackData playerAttack =
             MakeEffectiveAttackData(player_, GetAttackData(player_.currentMove));
@@ -119,7 +131,9 @@ void GameScene::Draw() {
                         combatCamera_);
         }
     }
+}
 
+void GameScene::DrawCombatMarkers(ModelManager& models) const {
     if (player_.state == CombatState::Guard || player_.state == CombatState::GuardStun) {
         Transform guard = MakeActorTransform(player_, 0.25f, 1.25f);
         guard.position.y = 1.85f;
@@ -143,7 +157,6 @@ void GameScene::Draw() {
         lock.position.y = 1.95f;
         models.Draw(guardMarkerModel_, lock, combatCamera_);
     }
-    models.PostDraw();
 }
 
 void GameScene::DrawPostProcessOverlay() {
@@ -167,34 +180,14 @@ void GameScene::DrawPostProcessOverlay() {
                     exGauge_ >= kExBoostCost ? "yes" : "no");
         ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
         ImGui::Separator();
-        ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
-                    GetAttackData(player_.currentMove).name, player_.frameInState,
-                    player_.hp);
-        if (player_.state == CombatState::Attack) {
-            const AttackData& attack = GetAttackData(player_.currentMove);
-            ImGui::Text("Attack frames: startup=%d active=%d-%d cancel=%d-%d total=%d",
-                        attack.startup, attack.startup,
-                        attack.startup + attack.active - 1, attack.cancelFrom,
-                        attack.cancelTo, attack.total);
-        }
-        ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
-                    GetAttackData(enemy_.currentMove).name,
-                    enemy_.frameInState, enemy_.hp);
-        for (size_t i = 0; i < supportEnemies_.size(); ++i) {
-            const CombatActor& enemy = supportEnemies_[i];
-            if (!enemy.IsAlive()) {
-                continue;
-            }
-            ImGui::Text("Enemy%zu: %s  move=%s  frame=%d  hp=%d  attacks=%d", i + 2,
-                        StateName(enemy.state), GetAttackData(enemy.currentMove).name,
-                        enemy.frameInState, enemy.hp, enemy.aiAttackCount);
-        }
+        DrawDebugCombatants();
         ImGui::Text("Distance: %.2f", debug_.lastDistance);
         ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
         ImGui::Text("Last hit connected: %s", debug_.lastHitConnected ? "yes" : "no");
         ImGui::Text("Last defense: %s", debug_.lastDefense);
         ImGui::Text("Blocked: %s  Dodged: %s", debug_.lastBlocked ? "yes" : "no",
                     debug_.lastDodged ? "yes" : "no");
+        ImGui::Text("Last knockback: %.2f", debug_.lastKnockback);
         ImGui::Text("Guard front: %s  Sway invul: %s",
                     IsFacingIncomingAttack(player_, TargetEnemy()) ? "yes" : "no",
                     IsDodgeInvulnerable(player_) ? "yes" : "no");
@@ -222,14 +215,43 @@ void GameScene::DrawPostProcessOverlay() {
 #endif
 }
 
-void GameScene::InputBuffer::Push(CombatCommand command, int bufferFrames) {
-    for (BufferedInput& entry : entries) {
-        if (!entry.active) {
-            entry.command = command;
-            entry.framesLeft = bufferFrames;
-            entry.active = true;
-            return;
+#ifdef _DEBUG
+void GameScene::DrawDebugCombatants() const {
+    ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
+                GetAttackData(player_.currentMove).name, player_.frameInState, player_.hp);
+    if (player_.state == CombatState::Attack) {
+        const AttackData& attack = GetAttackData(player_.currentMove);
+        ImGui::Text("Attack frames: startup=%d active=%d-%d cancel=%d-%d total=%d",
+                    attack.startup, attack.startup, attack.startup + attack.active - 1,
+                    attack.cancelFrom, attack.cancelTo, attack.total);
+    }
+    ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
+                GetAttackData(enemy_.currentMove).name, enemy_.frameInState, enemy_.hp);
+    for (size_t i = 0; i < supportEnemies_.size(); ++i) {
+        const CombatActor& enemy = supportEnemies_[i];
+        if (!enemy.IsAlive()) {
+            continue;
         }
+        ImGui::Text("Enemy%zu: %s  move=%s  frame=%d  hp=%d  attacks=%d", i + 2,
+                    StateName(enemy.state), GetAttackData(enemy.currentMove).name,
+                    enemy.frameInState, enemy.hp, enemy.aiAttackCount);
+    }
+}
+
+#else
+void GameScene::DrawDebugCombatants() const {}
+#endif
+
+void GameScene::InputBuffer::Push(CombatCommand command, int bufferFrames) {
+    const auto available = std::find_if(entries.begin(), entries.end(),
+                                        [](const BufferedInput& entry) {
+                                            return !entry.active;
+                                        });
+    if (available != entries.end()) {
+        available->command = command;
+        available->framesLeft = bufferFrames;
+        available->active = true;
+        return;
     }
 
     entries.front().command = command;
@@ -251,11 +273,13 @@ void GameScene::InputBuffer::Tick() {
 }
 
 bool GameScene::InputBuffer::Consume(CombatCommand command) {
-    for (BufferedInput& entry : entries) {
-        if (entry.active && entry.command == command) {
-            entry.active = false;
-            return true;
-        }
+    const auto match = std::find_if(entries.begin(), entries.end(),
+                                    [command](const BufferedInput& entry) {
+                                        return entry.active && entry.command == command;
+                                    });
+    if (match != entries.end()) {
+        match->active = false;
+        return true;
     }
     return false;
 }
@@ -374,6 +398,14 @@ void GameScene::CaptureFrameInput() {
         return;
     }
 
+    pendingInput_.movement = ReadPlayerMovement(input);
+    pendingInput_.guardHeld =
+        input.IsKeyPress(DIK_L) ||
+        input.IsGamepadButtonPress(static_cast<WORD>(XINPUT_GAMEPAD_LEFT_SHOULDER));
+    CaptureActionInputs(input);
+}
+
+GameScene::Vec2 GameScene::ReadPlayerMovement(const Input& input) const {
     Vec2 inputMove{};
     if (input.IsKeyPress(DIK_A)) {
         inputMove.x -= 1.0f;
@@ -395,17 +427,13 @@ void GameScene::CaptureFrameInput() {
         const float cameraYaw = combatCamera_.GetRotation().y;
         const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
         const Vec2 cameraRight{std::cos(cameraYaw), -std::sin(cameraYaw)};
-        pendingInput_.movement =
-            Normalize(Vec2{cameraRight.x * inputMove.x + cameraForward.x * inputMove.z,
-                           cameraRight.z * inputMove.x + cameraForward.z * inputMove.z});
-    } else {
-        pendingInput_.movement = {};
+        return Normalize(Vec2{cameraRight.x * inputMove.x + cameraForward.x * inputMove.z,
+                              cameraRight.z * inputMove.x + cameraForward.z * inputMove.z});
     }
+    return {};
+}
 
-    pendingInput_.guardHeld =
-        input.IsKeyPress(DIK_L) ||
-        input.IsGamepadButtonPress(static_cast<WORD>(XINPUT_GAMEPAD_LEFT_SHOULDER));
-
+void GameScene::CaptureActionInputs(const Input& input) {
     if (input.IsKeyTrigger(DIK_SPACE) ||
         input.IsGamepadButtonTrigger(static_cast<WORD>(XINPUT_GAMEPAD_B))) {
         pendingInput_.dodgeRequested = true;
@@ -442,12 +470,30 @@ void GameScene::StepCombat() {
     debug_.lastHitConnected = false;
     debug_.lastBlocked = false;
     debug_.lastDodged = false;
+    debug_.lastKnockback = 0.0f;
     debug_.lastDefense = "None";
     debug_.lastDistance = Distance(player_.position, TargetEnemy().position);
 
     combatInput_ = pendingInput_;
     pendingInput_.dodgeRequested = false;
+    ConsumePendingInputs();
+    UpdateFeedbackTimers();
+    ApplyRequestedCombatActions();
 
+    if (hitstopFrames_ > 0) {
+        --hitstopFrames_;
+        UpdateCombatCamera();
+        return;
+    }
+
+    FaceCombatants();
+    UpdateEnemyCombatants();
+    UpdatePlayerCombatState();
+    inputBuffer_.Tick();
+    UpdateCombatCamera();
+}
+
+void GameScene::ConsumePendingInputs() {
     if (pendingLightInput_) {
         inputBuffer_.Push(CombatCommand::Light, kInputBufferFrames);
         pendingLightInput_ = false;
@@ -468,9 +514,9 @@ void GameScene::StepCombat() {
         CycleLockOnTarget(1);
         pendingLockCycleInput_ = false;
     }
+}
 
-    UpdateFeedbackTimers();
-
+void GameScene::ApplyRequestedCombatActions() {
     if (exBoostRequested_) {
         TryActivateExBoost();
         exBoostRequested_ = false;
@@ -480,13 +526,9 @@ void GameScene::StepCombat() {
         TryToggleCombatStyle();
         styleSwitchRequested_ = false;
     }
+}
 
-    if (hitstopFrames_ > 0) {
-        --hitstopFrames_;
-        UpdateCombatCamera();
-        return;
-    }
-
+void GameScene::FaceCombatants() {
     if (lockOnActive_) {
         FaceActorToward(player_, TargetEnemy());
     }
@@ -497,7 +539,9 @@ void GameScene::StepCombat() {
         }
         FaceActorToward(enemy, player_);
     }
+}
 
+void GameScene::UpdateEnemyCombatants() {
     UpdateEnemyActor(enemy_);
     for (CombatActor& enemy : supportEnemies_) {
         if (!enemy.IsAlive()) {
@@ -506,6 +550,13 @@ void GameScene::StepCombat() {
         UpdateEnemyActor(enemy);
     }
 
+    UpdateEnemyTraining(enemy_);
+    for (CombatActor& enemy : supportEnemies_) {
+        UpdateEnemyTraining(enemy);
+    }
+}
+
+void GameScene::UpdatePlayerCombatState() {
     if (player_.state == CombatState::HitStun) {
         UpdateHitStun(player_);
     } else if (player_.state == CombatState::Down) {
@@ -521,9 +572,6 @@ void GameScene::StepCombat() {
     } else if (player_.state == CombatState::Idle) {
         UpdatePlayerIdle();
     }
-
-    inputBuffer_.Tick();
-    UpdateCombatCamera();
 }
 
 void GameScene::UpdateCombatCamera() {
@@ -633,6 +681,11 @@ void GameScene::UpdatePlayerAttack() {
 
 void GameScene::UpdatePlayerGuard() {
     ++player_.frameInState;
+    for (size_t i = 0; i < kEnemyCount; ++i) {
+        if (TryStartCounter(EnemyAt(i))) {
+            return;
+        }
+    }
     if (IsDodgeRequested()) {
         StartDodge(player_);
         return;
@@ -659,7 +712,15 @@ void GameScene::UpdateDodge(CombatActor& actor) {
     const bool moving = actor.frameInState <= dodge.total;
     const bool recovery = actor.frameInState > dodge.total &&
                           actor.frameInState <= dodge.total + kDodgeRecoveryFrames;
+    UpdateDodgeMovement(actor, dodge, moving);
+    if (TryChainDodge(actor, moving, recovery)) {
+        return;
+    }
+    FinishDodgeIfComplete(actor, dodge);
+}
 
+void GameScene::UpdateDodgeMovement(CombatActor& actor, const DodgeData& dodge,
+                                    bool moving) {
     if (moving && actor.orbitDodgeActive) {
         const float t =
             std::clamp(static_cast<float>(actor.frameInState) /
@@ -681,25 +742,30 @@ void GameScene::UpdateDodge(CombatActor& actor) {
                             actor.lastOrbitTarget.z - actor.position.z};
         actor.facing = NormalizeOr(toTarget, actor.facing);
     }
+}
 
+bool GameScene::TryChainDodge(const CombatActor& actor, bool moving, bool recovery) {
     if (&actor == &player_ && actor.dodgeChainCount < kMaxDodgeChainCount &&
         moving && actor.frameInState >= kDoubleSwayStartFrame && IsDodgeRequested()) {
         StartDodge(player_);
         debug_.lastDefense = "Double sway";
-        return;
+        return true;
     }
 
     if (&actor == &player_ && recovery && actor.hasLastOrbitTarget) {
         if (inputBuffer_.Consume(CombatCommand::Heavy)) {
             StartAttack(player_, MoveId::SwayAttack);
-            return;
+            return true;
         }
         if (inputBuffer_.Consume(CombatCommand::Light)) {
             StartAttack(player_, MoveId::L1);
-            return;
+            return true;
         }
     }
+    return false;
+}
 
+void GameScene::FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge) {
     if (actor.frameInState >= dodge.total + kDodgeRecoveryFrames) {
         actor.state = CombatState::Idle;
         actor.frameInState = 0;
@@ -808,7 +874,7 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     }
 }
 
-bool GameScene::CanStartAttack(const CombatActor& actor) const {
+bool GameScene::CanStartAttack(const CombatActor& actor) {
     if (!actor.IsAlive()) {
         return false;
     }
@@ -828,11 +894,11 @@ bool GameScene::CanStartAttack(const CombatActor& actor) const {
     return false;
 }
 
-bool GameScene::CanStartGuard(const CombatActor& actor) const {
+bool GameScene::CanStartGuard(const CombatActor& actor) {
     return actor.IsAlive() && actor.state == CombatState::Idle;
 }
 
-bool GameScene::CanStartDodge(const CombatActor& actor) const {
+bool GameScene::CanStartDodge(const CombatActor& actor) {
     if (!actor.IsAlive()) {
         return false;
     }
@@ -900,25 +966,39 @@ void GameScene::StartDodge(CombatActor& actor) {
         actor.hasLastOrbitTarget = false;
     }
 
-    const auto startOrbitDodge = [&](Vec2 center, float angleDelta, Vec2 fallbackDirection) {
-        actor.orbitDodgeActive = true;
-        actor.orbitCenter = center;
-        actor.orbitRadius =
-            std::clamp(Distance(actor.position, center), kOrbitSwayMinRadius,
-                       kOrbitSwayMaxRadius);
-        actor.orbitStartAngle =
-            std::atan2(actor.position.z - center.z, actor.position.x - center.x);
-        actor.orbitAngleDelta = angleDelta;
-        const float endAngle = actor.orbitStartAngle + actor.orbitAngleDelta;
-        actor.dodgeDirection = NormalizeOr(
-            Vec2{std::cos(endAngle), std::sin(endAngle)}, fallbackDirection);
-        actor.lastOrbitTarget = center;
-        actor.hasLastOrbitTarget = true;
-        debug_.lastDefense = "Orbit sway";
-    };
+    if (TryStartTargetedOrbitDodge(actor, inputDirection)) {
+        return;
+    }
+    if (chainedFromOrbitDodge &&
+        TryContinueOrbitDodge(actor, previousOrbitCenter, previousOrbitAngleDelta)) {
+        return;
+    }
 
+    actor.dodgeDirection =
+        NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
+    actor.hasLastOrbitTarget = false;
+}
+
+void GameScene::StartOrbitDodge(CombatActor& actor, Vec2 center, float angleDelta,
+                                Vec2 fallbackDirection) {
+    actor.orbitDodgeActive = true;
+    actor.orbitCenter = center;
+    actor.orbitRadius = std::clamp(Distance(actor.position, center), kOrbitSwayMinRadius,
+                                   kOrbitSwayMaxRadius);
+    actor.orbitStartAngle =
+        std::atan2(actor.position.z - center.z, actor.position.x - center.x);
+    actor.orbitAngleDelta = angleDelta;
+    const float endAngle = actor.orbitStartAngle + actor.orbitAngleDelta;
+    actor.dodgeDirection = NormalizeOr(Vec2{std::cos(endAngle), std::sin(endAngle)},
+                                       fallbackDirection);
+    actor.lastOrbitTarget = center;
+    actor.hasLastOrbitTarget = true;
+    debug_.lastDefense = "Orbit sway";
+}
+
+bool GameScene::TryStartTargetedOrbitDodge(CombatActor& actor, Vec2 inputDirection) {
     const CombatActor* orbitTarget = &actor == &player_ ? FindOrbitSwayTarget() : nullptr;
-    if (orbitTarget && HasDirection(inputDirection)) {
+    if (orbitTarget != nullptr && HasDirection(inputDirection)) {
         const CombatActor& target = *orbitTarget;
         const Vec2 toTarget =
             Normalize(Vec2{target.position.x - actor.position.x,
@@ -930,41 +1010,42 @@ void GameScene::StartDodge(CombatActor& actor) {
             if (std::abs(approachInput) >= kOrbitSwayApproachThreshold) {
                 const Vec2 playerRight{actor.facing.z, -actor.facing.x};
                 const float sideBias = Dot(orbitRight, playerRight);
-                startOrbitDodge(target.position,
+                StartOrbitDodge(actor, target.position,
                                 sideBias >= 0.0f ? kOrbitSwayArcRadians
-                                                  : -kOrbitSwayArcRadians,
+                                                 : -kOrbitSwayArcRadians,
                                 orbitRight);
                 debug_.lastDefense =
                     approachInput >= 0.0f ? "Slip orbit sway" : "Retreat orbit sway";
-                return;
+                return true;
             }
             actor.dodgeDirection =
                 NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
-            return;
+            return true;
         }
 
-        startOrbitDodge(target.position,
+        StartOrbitDodge(actor, target.position,
                         orbitInput >= 0.0f ? kOrbitSwayArcRadians
                                            : -kOrbitSwayArcRadians,
                         orbitRight);
-        return;
+        return true;
     }
+    return false;
+}
 
-    if (&actor == &player_ && chainedFromOrbitDodge) {
-        const Vec2 toCenter{previousOrbitCenter.x - actor.position.x,
-                            previousOrbitCenter.z - actor.position.z};
+bool GameScene::TryContinueOrbitDodge(CombatActor& actor, Vec2 previousCenter,
+                                      float previousAngleDelta) {
+    if (&actor == &player_) {
+        const Vec2 toCenter{previousCenter.x - actor.position.x,
+                            previousCenter.z - actor.position.z};
         if (HasDirection(toCenter) &&
-            Distance(actor.position, previousOrbitCenter) <= kOrbitSwayTargetRange) {
+            Distance(actor.position, previousCenter) <= kOrbitSwayTargetRange) {
             const Vec2 orbitRight{toCenter.z, -toCenter.x};
-            startOrbitDodge(previousOrbitCenter, previousOrbitAngleDelta, orbitRight);
+            StartOrbitDodge(actor, previousCenter, previousAngleDelta, orbitRight);
             debug_.lastDefense = "Double orbit sway";
-            return;
+            return true;
         }
     }
-
-    actor.dodgeDirection =
-        NormalizeOr(inputDirection, Vec2{-actor.facing.x, -actor.facing.z});
-    actor.hasLastOrbitTarget = false;
+    return false;
 }
 
 bool GameScene::TryStartCounter(CombatActor& attacker) {
@@ -995,7 +1076,7 @@ bool GameScene::TryStartCounter(CombatActor& attacker) {
 }
 
 bool GameScene::TryStartDownAttack() {
-    CombatActor& target = TargetEnemy();
+    const CombatActor& target = TargetEnemy();
     if (target.state != CombatState::Down || !target.IsAlive()) {
         return false;
     }
@@ -1014,7 +1095,7 @@ bool GameScene::TryStartDownAttack() {
 }
 
 bool GameScene::TryStartExAction() {
-    CombatActor& target = TargetEnemy();
+    const CombatActor& target = TargetEnemy();
     if (!IsExBoostActive() || !target.IsAlive() || target.state == CombatState::Down) {
         return false;
     }
@@ -1186,6 +1267,9 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
     defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
+    ApplyKnockback(defender, AttackFacing(attacker),
+                   IsSingleStyleFinisher(attack.id) ? kFinisherKnockbackDistance
+                                                    : kHitKnockbackDistance);
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
     AddHitFeedback(attacker, attack);
@@ -1202,6 +1286,7 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
     defender.guardStunFrames = attack.blockstun;
+    ApplyKnockback(defender, AttackFacing(attacker), kBlockKnockbackDistance);
     const bool guardBreak = &attacker == &player_ &&
                             combatStyle_ == CombatStyle::Single &&
                             IsSingleStyleFinisher(attack.id);
@@ -1212,6 +1297,13 @@ void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
     if (guardBreak) {
         StartCameraShake(7, 0.032f);
     }
+}
+
+void GameScene::ApplyKnockback(CombatActor& defender, Vec2 direction, float distance) {
+    const Vec2 knockback = NormalizeOr(direction, defender.facing);
+    defender.position.x += knockback.x * distance;
+    defender.position.z += knockback.z * distance;
+    debug_.lastKnockback = distance;
 }
 
 void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& attack) {
@@ -1268,13 +1360,8 @@ bool GameScene::IsEnemyActor(const CombatActor& actor) const {
         return true;
     }
 
-    for (const CombatActor& enemy : supportEnemies_) {
-        if (&actor == &enemy) {
-            return true;
-        }
-    }
-
-    return false;
+    return std::any_of(supportEnemies_.begin(), supportEnemies_.end(),
+                       [&actor](const CombatActor& enemy) { return &actor == &enemy; });
 }
 
 GameScene::CombatActor& GameScene::TargetEnemy() {
@@ -1353,13 +1440,10 @@ bool GameScene::IsAnyEnemyAttacking() const {
         return true;
     }
 
-    for (const CombatActor& enemy : supportEnemies_) {
-        if (enemy.IsAlive() && enemy.state == CombatState::Attack) {
-            return true;
-        }
-    }
-
-    return false;
+    return std::any_of(supportEnemies_.begin(), supportEnemies_.end(),
+                       [](const CombatActor& enemy) {
+                           return enemy.IsAlive() && enemy.state == CombatState::Attack;
+                       });
 }
 
 GameScene::AttackData GameScene::MakeEffectiveAttackData(
@@ -1458,13 +1542,11 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
          MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9},
     }};
 
-    for (const AttackData& attack : kAttacks) {
-        if (attack.id == move) {
-            return attack;
-        }
-    }
-
-    return kNone;
+    const auto match = std::find_if(kAttacks.begin(), kAttacks.end(),
+                                    [move](const AttackData& attack) {
+                                        return attack.id == move;
+                                    });
+    return match != kAttacks.end() ? *match : kNone;
 }
 
 const GameScene::DodgeData& GameScene::GetDodgeData() {

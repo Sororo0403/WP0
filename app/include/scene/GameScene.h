@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 
+class Input;
+
 class GameScene : public BaseScene {
 public:
     /// <summary>
@@ -158,6 +160,7 @@ private:
         bool lastBlocked = false;
         bool lastDodged = false;
         float lastDistance = 0.0f;
+        float lastKnockback = 0.0f;
         const char* lastDefense = "None";
         int fixedStepsThisFrame = 0;
         uint64_t combatFrame = 0;
@@ -165,25 +168,45 @@ private:
 
     void ResetPhaseOne();
     void InitializeVisuals();
+    void DrawActors(ModelManager& models) const;
+    void DrawAttackRanges(ModelManager& models) const;
+    void DrawCombatMarkers(ModelManager& models) const;
+    void DrawDebugCombatants() const;
     void CaptureFrameInput();
+    Vec2 ReadPlayerMovement(const Input& input) const;
+    void CaptureActionInputs(const Input& input);
     void StepCombat();
+    void ConsumePendingInputs();
+    void ApplyRequestedCombatActions();
+    void FaceCombatants();
+    void UpdateEnemyCombatants();
+    void UpdatePlayerCombatState();
     void UpdateCombatCamera();
     void UpdateFeedbackTimers();
     void UpdatePlayerIdle();
     void UpdatePlayerAttack();
     void UpdatePlayerGuard();
-    void UpdateGuardStun(CombatActor& actor);
+    static void UpdateGuardStun(CombatActor& actor);
     void UpdateDodge(CombatActor& actor);
-    void UpdateHitStun(CombatActor& actor);
-    void UpdateDown(CombatActor& actor);
+    static void UpdateDodgeMovement(CombatActor& actor, const DodgeData& dodge,
+                                    bool moving);
+    bool TryChainDodge(const CombatActor& actor, bool moving, bool recovery);
+    static void FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge);
+    static void UpdateHitStun(CombatActor& actor);
+    static void UpdateDown(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
-    bool CanStartAttack(const CombatActor& actor) const;
-    bool CanStartGuard(const CombatActor& actor) const;
-    bool CanStartDodge(const CombatActor& actor) const;
+    static bool CanStartAttack(const CombatActor& actor);
+    static bool CanStartGuard(const CombatActor& actor);
+    static bool CanStartDodge(const CombatActor& actor);
     void StartAttack(CombatActor& actor, MoveId move);
-    void StartGuard(CombatActor& actor);
+    static void StartGuard(CombatActor& actor);
     void StartDodge(CombatActor& actor);
+    void StartOrbitDodge(CombatActor& actor, Vec2 center, float angleDelta,
+                         Vec2 fallbackDirection);
+    bool TryStartTargetedOrbitDodge(CombatActor& actor, Vec2 inputDirection);
+    bool TryContinueOrbitDodge(CombatActor& actor, Vec2 previousCenter,
+                               float previousAngleDelta);
     bool TryStartCounter(CombatActor& attacker);
     bool TryStartDownAttack();
     bool TryStartExAction();
@@ -195,11 +218,12 @@ private:
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
+    void ApplyKnockback(CombatActor& defender, Vec2 direction, float distance);
     void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
     void AddBlockFeedback(const CombatActor& attacker);
     void StartCameraShake(int frames, float magnitude);
-    void FaceActorToward(CombatActor& actor, const CombatActor& target);
-    void FaceActorTowardMovement(CombatActor& actor, Vec2 movement);
+    static void FaceActorToward(CombatActor& actor, const CombatActor& target);
+    static void FaceActorTowardMovement(CombatActor& actor, Vec2 movement);
     bool IsEnemyActor(const CombatActor& actor) const;
     CombatActor& TargetEnemy();
     const CombatActor& TargetEnemy() const;

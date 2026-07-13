@@ -8,6 +8,7 @@
 class DirectXCommon;
 class TextureManager;
 class SrvManager;
+struct ID3D12GraphicsCommandList;
 
 class SpriteRenderer {
 public:
@@ -96,6 +97,9 @@ private:
     /// FlushQueuedDrawsを実行する
     /// </summary>
     void FlushQueuedDraws();
+    size_t FindQueuedRunEnd(size_t runStart) const;
+    void DrawQueuedRun(ID3D12GraphicsCommandList* commandList, size_t runStart,
+                       size_t runEnd);
 
 private:
     DirectXCommon* dxCommon_ = nullptr;

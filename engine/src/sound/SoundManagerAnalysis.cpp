@@ -106,6 +106,43 @@ float ComputeSpectrumBand(const PcmAnalysisView& view, size_t centerFrame, size_
     return std::isfinite(bandValue) ? std::clamp(bandValue, 0.0f, 1.0f) : 0.0f;
 }
 
+float ComputeAmplitudeRms(const AudioFileLoader::SoundData& sound, const WAVEFORMATEX& format,
+                          size_t centerFrame, size_t halfWindowFrames, size_t sampleFrames) {
+    const uint16_t channels = (std::max<uint16_t>)(format.nChannels, 1);
+    const uint16_t bits = format.wBitsPerSample;
+    const size_t bytesPerSample = static_cast<size_t>(bits) / 8u;
+    const size_t frameCount = sound.decodedPcm.size() / static_cast<size_t>(format.nBlockAlign);
+    double sumSquares = 0.0;
+    size_t valueCount = 0;
+    for (size_t i = 0; i < sampleFrames; ++i) {
+        const size_t frame = (centerFrame + frameCount + i - halfWindowFrames) % frameCount;
+        const BYTE* base = sound.decodedPcm.data() + frame * format.nBlockAlign;
+        for (uint16_t channel = 0; channel < channels; ++channel) {
+            const size_t byteOffset = static_cast<size_t>(channel) * bytesPerSample;
+            if (byteOffset + bytesPerSample > format.nBlockAlign) {
+                continue;
+            }
+            float value = 0.0f;
+            if (bits == 16) {
+                int16_t sample = 0;
+                std::memcpy(&sample, base + byteOffset, sizeof(sample));
+                value = static_cast<float>(sample) / 32768.0f;
+            } else if (bits == 8) {
+                value = (static_cast<float>(*(base + byteOffset)) - 128.0f) / 128.0f;
+            } else {
+                continue;
+            }
+            sumSquares += static_cast<double>(value * value);
+            ++valueCount;
+        }
+    }
+    return valueCount == 0
+               ? 0.0f
+               : std::clamp(
+                     static_cast<float>(std::sqrt(sumSquares / static_cast<double>(valueCount))),
+                     0.0f, 1.0f);
+}
+
 } // namespace
 
 float SoundManager::GetAmplitudeAt(uint32_t soundId, float playbackSeconds,
@@ -153,43 +190,7 @@ float SoundManager::GetAmplitudeAt(uint32_t soundId, float playbackSeconds,
     const size_t halfWindowFrames =
         (std::max<size_t>)(1, (std::min)(frameCount, static_cast<size_t>(halfWindowFramesDouble)));
     const size_t sampleFrames = (std::min)(frameCount, halfWindowFrames * 2 + 1);
-    const uint16_t channels = (std::max<uint16_t>)(format.nChannels, 1);
-    const uint16_t bits = format.wBitsPerSample;
-    const size_t bytesPerSample = static_cast<size_t>(bits) / 8u;
-
-    double sumSquares = 0.0;
-    size_t valueCount = 0;
-    for (size_t i = 0; i < sampleFrames; ++i) {
-        const size_t frame = (centerFrame + frameCount + i - halfWindowFrames) % frameCount;
-        const BYTE* base = sound.decodedPcm.data() + frame * format.nBlockAlign;
-        for (uint16_t ch = 0; ch < channels; ++ch) {
-            const size_t byteOffset = static_cast<size_t>(ch) * bytesPerSample;
-            if (byteOffset + bytesPerSample > format.nBlockAlign) {
-                continue;
-            }
-
-            float value = 0.0f;
-            if (bits == 16) {
-                int16_t sample = 0;
-                std::memcpy(&sample, base + byteOffset, sizeof(sample));
-                value = static_cast<float>(sample) / 32768.0f;
-            } else if (bits == 8) {
-                const uint8_t sample = *(base + byteOffset);
-                value = (static_cast<float>(sample) - 128.0f) / 128.0f;
-            } else {
-                continue;
-            }
-            sumSquares += static_cast<double>(value * value);
-            ++valueCount;
-        }
-    }
-
-    if (valueCount == 0) {
-        return 0.0f;
-    }
-
-    return std::clamp(static_cast<float>(std::sqrt(sumSquares / static_cast<double>(valueCount))),
-                      0.0f, 1.0f);
+    return ComputeAmplitudeRms(sound, format, centerFrame, halfWindowFrames, sampleFrames);
 }
 
 void SoundManager::FillSpectrumBands(uint32_t soundId, float playbackSeconds, float* outBands,

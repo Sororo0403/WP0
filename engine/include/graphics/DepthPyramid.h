@@ -40,6 +40,8 @@ private:
 
     bool CreatePipeline();
     bool CreateResources(uint32_t width, uint32_t height);
+    bool CanCreateResources(uint32_t width, uint32_t height) const;
+    bool HasValidDescriptorRange(uint32_t start, uint32_t count) const;
     bool ReleaseResources();
     bool ReleaseResources(bool allowFrameAbort);
     bool ValidateBuildDescriptors() const;

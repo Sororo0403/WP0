@@ -45,7 +45,8 @@ GPUParticleSystem::ConstantFrame* GPUParticleSystem::PrepareDrawFrame(
     return constantFrame;
 }
 
-void GPUParticleSystem::UpdateDrawConstants(const Camera& camera, ConstantFrame& constantFrame) {
+void GPUParticleSystem::UpdateDrawConstants(const Camera& camera,
+                                            ConstantFrame& constantFrame) const {
     XMMATRIX viewProjection = camera.GetView() * camera.GetProj();
     XMStoreFloat4x4(&constantFrame.mappedDrawCB->viewProjection, XMMatrixTranspose(viewProjection));
 

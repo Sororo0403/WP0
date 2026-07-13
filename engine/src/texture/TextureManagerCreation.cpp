@@ -280,7 +280,7 @@ bool TextureManager::InitializeTextureCreationWork(const Image* images, size_t i
     return true;
 }
 
-bool TextureManager::BeginTextureCreationUpload(TextureCreationWork& work) {
+bool TextureManager::BeginTextureCreationUpload(const TextureCreationWork& work) {
     if (work.ownsUploadPass && !dxCommon_->BeginUpload()) {
         return false;
     }

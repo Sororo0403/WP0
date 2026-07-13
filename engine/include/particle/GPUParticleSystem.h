@@ -216,7 +216,7 @@ private:
     /// </summary>
     void DispatchUpdate();
     bool HasUpdateDispatchResources() const;
-    bool BindDescriptorHeap(ID3D12GraphicsCommandList*& commandList);
+    bool BindDescriptorHeap(ID3D12GraphicsCommandList*& commandList) const;
     bool RegisterUpdateDispatchRollback(
         D3D12_RESOURCE_STATES previousActiveIndexState, D3D12_RESOURCE_STATES previousDrawArgsState,
         bool previousUpdatePending, bool previousClearPending,
@@ -234,6 +234,8 @@ private:
     void RecordExplicitSpawnDispatch(uint32_t spawnCount);
     bool EnsureExplicitSpawnCapacity(uint32_t capacity);
     bool EnsureExplicitSpawnFrameCapacity(ExplicitSpawnFrame& frame, uint32_t capacity);
+    static bool HasExplicitSpawnFrameCapacity(const ExplicitSpawnFrame& frame,
+                                              uint32_t capacity);
     bool UploadExplicitParticles(const std::vector<GPUParticleExplicitSpawn>& particles,
                                  uint32_t& uploadedCount);
 
@@ -247,10 +249,11 @@ private:
     bool CreateInitializationGpuResources(const std::vector<ParticleForGPU>& particles);
     bool HasRequiredGpuResources() const;
     void QueueInitialUpdateIfNeeded();
+    void UpdateContinuousEmitter(float deltaTime);
     bool HasDrawResources() const;
     bool ShouldSkipDraw() const;
     ConstantFrame* PrepareDrawFrame(ID3D12GraphicsCommandList*& commandList);
-    void UpdateDrawConstants(const Camera& camera, ConstantFrame& constantFrame);
+    void UpdateDrawConstants(const Camera& camera, ConstantFrame& constantFrame) const;
     bool ResolveDrawTextureHandles(D3D12_GPU_DESCRIPTOR_HANDLE& baseTextureHandle,
                                    D3D12_GPU_DESCRIPTOR_HANDLE& noiseTextureHandle) const;
     void RecordDrawCommands(ID3D12GraphicsCommandList* commandList, ConstantFrame& constantFrame,

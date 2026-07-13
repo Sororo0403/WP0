@@ -55,7 +55,7 @@ bool GPUParticleSystem::HasUpdateDispatchResources() const {
            HasUpdateDispatchGpuHandles(*resources_);
 }
 
-bool GPUParticleSystem::BindDescriptorHeap(ID3D12GraphicsCommandList*& commandList) {
+bool GPUParticleSystem::BindDescriptorHeap(ID3D12GraphicsCommandList*& commandList) const {
     commandList = dxCommon_ != nullptr ? dxCommon_->GetCommandList() : nullptr;
     ID3D12DescriptorHeap* heap = srvManager_->GetHeap();
     if (commandList == nullptr || heap == nullptr) {

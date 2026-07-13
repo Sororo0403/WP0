@@ -33,13 +33,13 @@ public:
     /// ImGuiの新しいフレームを開始する
     /// </summary>
     /// <param name="commandList">コマンドリスト</param>
-    void Begin(ID3D12GraphicsCommandList* commandList);
+    void Begin(ID3D12GraphicsCommandList* commandList) const;
 
     /// <summary>
     /// ImGuiの描画データをコマンドリストへ積む
     /// </summary>
     /// <param name="commandList">コマンドリスト</param>
-    void End(ID3D12GraphicsCommandList* commandList);
+    void End(ID3D12GraphicsCommandList* commandList) const;
     bool IsReady() const;
 
 private:
@@ -49,7 +49,7 @@ private:
     static void AllocateDx12Srv(ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
                                 D3D12_GPU_DESCRIPTOR_HANDLE* outGpu);
     static void FreeDx12Srv(ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
-                            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle);
+                            D3D12_GPU_DESCRIPTOR_HANDLE);
 
     DirectXCommon* dxCommon_ = nullptr;
     SrvManager* srvManager_ = nullptr;

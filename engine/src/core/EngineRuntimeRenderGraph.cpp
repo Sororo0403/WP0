@@ -467,7 +467,7 @@ bool AddDefaultRenderGraphResources(Systems& systems, int width, int height) {
     return true;
 }
 
-template <typename Systems> bool AddDefaultRenderGraphDependencies(Systems& systems) {
+template <typename Systems> bool AddShadowDependencies(Systems& systems) {
     if (!systems.renderGraph.AddDependency("Shadow", "SceneColor")) {
         return false;
     }
@@ -477,6 +477,10 @@ template <typename Systems> bool AddDefaultRenderGraphDependencies(Systems& syst
             return false;
         }
     }
+    return true;
+}
+
+template <typename Systems> bool AddForegroundDependencies(Systems& systems) {
     if (systems.sceneManager.UsesForeground3DPass()) {
         if (!systems.renderGraph.AddDependency("SceneColor", "Foreground3D") ||
             !systems.renderGraph.AddDependency("Foreground3D", "Transparent")) {
@@ -487,6 +491,10 @@ template <typename Systems> bool AddDefaultRenderGraphDependencies(Systems& syst
             return false;
         }
     }
+    return true;
+}
+
+template <typename Systems> bool AddLightingDependencies(Systems& systems) {
     if (systems.sceneManager.UsesVolumetricLightingPass()) {
         if (!systems.renderGraph.AddDependency("Transparent", "VolumetricLighting") ||
             !systems.renderGraph.AddDependency("VolumetricLighting", "PostProcess")) {
@@ -496,6 +504,14 @@ template <typename Systems> bool AddDefaultRenderGraphDependencies(Systems& syst
         if (!systems.renderGraph.AddDependency("Transparent", "PostProcess")) {
             return false;
         }
+    }
+    return true;
+}
+
+template <typename Systems> bool AddDefaultRenderGraphDependencies(Systems& systems) {
+    if (!AddShadowDependencies(systems) || !AddForegroundDependencies(systems) ||
+        !AddLightingDependencies(systems)) {
+        return false;
     }
     if (!systems.renderGraph.AddDependency("PostProcess", "Overlay")) {
         return false;

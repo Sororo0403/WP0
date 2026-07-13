@@ -19,6 +19,29 @@ namespace {
 constexpr size_t kStreamBufferBytes = 64 * 1024;
 using SoundManagerInternal::kStreamQueuedBuffers;
 
+bool OpenPcmStream(const std::wstring& path, Microsoft::WRL::ComPtr<IMFSourceReader>& reader,
+                   std::vector<BYTE>& waveFormat,
+                   SoundFormatUtils::AlignedWaveFormat& alignedFormat) {
+    std::filesystem::path resolvedPath;
+    try {
+        resolvedPath = PathUtils::ResolveAssetPath(path);
+    } catch (const std::exception&) {
+        return false;
+    }
+    std::error_code error;
+    if (!std::filesystem::exists(resolvedPath, error) || error) {
+        return false;
+    }
+    Microsoft::WRL::ComPtr<IMFMediaType> mediaType;
+    if (!SoundFormatUtils::CreatePcmSourceReader(resolvedPath, reader, &mediaType) ||
+        !SoundFormatUtils::GetWaveFormatBytes(mediaType.Get(), waveFormat) ||
+        !SoundFormatUtils::CopyAlignedWaveFormat(waveFormat, alignedFormat)) {
+        return false;
+    }
+    const WAVEFORMATEX* format = alignedFormat.Get();
+    return format->nSamplesPerSec != 0 && format->nBlockAlign != 0;
+}
+
 } // namespace
 
 uint32_t SoundManager::PlayStream(const std::wstring& path, float volume, bool loop) {
@@ -44,35 +67,13 @@ uint32_t SoundManager::CreateStreamingVoice(const std::wstring& path, float volu
         return kInvalidVoiceHandle;
     }
 
-    std::filesystem::path resolvedPath;
-    try {
-        resolvedPath = PathUtils::ResolveAssetPath(path);
-    } catch (const std::exception&) {
-        return kInvalidVoiceHandle;
-    }
-    std::error_code ec;
-    if (!std::filesystem::exists(resolvedPath, ec)) {
-        return kInvalidVoiceHandle;
-    }
-
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;
-    Microsoft::WRL::ComPtr<IMFMediaType> mediaType;
-    if (!SoundFormatUtils::CreatePcmSourceReader(resolvedPath, reader, &mediaType)) {
-        return kInvalidVoiceHandle;
-    }
-
     std::vector<BYTE> waveFormat;
-    if (!SoundFormatUtils::GetWaveFormatBytes(mediaType.Get(), waveFormat)) {
-        return kInvalidVoiceHandle;
-    }
     SoundFormatUtils::AlignedWaveFormat alignedFormat{};
-    if (!SoundFormatUtils::CopyAlignedWaveFormat(waveFormat, alignedFormat)) {
+    if (!OpenPcmStream(path, reader, waveFormat, alignedFormat)) {
         return kInvalidVoiceHandle;
     }
     const WAVEFORMATEX* format = alignedFormat.Get();
-    if (format->nSamplesPerSec == 0 || format->nBlockAlign == 0) {
-        return kInvalidVoiceHandle;
-    }
 
     PlayingVoice playingVoice{};
     IXAudio2SourceVoice* voice = nullptr;

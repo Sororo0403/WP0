@@ -473,9 +473,7 @@ bool GPUParticleSystem::EnsureExplicitSpawnFrameCapacity(ExplicitSpawnFrame& fra
     }
 
     const uint32_t safeCapacity = (std::max)(1u, (std::min)(capacity, maxParticles_));
-    if (frame.resource && frame.mappedSpawns != nullptr && IsValidResourceId(frame.srvIndex) &&
-        frame.srvCpuHandle.ptr != 0 && frame.srvGpuHandle.ptr != 0 &&
-        frame.capacity >= safeCapacity) {
+    if (HasExplicitSpawnFrameCapacity(frame, safeCapacity)) {
         return true;
     }
 
@@ -533,6 +531,13 @@ bool GPUParticleSystem::EnsureExplicitSpawnFrameCapacity(ExplicitSpawnFrame& fra
     frame.srvIndex = kInvalidResourceId;
     std::swap(frame, replacement);
     return true;
+}
+
+bool GPUParticleSystem::HasExplicitSpawnFrameCapacity(const ExplicitSpawnFrame& frame,
+                                                      uint32_t capacity) {
+    return frame.resource && frame.mappedSpawns != nullptr && IsValidResourceId(frame.srvIndex) &&
+           frame.srvCpuHandle.ptr != 0 && frame.srvGpuHandle.ptr != 0 &&
+           frame.capacity >= capacity;
 }
 
 bool GPUParticleSystem::EnsureExplicitSpawnCapacity(uint32_t capacity) {

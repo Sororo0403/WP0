@@ -116,9 +116,7 @@ bool SkyboxRenderer::Finalize(bool allowFrameAbort) {
 }
 
 void SkyboxRenderer::Draw(uint32_t textureId, const Camera& camera) {
-    if (!dxCommon_ || !srvManager_ || !textureManager_ || !state_->pipelineState ||
-        !state_->rootSignature || !state_->vertexBuffer || !state_->indexBuffer ||
-        !HasConstantBuffers() || state_->indexCount == 0) {
+    if (!IsReady()) {
         return;
     }
 

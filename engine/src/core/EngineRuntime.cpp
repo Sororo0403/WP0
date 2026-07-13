@@ -393,6 +393,15 @@ EngineRuntime::ResizeResult EngineRuntime::ResizeIfNeeded() {
         return ResizeResult::Failed;
     }
 
+    if (!ResizeDependentRenderTargets(width, height)) {
+        return ResizeResult::Failed;
+    }
+    currentWidth_ = width;
+    currentHeight_ = height;
+    return ResizeResult::Ready;
+}
+
+bool EngineRuntime::ResizeDependentRenderTargets(int width, int height) {
     const bool renderTextureReady =
         systems_->renderTexture.Resize(width, height) && systems_->renderTexture.IsReady();
     const bool postProcessReady =
@@ -409,9 +418,7 @@ EngineRuntime::ResizeResult EngineRuntime::ResizeIfNeeded() {
     systems_->spriteManager.Resize(width, height);
     if (!renderTextureReady || !postProcessReady || !volumetricLightingReady ||
         !depthPyramidReady || !systems_->spriteManager.IsReady()) {
-        return ResizeResult::Failed;
+        return false;
     }
-    currentWidth_ = width;
-    currentHeight_ = height;
-    return ResizeResult::Ready;
+    return true;
 }

@@ -78,9 +78,7 @@ template <typename TValue> struct KeyRange {
 };
 
 template <typename TValue>
-KeyRange<TValue> FindKeyRange(const std::vector<Keyframe<TValue>>& keys, float time) {
-    KeyRange<TValue> range;
-
+void FindFiniteKeyBounds(const std::vector<Keyframe<TValue>>& keys, KeyRange<TValue>& range) {
     for (const Keyframe<TValue>& key : keys) {
         if (!std::isfinite(key.time)) {
             continue;
@@ -92,6 +90,28 @@ KeyRange<TValue> FindKeyRange(const std::vector<Keyframe<TValue>>& keys, float t
             range.last = &key;
         }
     }
+}
+
+template <typename TValue>
+void FindSurroundingKeys(const std::vector<Keyframe<TValue>>& keys, float time,
+                         KeyRange<TValue>& range) {
+    for (const Keyframe<TValue>& key : keys) {
+        if (!std::isfinite(key.time)) {
+            continue;
+        }
+        if (key.time <= time && key.time >= range.lower->time) {
+            range.lower = &key;
+        }
+        if (key.time >= time && key.time <= range.upper->time) {
+            range.upper = &key;
+        }
+    }
+}
+
+template <typename TValue>
+KeyRange<TValue> FindKeyRange(const std::vector<Keyframe<TValue>>& keys, float time) {
+    KeyRange<TValue> range;
+    FindFiniteKeyBounds(keys, range);
 
     if (range.first == nullptr || range.last == nullptr) {
         return range;
@@ -109,17 +129,7 @@ KeyRange<TValue> FindKeyRange(const std::vector<Keyframe<TValue>>& keys, float t
 
     range.lower = range.first;
     range.upper = range.last;
-    for (const Keyframe<TValue>& key : keys) {
-        if (!std::isfinite(key.time)) {
-            continue;
-        }
-        if (key.time <= time && key.time >= range.lower->time) {
-            range.lower = &key;
-        }
-        if (key.time >= time && key.time <= range.upper->time) {
-            range.upper = &key;
-        }
-    }
+    FindSurroundingKeys(keys, time, range);
     return range;
 }
 

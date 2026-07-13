@@ -13,6 +13,15 @@ std::wstring Lowercase(std::wstring value) {
     return value;
 }
 
+bool DirectoryExists(const std::filesystem::path& directory) {
+    std::error_code error;
+    try {
+        return std::filesystem::exists(directory, error) && !error;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 } // namespace
 
 bool AssetHotReloader::WatchFile(const std::filesystem::path& path, ReloadCallback callback) {
@@ -66,15 +75,11 @@ bool AssetHotReloader::WatchDirectory(const std::filesystem::path& directory,
         return false;
     }
 
-    std::error_code error;
-    try {
-        if (!std::filesystem::exists(directory, error) || error) {
-            return false;
-        }
-    } catch (const std::exception&) {
+    if (!DirectoryExists(directory)) {
         return false;
     }
 
+    std::error_code error;
     bool watchedAny = false;
     try {
         std::filesystem::recursive_directory_iterator it(

@@ -355,7 +355,7 @@ bool ModelRenderer::CreateSkinClusters(Model& model) {
     return true;
 }
 
-bool ModelRenderer::CreateSkinClusterForSubMesh(Model& model, ModelSubMesh& subMesh,
+bool ModelRenderer::CreateSkinClusterForSubMesh(const Model& model, ModelSubMesh& subMesh,
                                                 SkinClusterBuildContext& context) {
     if (!state_->meshManager->IsValidMeshId(subMesh.meshId)) {
         return true;
@@ -393,7 +393,7 @@ bool ModelRenderer::CreateSkinClusterForSubMesh(Model& model, ModelSubMesh& subM
     return true;
 }
 
-bool ModelRenderer::PrepareSkinClusterPalette(Model& model, ModelSubMesh& subMesh,
+bool ModelRenderer::PrepareSkinClusterPalette(const Model& model, ModelSubMesh& subMesh,
                                               SkinClusterBuildContext& context) {
     SkinCluster& skinCluster = subMesh.skinCluster;
     const uint32_t jointCount = std::max<uint32_t>(

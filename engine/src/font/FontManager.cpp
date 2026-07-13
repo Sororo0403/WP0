@@ -196,6 +196,59 @@ AtlasPage* CreateAtlasPage(TextureManager* textureManager, FontSizeCache& sizeCa
     return &sizeCache.pages.back();
 }
 
+bool PlaceRasterizedGlyph(TextureManager* textureManager, FontSizeCache& sizeCache,
+                          const RasterizedGlyph& rasterized, FontGlyph& glyph) {
+    AtlasPage* targetPage = nullptr;
+    uint32_t atlasX = 0u;
+    uint32_t atlasY = 0u;
+    for (AtlasPage& page : sizeCache.pages) {
+        if (TryAllocateGlyphRect(page, rasterized.width, rasterized.height, atlasX, atlasY)) {
+            targetPage = &page;
+            break;
+        }
+    }
+    if (targetPage == nullptr) {
+        targetPage = CreateAtlasPage(textureManager, sizeCache);
+        if (targetPage == nullptr || !TryAllocateGlyphRect(*targetPage, rasterized.width,
+                                                           rasterized.height, atlasX, atlasY)) {
+            return false;
+        }
+    }
+
+    for (uint32_t y = 0u; y < rasterized.height; ++y) {
+        for (uint32_t x = 0u; x < rasterized.width; ++x) {
+            const size_t srcIndex = static_cast<size_t>(y) * rasterized.width + x;
+            const size_t dstPixel =
+                (static_cast<size_t>(atlasY + y) * kAtlasSize) + static_cast<size_t>(atlasX + x);
+            const size_t dstIndex = dstPixel * 4u;
+            targetPage->pixels[dstIndex + 0u] = 255u;
+            targetPage->pixels[dstIndex + 1u] = 255u;
+            targetPage->pixels[dstIndex + 2u] = 255u;
+            targetPage->pixels[dstIndex + 3u] = rasterized.alphaPixels[srcIndex];
+        }
+    }
+    targetPage->dirty = true;
+    glyph.textureId = targetPage->textureId;
+    glyph.uvLeftTop = {static_cast<float>(atlasX) / static_cast<float>(kAtlasSize),
+                       static_cast<float>(atlasY) / static_cast<float>(kAtlasSize)};
+    glyph.uvSize = {static_cast<float>(rasterized.width) / static_cast<float>(kAtlasSize),
+                    static_cast<float>(rasterized.height) / static_cast<float>(kAtlasSize)};
+    return true;
+}
+
+bool ResolveExistingFontPath(const std::wstring& filePath, std::filesystem::path& resolvedPath) {
+    try {
+        resolvedPath = ResolveFontPath(filePath);
+        if (resolvedPath.empty()) {
+            return false;
+        }
+        std::error_code error;
+        return std::filesystem::exists(resolvedPath, error) && !error;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 void UploadDirtyPages(TextureManager* textureManager, FontSizeCache& sizeCache) {
     if (textureManager == nullptr) {
         return;
@@ -446,43 +499,9 @@ bool FontManager::EnsureGlyph(FontHandle handle, uint32_t pixelKey, char32_t cod
         return false;
     }
 
-    if (glyph.visible) {
-        AtlasPage* targetPage = nullptr;
-        uint32_t atlasX = 0u;
-        uint32_t atlasY = 0u;
-        for (AtlasPage& page : sizeCache.pages) {
-            if (TryAllocateGlyphRect(page, rasterized.width, rasterized.height, atlasX, atlasY)) {
-                targetPage = &page;
-                break;
-            }
-        }
-        if (targetPage == nullptr) {
-            targetPage = CreateAtlasPage(state_->textureManager, sizeCache);
-            if (targetPage == nullptr || !TryAllocateGlyphRect(*targetPage, rasterized.width,
-                                                               rasterized.height, atlasX, atlasY)) {
-                return false;
-            }
-        }
-
-        for (uint32_t y = 0u; y < rasterized.height; ++y) {
-            for (uint32_t x = 0u; x < rasterized.width; ++x) {
-                const size_t srcIndex = static_cast<size_t>(y) * rasterized.width + x;
-                const size_t dstPixel = (static_cast<size_t>(atlasY + y) * kAtlasSize) +
-                                        static_cast<size_t>(atlasX + x);
-                const size_t dstIndex = dstPixel * 4u;
-                targetPage->pixels[dstIndex + 0u] = 255u;
-                targetPage->pixels[dstIndex + 1u] = 255u;
-                targetPage->pixels[dstIndex + 2u] = 255u;
-                targetPage->pixels[dstIndex + 3u] = rasterized.alphaPixels[srcIndex];
-            }
-        }
-        targetPage->dirty = true;
-
-        glyph.textureId = targetPage->textureId;
-        glyph.uvLeftTop = {static_cast<float>(atlasX) / static_cast<float>(kAtlasSize),
-                           static_cast<float>(atlasY) / static_cast<float>(kAtlasSize)};
-        glyph.uvSize = {static_cast<float>(rasterized.width) / static_cast<float>(kAtlasSize),
-                        static_cast<float>(rasterized.height) / static_cast<float>(kAtlasSize)};
+    if (glyph.visible &&
+        !PlaceRasterizedGlyph(state_->textureManager, sizeCache, rasterized, glyph)) {
+        return false;
     }
 
     try {
@@ -551,20 +570,7 @@ FontHandle FontManager::LoadFont(const std::wstring& filePath) {
     }
 
     std::filesystem::path resolvedPath;
-    try {
-        resolvedPath = ResolveFontPath(filePath);
-    } catch (const std::exception&) {
-        return {};
-    }
-    if (resolvedPath.empty()) {
-        return {};
-    }
-    std::error_code existsError;
-    try {
-        if (!std::filesystem::exists(resolvedPath, existsError) || existsError) {
-            return {};
-        }
-    } catch (const std::exception&) {
+    if (!ResolveExistingFontPath(filePath, resolvedPath)) {
         return {};
     }
 

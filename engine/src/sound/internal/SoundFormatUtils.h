@@ -33,6 +33,7 @@ bool GetWaveFormatBytes(IMFMediaType* mediaType, std::vector<BYTE>& result);
 bool SeekSourceReaderToStart(IMFSourceReader* reader);
 bool ReadNextPcmChunk(IMFSourceReader* reader, size_t targetBytes, size_t maxDecodedBytes,
                       bool& sourceEnded, std::vector<BYTE>& decodedPcm);
-bool ReadAllPcmData(IMFSourceReader* reader, size_t maxBytes, std::vector<BYTE>& decodedPcm);
+bool ReadAllPcmData(IMFSourceReader* reader, size_t maxDecodedBytes,
+                    std::vector<BYTE>& decodedPcm);
 
 } // namespace SoundFormatUtils

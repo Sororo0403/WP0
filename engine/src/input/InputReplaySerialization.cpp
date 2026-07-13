@@ -62,14 +62,8 @@ std::array<BYTE, 256> DecodeKeys(const std::string& encoded) {
 
 template <typename T> bool TryConvertInteger(uint64_t value, T& outValue) {
     static_assert(std::is_integral_v<T>);
-    if constexpr (std::is_signed_v<T>) {
-        if (value > static_cast<uint64_t>((std::numeric_limits<T>::max)())) {
-            return false;
-        }
-    } else {
-        if (value > static_cast<uint64_t>((std::numeric_limits<T>::max)())) {
-            return false;
-        }
+    if (value > static_cast<uint64_t>((std::numeric_limits<T>::max)())) {
+        return false;
     }
 
     outValue = static_cast<T>(value);
@@ -95,6 +89,32 @@ template <typename T> bool TryConvertInteger(int64_t value, T& outValue) {
 }
 
 template <typename T>
+T JsonFloatingValueOr(const nlohmann::json& value, const T& fallback) {
+    if (!value.is_number()) {
+        return fallback;
+    }
+    const double number = value.get<double>();
+    if (!std::isfinite(number) ||
+        number < static_cast<double>((std::numeric_limits<T>::lowest)()) ||
+        number > static_cast<double>((std::numeric_limits<T>::max)())) {
+        return fallback;
+    }
+    return static_cast<T>(number);
+}
+
+template <typename T>
+T JsonIntegerValueOr(const nlohmann::json& value, const T& fallback) {
+    T converted{};
+    if (value.is_number_unsigned()) {
+        return TryConvertInteger(value.get<uint64_t>(), converted) ? converted : fallback;
+    }
+    if (value.is_number_integer()) {
+        return TryConvertInteger(value.get<int64_t>(), converted) ? converted : fallback;
+    }
+    return fallback;
+}
+
+template <typename T>
 T JsonValueOr(const nlohmann::json& object, const char* key, const T& fallback) {
     const auto it = object.find(key);
     try {
@@ -108,24 +128,9 @@ T JsonValueOr(const nlohmann::json& object, const char* key, const T& fallback) 
             const bool* value = it->get_ptr<const bool*>();
             return value != nullptr ? *value : fallback;
         } else if constexpr (std::is_floating_point_v<T>) {
-            if (it->is_number()) {
-                const double value = it->get<double>();
-                if (std::isfinite(value) &&
-                    value >= static_cast<double>((std::numeric_limits<T>::lowest)()) &&
-                    value <= static_cast<double>((std::numeric_limits<T>::max)())) {
-                    return static_cast<T>(value);
-                }
-            }
-            return fallback;
+            return JsonFloatingValueOr<T>(*it, fallback);
         } else if constexpr (std::is_integral_v<T>) {
-            T converted{};
-            if (it->is_number_unsigned()) {
-                return TryConvertInteger(it->get<uint64_t>(), converted) ? converted : fallback;
-            }
-            if (it->is_number_integer()) {
-                return TryConvertInteger(it->get<int64_t>(), converted) ? converted : fallback;
-            }
-            return fallback;
+            return JsonIntegerValueOr<T>(*it, fallback);
         } else {
             return fallback;
         }

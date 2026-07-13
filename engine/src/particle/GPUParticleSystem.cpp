@@ -419,9 +419,7 @@ void GPUParticleSystem::Update(float deltaTime) {
     }
 
     if (clearPending_) {
-        if (dxCommon_ && dxCommon_->IsCommandListRecording()) {
-            DispatchUpdate();
-        }
+        DispatchPendingUpdate();
         if (clearPending_) {
             return;
         }
@@ -435,24 +433,7 @@ void GPUParticleSystem::Update(float deltaTime) {
     }
 
     if (continuousEmitter) {
-        emitterFrequencyTime_ += deltaTime;
-        const float safeEmitRate =
-            (std::max)(SanitizeFinite(emitterSettings_.emitRate, 0.0f), 0.0001f);
-        const float interval = 1.0f / safeEmitRate;
-        while (emitterFrequencyTime_ >= interval &&
-               pendingEmitSettings_.size() < kMaxQueuedParticleEmitsPerFrame) {
-            emitterFrequencyTime_ -= interval;
-            try {
-                pendingEmitSettings_.push_back(emitterSettings_);
-            } catch (const std::exception&) {
-                break;
-            }
-            activeTimeRemaining_ =
-                (std::max)(activeTimeRemaining_, EstimateParticleActiveDuration(emitterSettings_));
-        }
-        if (emitterFrequencyTime_ >= interval) {
-            emitterFrequencyTime_ = std::fmod(emitterFrequencyTime_, interval);
-        }
+        UpdateContinuousEmitter(deltaTime);
     }
 
     if (pendingEmitSettings_.empty() && pendingExplicitParticles_.empty() && !continuousEmitter &&
@@ -464,7 +445,26 @@ void GPUParticleSystem::Update(float deltaTime) {
                                         0.0f};
 
     updatePending_ = true;
-    if (dxCommon_ && dxCommon_->IsCommandListRecording()) {
-        DispatchUpdate();
+    DispatchPendingUpdate();
+}
+
+void GPUParticleSystem::UpdateContinuousEmitter(float deltaTime) {
+    emitterFrequencyTime_ += deltaTime;
+    const float safeEmitRate =
+        (std::max)(SanitizeFinite(emitterSettings_.emitRate, 0.0f), 0.0001f);
+    const float interval = 1.0f / safeEmitRate;
+    while (emitterFrequencyTime_ >= interval &&
+           pendingEmitSettings_.size() < kMaxQueuedParticleEmitsPerFrame) {
+        emitterFrequencyTime_ -= interval;
+        try {
+            pendingEmitSettings_.push_back(emitterSettings_);
+        } catch (const std::exception&) {
+            break;
+        }
+        activeTimeRemaining_ =
+            (std::max)(activeTimeRemaining_, EstimateParticleActiveDuration(emitterSettings_));
+    }
+    if (emitterFrequencyTime_ >= interval) {
+        emitterFrequencyTime_ = std::fmod(emitterFrequencyTime_, interval);
     }
 }

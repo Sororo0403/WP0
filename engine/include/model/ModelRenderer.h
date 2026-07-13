@@ -200,9 +200,11 @@ private:
     void CreateSkinningPipelineState();
 
     void CreateUploadBuffer();
-    bool HasValidInitializeDependencies(DirectXCommon* dxCommon, SrvManager* srvManager,
-                                        MeshManager* meshManager, TextureManager* textureManager,
-                                        MaterialManager* materialManager) const;
+    static bool HasValidInitializeDependencies(const DirectXCommon* dxCommon,
+                                               const SrvManager* srvManager,
+                                               const MeshManager* meshManager,
+                                               const TextureManager* textureManager,
+                                               const MaterialManager* materialManager);
     void BindManagers(DirectXCommon* dxCommon, SrvManager* srvManager, MeshManager* meshManager,
                       TextureManager* textureManager, MaterialManager* materialManager);
     bool CreateDissolveNoiseTexture();
@@ -223,7 +225,7 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS WriteDrawEffectConstants();
     D3D12_VERTEX_BUFFER_VIEW WriteInstances(const Model& model, const Transform* transforms,
                                             uint32_t instanceCount);
-    D3D12_VERTEX_BUFFER_VIEW WriteInstances(const Model& model, const InstanceData* instances,
+    D3D12_VERTEX_BUFFER_VIEW WriteInstances(const Model& model, const InstanceData* sourceInstances,
                                             uint32_t instanceCount);
     void DrawInstancedWithPreparedBuffer(const Model& model,
                                          const D3D12_VERTEX_BUFFER_VIEW& instanceView,
@@ -262,9 +264,9 @@ private:
     /// DispatchSkinningを実行する
     /// </summary>
     struct SkinClusterBuildContext;
-    bool CreateSkinClusterForSubMesh(Model& model, ModelSubMesh& subMesh,
+    bool CreateSkinClusterForSubMesh(const Model& model, ModelSubMesh& subMesh,
                                      SkinClusterBuildContext& context);
-    bool PrepareSkinClusterPalette(Model& model, ModelSubMesh& subMesh,
+    bool PrepareSkinClusterPalette(const Model& model, ModelSubMesh& subMesh,
                                    SkinClusterBuildContext& context);
     void DispatchSkinning(const ModelSubMesh& subMesh);
     bool NeedsSkinningDispatch(const ModelSubMesh& subMesh) const;

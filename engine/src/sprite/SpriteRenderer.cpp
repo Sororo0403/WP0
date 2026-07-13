@@ -226,69 +226,72 @@ void SpriteRenderer::FlushQueuedDraws() {
     }
     size_t runStart = 0;
     while (runStart < state_->queuedDraws.size()) {
-        const QueuedDraw& first = state_->queuedDraws[runStart];
-        size_t runEnd = runStart + 1;
-        while (runEnd < state_->queuedDraws.size() &&
-               state_->queuedDraws[runEnd].pipelineKind == first.pipelineKind &&
-               state_->queuedDraws[runEnd].textureId == first.textureId) {
-            ++runEnd;
-        }
-
-        if (state_->activePipelineKind != first.pipelineKind) {
-            state_->activePipelineKind = first.pipelineKind;
-            ID3D12PipelineState* pipelineState =
-                state_
-                    ->pipelineStates[static_cast<uint32_t>(state_->activeRenderTargetKind)]
-                                    [static_cast<uint32_t>(state_->activePipelineKind)]
-                    .Get();
-            if (pipelineState == nullptr) {
-                runStart = runEnd;
-                continue;
-            }
-            cmd->SetPipelineState(pipelineState);
-        }
-
-        state_->batchVertices.clear();
-        try {
-            state_->batchVertices.reserve((runEnd - runStart) * kVerticesPerSprite);
-            for (size_t index = runStart; index < runEnd; ++index) {
-                const auto& vertices = state_->queuedDraws[index].vertices;
-                state_->batchVertices.insert(state_->batchVertices.end(), vertices.begin(),
-                                             vertices.end());
-            }
-        } catch (const std::exception&) {
-            state_->batchVertices.clear();
-            runStart = runEnd;
-            continue;
-        }
-        const UploadAllocation allocation = state_->uploadBuffer.WriteArray(
-            state_->batchVertices.data(), state_->batchVertices.size(), alignof(SpriteVertex));
-        if (allocation.gpu == 0) {
-            runStart = runEnd;
-            continue;
-        }
-        D3D12_VERTEX_BUFFER_VIEW view{};
-        view.BufferLocation = allocation.gpu;
-        view.SizeInBytes = static_cast<UINT>(state_->batchVertices.size() * sizeof(SpriteVertex));
-        view.StrideInBytes = sizeof(SpriteVertex);
-        cmd->IASetVertexBuffers(0, 1, &view);
-        const uint32_t boundTextureId = ResolveSpriteTextureId(textureManager_, first.textureId);
-        if (!IsValidResourceId(boundTextureId)) {
-            runStart = runEnd;
-            continue;
-        }
-        const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle =
-            textureManager_->GetGpuHandle(boundTextureId);
-        if (textureHandle.ptr == 0) {
-            runStart = runEnd;
-            continue;
-        }
-        cmd->SetGraphicsRootDescriptorTable(1, textureHandle);
-        cmd->DrawInstanced(static_cast<UINT>(state_->batchVertices.size()), 1, 0, 0);
-
+        const size_t runEnd = FindQueuedRunEnd(runStart);
+        DrawQueuedRun(cmd, runStart, runEnd);
         runStart = runEnd;
     }
 
     state_->queuedDraws.clear();
     state_->batchVertices.clear();
+}
+
+size_t SpriteRenderer::FindQueuedRunEnd(size_t runStart) const {
+    const QueuedDraw& first = state_->queuedDraws[runStart];
+    size_t runEnd = runStart + 1;
+    while (runEnd < state_->queuedDraws.size() &&
+           state_->queuedDraws[runEnd].pipelineKind == first.pipelineKind &&
+           state_->queuedDraws[runEnd].textureId == first.textureId) {
+        ++runEnd;
+    }
+    return runEnd;
+}
+
+void SpriteRenderer::DrawQueuedRun(ID3D12GraphicsCommandList* commandList, size_t runStart,
+                                   size_t runEnd) {
+    const QueuedDraw& first = state_->queuedDraws[runStart];
+    if (state_->activePipelineKind != first.pipelineKind) {
+        state_->activePipelineKind = first.pipelineKind;
+        ID3D12PipelineState* pipelineState =
+            state_
+                ->pipelineStates[static_cast<uint32_t>(state_->activeRenderTargetKind)]
+                                [static_cast<uint32_t>(state_->activePipelineKind)]
+                .Get();
+        if (pipelineState == nullptr) {
+            return;
+        }
+        commandList->SetPipelineState(pipelineState);
+    }
+
+    state_->batchVertices.clear();
+    try {
+        state_->batchVertices.reserve((runEnd - runStart) * kVerticesPerSprite);
+        for (size_t index = runStart; index < runEnd; ++index) {
+            const auto& vertices = state_->queuedDraws[index].vertices;
+            state_->batchVertices.insert(state_->batchVertices.end(), vertices.begin(),
+                                         vertices.end());
+        }
+    } catch (const std::exception&) {
+        state_->batchVertices.clear();
+        return;
+    }
+    const UploadAllocation allocation = state_->uploadBuffer.WriteArray(
+        state_->batchVertices.data(), state_->batchVertices.size(), alignof(SpriteVertex));
+    if (allocation.gpu == 0) {
+        return;
+    }
+    D3D12_VERTEX_BUFFER_VIEW view{};
+    view.BufferLocation = allocation.gpu;
+    view.SizeInBytes = static_cast<UINT>(state_->batchVertices.size() * sizeof(SpriteVertex));
+    view.StrideInBytes = sizeof(SpriteVertex);
+    commandList->IASetVertexBuffers(0, 1, &view);
+    const uint32_t boundTextureId = ResolveSpriteTextureId(textureManager_, first.textureId);
+    if (!IsValidResourceId(boundTextureId)) {
+        return;
+    }
+    const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureManager_->GetGpuHandle(boundTextureId);
+    if (textureHandle.ptr == 0) {
+        return;
+    }
+    commandList->SetGraphicsRootDescriptorTable(1, textureHandle);
+    commandList->DrawInstanced(static_cast<UINT>(state_->batchVertices.size()), 1, 0, 0);
 }
