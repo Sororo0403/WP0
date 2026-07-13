@@ -731,10 +731,29 @@ void GameScene::UpdateEnemyActor(CombatActor& actor) {
         return;
     }
 
-    actor.state = CombatState::Idle;
-    actor.currentMove = MoveId::None;
-    actor.frameInState = 0;
-    actor.hitApplied = false;
+    if (actor.state == CombatState::HitStun) {
+        UpdateHitStun(actor);
+        return;
+    }
+    if (actor.state == CombatState::Down) {
+        UpdateDown(actor);
+        return;
+    }
+    if (actor.state == CombatState::GuardStun) {
+        UpdateGuardStun(actor);
+        return;
+    }
+    if (actor.state == CombatState::Attack) {
+        ++actor.frameInState;
+        const AttackData& attack = GetAttackData(actor.currentMove);
+        TryResolveAttackHit(actor, player_);
+        if (actor.frameInState >= attack.total) {
+            actor.state = CombatState::Idle;
+            actor.currentMove = MoveId::None;
+            actor.frameInState = 0;
+            actor.hitApplied = false;
+        }
+    }
 }
 
 void GameScene::UpdateEnemyTraining(CombatActor& actor) {
@@ -771,14 +790,63 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
         distance <= heavy.range &&
         (playerInRecovery || actor.aiAttackCount >= 2);
 
-    if (!IsAnyEnemyAttacking() && (distance <= poke.range || shouldUseHeavy)) {
+    if (!IsAnyEnemyAttacking() && CanStartAttack(actor) &&
+        (distance <= poke.range || shouldUseHeavy)) {
         StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
         actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
         actor.aiCooldownFrames = kEnemySupportAttackCooldown;
     }
 }
 
+bool GameScene::CanStartAttack(const CombatActor& actor) const {
+    if (!actor.IsAlive()) {
+        return false;
+    }
+
+    switch (actor.state) {
+    case CombatState::Idle:
+    case CombatState::Attack:
+    case CombatState::Guard:
+    case CombatState::Dodge:
+        return true;
+    case CombatState::GuardStun:
+    case CombatState::HitStun:
+    case CombatState::Down:
+        return false;
+    }
+
+    return false;
+}
+
+bool GameScene::CanStartGuard(const CombatActor& actor) const {
+    return actor.IsAlive() && actor.state == CombatState::Idle;
+}
+
+bool GameScene::CanStartDodge(const CombatActor& actor) const {
+    if (!actor.IsAlive()) {
+        return false;
+    }
+
+    switch (actor.state) {
+    case CombatState::Idle:
+    case CombatState::Attack:
+    case CombatState::Guard:
+    case CombatState::Dodge:
+        return true;
+    case CombatState::GuardStun:
+    case CombatState::HitStun:
+    case CombatState::Down:
+        return false;
+    }
+
+    return false;
+}
+
 void GameScene::StartAttack(CombatActor& actor, MoveId move) {
+    if (!CanStartAttack(actor)) {
+        return;
+    }
+
     actor.state = CombatState::Attack;
     actor.currentMove = move;
     actor.frameInState = 0;
@@ -791,6 +859,10 @@ void GameScene::StartAttack(CombatActor& actor, MoveId move) {
 }
 
 void GameScene::StartGuard(CombatActor& actor) {
+    if (!CanStartGuard(actor)) {
+        return;
+    }
+
     actor.state = CombatState::Guard;
     actor.currentMove = MoveId::None;
     actor.frameInState = 0;
@@ -798,6 +870,10 @@ void GameScene::StartGuard(CombatActor& actor) {
 }
 
 void GameScene::StartDodge(CombatActor& actor) {
+    if (!CanStartDodge(actor)) {
+        return;
+    }
+
     const bool chainedFromDodge = actor.state == CombatState::Dodge;
     const bool chainedFromOrbitDodge = chainedFromDodge && actor.orbitDodgeActive;
     const Vec2 previousOrbitCenter = actor.orbitCenter;

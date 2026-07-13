@@ -178,6 +178,9 @@ private:
     void UpdateDown(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
+    bool CanStartAttack(const CombatActor& actor) const;
+    bool CanStartGuard(const CombatActor& actor) const;
+    bool CanStartDodge(const CombatActor& actor) const;
     void StartAttack(CombatActor& actor, MoveId move);
     void StartGuard(CombatActor& actor);
     void StartDodge(CombatActor& actor);
