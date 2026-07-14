@@ -45,6 +45,7 @@ constexpr float kMaxExGauge = 100.0f;
 constexpr float kExBoostCost = 50.0f;
 constexpr float kExActionCost = 25.0f;
 constexpr int kExBoostFrames = 300;
+constexpr float kExBoostGaugeDrainPerFrame = 0.15f;
 constexpr float kExActionDistance = 1.45f;
 constexpr bool kEnemyInvincibleForDebug = true;
 constexpr float kSingleStyleFinisherDamageScale = 1.15f;
@@ -180,6 +181,9 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
                     IsExBoostActive() ? "active" : "off", exBoostFrames_,
                     exGauge_ >= kExBoostCost ? "yes" : "no");
+        ImGui::Text("EX Action: %s  drain/frame=%.2f",
+                    IsExBoostActive() && exGauge_ >= kExActionCost ? "ready" : "no",
+                    kExBoostGaugeDrainPerFrame);
         ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
         ImGui::Separator();
         DrawDebugCombatants();
@@ -614,6 +618,8 @@ void GameScene::UpdateFeedbackTimers() {
 
     if (exBoostFrames_ > 0) {
         --exBoostFrames_;
+        exGauge_ = std::clamp(exGauge_ - kExBoostGaugeDrainPerFrame, 0.0f,
+                              kMaxExGauge);
         if (exGauge_ <= 0.0f) {
             exBoostFrames_ = 0;
         }
@@ -1130,6 +1136,9 @@ bool GameScene::TryStartExAction() {
     exGauge_ = std::clamp(exGauge_ - kExActionCost, 0.0f, kMaxExGauge);
     FaceActorToward(player_, TargetEnemy());
     StartAttack(player_, MoveId::ExAction);
+    if (exGauge_ <= 0.0f) {
+        exBoostFrames_ = 0;
+    }
     hitstopFrames_ = 4;
     StartCameraShake(11, 0.08f);
     return true;
@@ -1273,6 +1282,9 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
         damage -= absorbed;
         exGauge_ = std::clamp(exGauge_ - static_cast<float>(absorbed), 0.0f,
                               kMaxExGauge);
+        if (exGauge_ <= 0.0f) {
+            exBoostFrames_ = 0;
+        }
         debug_.lastDefense = "EX absorb";
     }
 
