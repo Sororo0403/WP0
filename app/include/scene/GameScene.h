@@ -113,6 +113,7 @@ private:
         int hitstun = 14;
         int blockstun = 9;
         int hitstop = 5;
+        float advanceDistance = 0.0f;
     };
 
     struct DodgeData {
@@ -196,6 +197,7 @@ private:
     static void UpdateDown(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
+    static void ApplyAttackMovement(CombatActor& actor, const AttackData& attack);
     static bool CanStartAttack(const CombatActor& actor);
     static bool CanStartGuard(const CombatActor& actor);
     static bool CanStartDodge(const CombatActor& actor);

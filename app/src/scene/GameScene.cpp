@@ -230,6 +230,7 @@ void GameScene::DrawDebugCombatants() const {
         ImGui::Text("Attack frames: startup=%d active=%d-%d cancel=%d-%d total=%d",
                     attack.startup, attack.startup, attack.startup + attack.active - 1,
                     attack.cancelFrom, attack.cancelTo, attack.total);
+        ImGui::Text("Attack advance: %.2f", attack.advanceDistance);
     }
     ImGui::Text("Enemy : %s  move=%s  frame=%d  hp=%d", StateName(enemy_.state),
                 GetAttackData(enemy_.currentMove).name, enemy_.frameInState, enemy_.hp);
@@ -661,12 +662,14 @@ void GameScene::UpdatePlayerIdle() {
 
 void GameScene::UpdatePlayerAttack() {
     ++player_.frameInState;
+    const AttackData& attack = GetAttackData(player_.currentMove);
+    ApplyAttackMovement(player_, attack);
     if (IsExBoostActive() && player_.frameInState < GetAttackData(player_.currentMove).total - 1 &&
         debug_.combatFrame % 2 == 0) {
         ++player_.frameInState;
+        ApplyAttackMovement(player_, attack);
     }
 
-    const AttackData& attack = GetAttackData(player_.currentMove);
     TryResolveAttackHit(player_, enemy_);
     for (CombatActor& enemy : supportEnemies_) {
         if (!enemy.IsAlive()) {
@@ -834,6 +837,7 @@ void GameScene::UpdateEnemyActor(CombatActor& actor) {
     if (actor.state == CombatState::Attack) {
         ++actor.frameInState;
         const AttackData& attack = GetAttackData(actor.currentMove);
+        ApplyAttackMovement(actor, attack);
         TryResolveAttackHit(actor, player_);
         if (actor.frameInState >= attack.total) {
             actor.state = CombatState::Idle;
@@ -899,6 +903,21 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
         actor.aiCooldownFrames =
             supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
     }
+}
+
+void GameScene::ApplyAttackMovement(CombatActor& actor, const AttackData& attack) {
+    if (actor.state != CombatState::Attack || attack.advanceDistance <= 0.0f ||
+        attack.startup <= 0 || actor.frameInState <= 0 ||
+        actor.frameInState > attack.startup) {
+        return;
+    }
+
+    const Vec2 forward = NormalizeOr(actor.attackFacing, actor.facing);
+    const float stepDistance =
+        attack.advanceDistance / static_cast<float>(attack.startup);
+    actor.position.x += forward.x * stepDistance;
+    actor.position.z += forward.z * stepDistance;
+    actor.attackOrigin = actor.position;
 }
 
 bool GameScene::CanStartAttack(const CombatActor& actor) {
@@ -1566,36 +1585,36 @@ bool GameScene::IsKnockdownAttack(MoveId move) {
 const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
     static constexpr AttackData kNone{MoveId::None, "None", 0, 0, 0, 1, 0, 0,
                                       MoveId::None, MoveId::None, 0.0f, 0.0f,
-                                      0, 0, 0, 0};
+                                      0, 0, 0, 0, 0.0f};
     static constexpr std::array<AttackData, 14> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
-         0.35f, 10, 14, 9, 5},
+         0.35f, 10, 14, 9, 5, 0.10f},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
-         0.38f, 11, 15, 10, 5},
+         0.38f, 11, 15, 10, 5, 0.12f},
         {MoveId::L3, "L3", 16, 4, 18, 38, 22, 30, MoveId::L4, MoveId::F3, 1.20f,
-         0.42f, 12, 18, 11, 6},
+         0.42f, 12, 18, 11, 6, 0.14f},
         {MoveId::L4, "L4", 18, 4, 22, 44, 26, 34, MoveId::None, MoveId::F4,
-         1.28f, 0.48f, 14, 20, 13, 6},
+         1.28f, 0.48f, 14, 20, 13, 6, 0.18f},
         {MoveId::F1, "F1", 18, 4, 24, 46, 46, 46, MoveId::None, MoveId::None,
-         1.20f, 0.42f, 18, 22, 16, 8},
+         1.20f, 0.42f, 18, 22, 16, 8, 0.22f},
         {MoveId::F2, "F2", 20, 5, 26, 51, 51, 51, MoveId::None, MoveId::None,
-         1.25f, 0.46f, 21, 24, 18, 8},
+         1.25f, 0.46f, 21, 24, 18, 8, 0.25f},
         {MoveId::F3, "F3", 22, 6, 28, 56, 56, 56, MoveId::None, MoveId::None,
-         1.30f, 0.52f, 24, 26, 19, 9},
+         1.30f, 0.52f, 24, 26, 19, 9, 0.28f},
         {MoveId::F4, "F4", 24, 8, 30, 62, 62, 62, MoveId::None, MoveId::None,
-         1.40f, 0.58f, 30, 30, 22, 10},
+         1.40f, 0.58f, 30, 30, 22, 10, 0.34f},
         {MoveId::SwayAttack, "SWA", 11, 4, 17, 32, 32, 32, MoveId::None,
-         MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7},
+         MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7, 0.18f},
         {MoveId::CounterAttack, "CTR", 1, 12, 29, 42, 42, 42, MoveId::None,
-         MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12},
+         MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12, 0.32f},
         {MoveId::DownAttack, "DWN", 15, 5, 18, 38, 38, 38, MoveId::None,
-         MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8},
+         MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8, 0.20f},
         {MoveId::ExAction, "EX", 4, 6, 32, 42, 42, 42, MoveId::None,
-         MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12},
+         MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12, 0.55f},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
-         MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5},
+         MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5, 0.12f},
         {MoveId::EnemyHeavy, "EnemyHeavy", 36, 7, 34, 77, 77, 77, MoveId::None,
-         MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9},
+         MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9, 0.22f},
     }};
 
     const auto match = std::find_if(kAttacks.begin(), kAttacks.end(),
