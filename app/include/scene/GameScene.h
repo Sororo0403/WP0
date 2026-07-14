@@ -69,6 +69,13 @@ private:
         Crowd,
     };
 
+    enum class EnemyIntent {
+        Approach,
+        HoldRange,
+        Retreat,
+        Strafe,
+    };
+
     struct Vec2 {
         float x = 0.0f;
         float z = 0.0f;
@@ -130,6 +137,7 @@ private:
         Vec2 attackOrigin{};
         Vec2 attackFacing{0.0f, 1.0f};
         Vec2 dodgeDirection{0.0f, -1.0f};
+        Vec2 aiMoveDirection{};
         Vec2 orbitCenter{};
         Vec2 lastOrbitTarget{};
         float dodgeDistance = 0.8f;
@@ -144,8 +152,12 @@ private:
         int guardStunFrames = 0;
         int downFrames = 0;
         int aiCooldownFrames = 0;
+        int aiIntentFrames = 0;
         int aiAttackCount = 0;
+        float aiStrafePhase = 0.0f;
+        float aiStrafeSign = 1.0f;
         int dodgeChainCount = 0;
+        EnemyIntent aiIntent = EnemyIntent::Approach;
         uint64_t attackSerial = 0;
         uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;

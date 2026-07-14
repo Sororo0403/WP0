@@ -19,13 +19,19 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kFixedCombatDt = 1.0f / 60.0f;
 constexpr int kInputBufferFrames = 8;
 constexpr float kPlayerMoveSpeed = 2.4f;
-constexpr float kEnemyMoveSpeed = 1.35f;
+constexpr float kEnemyMoveSpeed = 1.65f;
 constexpr int kMaxFixedStepsPerFrame = 5;
 constexpr int kEnemyTrainingAttackCooldown = 90;
 constexpr int kEnemySupportAttackCooldown = 135;
-constexpr float kEnemyPreferredRange = 0.95f;
-constexpr float kEnemyRetreatRange = 0.68f;
-constexpr float kEnemyEngageRange = 1.18f;
+constexpr float kEnemyPreferredRange = 1.98f;
+constexpr float kEnemyRetreatRange = 1.45f;
+constexpr float kEnemyEngageRange = 2.38f;
+constexpr float kEnemyStrafeSpeedScale = 0.62f;
+constexpr float kEnemyRetreatSpeedScale = 0.74f;
+constexpr float kEnemyAttackRunSpeedScale = 2.25f;
+constexpr float kEnemyMoveBlend = 0.12f;
+constexpr int kEnemyIntentMinFrames = 24;
+constexpr int kEnemyIntentMaxFrames = 54;
 constexpr int kDoubleSwayStartFrame = 6;
 constexpr int kMaxDodgeChainCount = 2;
 constexpr int kDodgeRecoveryFrames = 5;
@@ -57,7 +63,7 @@ constexpr float kCrowdStyleRangeScale = 1.18f;
 constexpr float kCrowdStyleHalfWidthScale = 2.1f;
 constexpr float kCameraYawSpeed = 2.35f;
 constexpr float kCameraStickDeadZone = 0.18f;
-constexpr size_t kEnemyCount = 3;
+constexpr size_t kEnemyCount = 1;
 } // namespace
 
 void GameScene::Initialize(const SceneContext& ctx) {
@@ -347,24 +353,39 @@ void GameScene::ResetPhaseOne() {
     enemy_.hp = 100;
     enemy_.aiCooldownFrames = 45;
     enemy_.aiAttackCount = 0;
+    enemy_.aiIntent = EnemyIntent::Approach;
+    enemy_.aiIntentFrames = 20;
+    enemy_.aiMoveDirection = {};
+    enemy_.aiStrafePhase = 0.0f;
+    enemy_.aiStrafeSign = 1.0f;
 
     supportEnemies_[0] = {};
     supportEnemies_[0].name = "Enemy2";
     supportEnemies_[0].position = {-1.45f, 0.45f};
     supportEnemies_[0].facing = {0.0f, -1.0f};
     supportEnemies_[0].attackFacing = supportEnemies_[0].facing;
-    supportEnemies_[0].hp = 100;
+    supportEnemies_[0].hp = 0;
     supportEnemies_[0].aiCooldownFrames = 80;
     supportEnemies_[0].aiAttackCount = 1;
+    supportEnemies_[0].aiIntent = EnemyIntent::Strafe;
+    supportEnemies_[0].aiIntentFrames = 30;
+    supportEnemies_[0].aiMoveDirection = {};
+    supportEnemies_[0].aiStrafePhase = 1.7f;
+    supportEnemies_[0].aiStrafeSign = -1.0f;
 
     supportEnemies_[1] = {};
     supportEnemies_[1].name = "Enemy3";
     supportEnemies_[1].position = {1.65f, 1.85f};
     supportEnemies_[1].facing = {0.0f, -1.0f};
     supportEnemies_[1].attackFacing = supportEnemies_[1].facing;
-    supportEnemies_[1].hp = 100;
+    supportEnemies_[1].hp = 0;
     supportEnemies_[1].aiCooldownFrames = 120;
     supportEnemies_[1].aiAttackCount = 2;
+    supportEnemies_[1].aiIntent = EnemyIntent::HoldRange;
+    supportEnemies_[1].aiIntentFrames = 30;
+    supportEnemies_[1].aiMoveDirection = {};
+    supportEnemies_[1].aiStrafePhase = 3.1f;
+    supportEnemies_[1].aiStrafeSign = 1.0f;
 
     UpdateCombatCamera();
 }
@@ -385,11 +406,11 @@ void GameScene::InitializeVisuals() {
     }
 
     playerModel_ = models.CreateBoxHandle(kInvalidResourceId,
-                                          MakeMaterial(0.18f, 0.45f, 1.0f), 0.55f,
-                                          1.7f, 0.45f);
+                                          MakeMaterial(0.18f, 0.45f, 1.0f), 0.50f,
+                                          1.55f, 0.41f);
     enemyModel_ = models.CreateBoxHandle(kInvalidResourceId,
-                                         MakeMaterial(1.0f, 0.28f, 0.18f), 0.55f,
-                                         1.55f, 0.45f);
+                                         MakeMaterial(1.0f, 0.28f, 0.18f), 0.50f,
+                                         1.42f, 0.41f);
     floorModel_ = models.CreatePlaneHandle(kInvalidResourceId,
                                            MakeMaterial(0.18f, 0.20f, 0.20f));
     attackRangeModel_ = models.CreateBoxHandle(
@@ -885,12 +906,87 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     const Vec2 toPlayer =
         Normalize(Vec2{player_.position.x - actor.position.x,
                        player_.position.z - actor.position.z});
-    if (distance > kEnemyEngageRange) {
-        actor.position.x += toPlayer.x * kEnemyMoveSpeed * kFixedCombatDt;
-        actor.position.z += toPlayer.z * kEnemyMoveSpeed * kFixedCombatDt;
-    } else if (distance < kEnemyRetreatRange) {
-        actor.position.x -= toPlayer.x * kEnemyMoveSpeed * 0.55f * kFixedCombatDt;
-        actor.position.z -= toPlayer.z * kEnemyMoveSpeed * 0.55f * kFixedCombatDt;
+    const AttackData& playerAttack = GetAttackData(player_.currentMove);
+    const bool playerInRecovery =
+        player_.state == CombatState::Attack &&
+        player_.frameInState >= playerAttack.startup + playerAttack.active;
+
+    const AttackData& poke = GetAttackData(MoveId::EnemyPoke);
+    const AttackData& heavy = GetAttackData(MoveId::EnemyHeavy);
+    const bool playerGuarding = player_.state == CombatState::Guard;
+    const bool wantsHeavy =
+        playerGuarding || playerInRecovery || (!supportEnemy && actor.aiAttackCount >= 2);
+    const bool wantsPoke =
+        player_.state == CombatState::Idle || player_.state == CombatState::Attack ||
+        player_.state == CombatState::Dodge;
+    const bool attackReady =
+        actor.aiCooldownFrames <= 0 && enemyTrainingCooldown_ <= 0 &&
+        !IsAnyEnemyAttacking() && CanStartAttack(actor);
+
+    if (attackReady && (wantsPoke || wantsHeavy)) {
+        const bool canHeavy = wantsHeavy && distance <= heavy.range;
+        const bool canPoke = wantsPoke && distance <= poke.range;
+        if (canHeavy || canPoke) {
+            const bool shouldUseHeavy = canHeavy;
+            StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
+            actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
+            actor.aiIntent = EnemyIntent::Strafe;
+            actor.aiIntentFrames = kEnemyIntentMaxFrames;
+            actor.aiCooldownFrames =
+                supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
+            return;
+        }
+
+        actor.aiIntent = EnemyIntent::Approach;
+    } else {
+        actor.aiIntent = EnemyIntent::Strafe;
+    }
+
+    actor.aiStrafePhase += 0.035f;
+    const Vec2 strafe{toPlayer.z * actor.aiStrafeSign,
+                      -toPlayer.x * actor.aiStrafeSign};
+    Vec2 movement{};
+    float speedScale = kEnemyStrafeSpeedScale;
+    if (actor.aiIntent == EnemyIntent::Approach) {
+        movement = toPlayer;
+        speedScale = kEnemyAttackRunSpeedScale;
+    } else {
+        const float distanceError = distance - kEnemyPreferredRange;
+        const float radialCorrection = std::clamp(distanceError * 1.15f, -0.72f, 0.72f);
+        movement = Normalize(Vec2{strafe.x + toPlayer.x * radialCorrection,
+                                  strafe.z + toPlayer.z * radialCorrection});
+        if (distance < kEnemyRetreatRange) {
+            movement = Normalize(Vec2{strafe.x - toPlayer.x * 0.95f,
+                                      strafe.z - toPlayer.z * 0.95f});
+            speedScale = kEnemyRetreatSpeedScale;
+        } else if (distance > kEnemyEngageRange) {
+            movement = Normalize(Vec2{strafe.x + toPlayer.x * 0.95f,
+                                      strafe.z + toPlayer.z * 0.95f});
+            speedScale = 0.9f;
+        }
+    }
+
+    if (HasDirection(movement)) {
+        if (actor.aiIntent == EnemyIntent::Approach) {
+            actor.aiMoveDirection = movement;
+        } else {
+            actor.aiMoveDirection =
+                Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend) +
+                                   movement.x * kEnemyMoveBlend,
+                               actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend) +
+                                   movement.z * kEnemyMoveBlend});
+        }
+    } else {
+        actor.aiMoveDirection =
+            Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend),
+                           actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend)});
+        speedScale = 0.0f;
+    }
+    if (HasDirection(actor.aiMoveDirection) && speedScale > 0.0f) {
+        actor.position.x +=
+            actor.aiMoveDirection.x * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
+        actor.position.z +=
+            actor.aiMoveDirection.z * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
     }
 
     if (actor.aiCooldownFrames > 0) {
@@ -901,31 +997,6 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     if (enemyTrainingCooldown_ > 0) {
         --enemyTrainingCooldown_;
         return;
-    }
-
-    const AttackData& poke = GetAttackData(MoveId::EnemyPoke);
-    const AttackData& heavy = GetAttackData(MoveId::EnemyHeavy);
-    const AttackData& playerAttack = GetAttackData(player_.currentMove);
-    const bool playerInRecovery =
-        player_.state == CombatState::Attack &&
-        player_.frameInState >= playerAttack.startup + playerAttack.active;
-    const bool playerGuarding = player_.state == CombatState::Guard;
-    const bool shouldUseHeavy =
-        distance <= heavy.range &&
-        (playerGuarding || playerInRecovery ||
-         (!supportEnemy && actor.aiAttackCount >= 2));
-    const bool shouldPoke =
-        distance <= poke.range &&
-        (player_.state == CombatState::Idle ||
-         player_.state == CombatState::Attack ||
-         player_.state == CombatState::Dodge);
-
-    if (!IsAnyEnemyAttacking() && CanStartAttack(actor) &&
-        (shouldPoke || shouldUseHeavy)) {
-        StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
-        actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
-        actor.aiCooldownFrames =
-            supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
     }
 }
 
