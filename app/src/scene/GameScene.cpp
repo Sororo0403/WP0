@@ -530,6 +530,10 @@ void GameScene::ApplyRequestedCombatActions() {
 
 void GameScene::FaceCombatants() {
     if (lockOnActive_) {
+        if (!TargetEnemy().IsAlive()) {
+            targetEnemyIndex_ = FindNearestEnemyIndex();
+            lockOnActive_ = TargetEnemy().IsAlive();
+        }
         FaceActorToward(player_, TargetEnemy());
     }
     FaceActorToward(enemy_, player_);
@@ -1388,6 +1392,25 @@ const GameScene::CombatActor& GameScene::EnemyAt(size_t index) const {
     return supportEnemies_[(std::min)(index, kEnemyCount - 1) - 1];
 }
 
+size_t GameScene::FindNearestEnemyIndex() const {
+    size_t bestIndex = 0;
+    float bestDistance = 999999.0f;
+    for (size_t i = 0; i < kEnemyCount; ++i) {
+        const CombatActor& enemy = EnemyAt(i);
+        if (!enemy.IsAlive()) {
+            continue;
+        }
+
+        const float distance = Distance(player_.position, enemy.position);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+        }
+    }
+
+    return bestIndex;
+}
+
 const GameScene::CombatActor* GameScene::FindOrbitSwayTarget() const {
     const CombatActor* best = nullptr;
     float bestDistance = kOrbitSwayTargetRange;
@@ -1408,17 +1431,21 @@ const GameScene::CombatActor* GameScene::FindOrbitSwayTarget() const {
 }
 
 void GameScene::CycleLockOnTarget(int direction) {
-    if (lockOnActive_ && kEnemyCount == 1) {
+    (void)direction;
+    if (lockOnActive_) {
         lockOnActive_ = false;
         debug_.lastDefense = "Lock off";
         StartCameraShake(3, 0.012f);
         return;
     }
 
+    targetEnemyIndex_ = FindNearestEnemyIndex();
+    if (!TargetEnemy().IsAlive()) {
+        debug_.lastDefense = "Lock failed";
+        return;
+    }
+
     lockOnActive_ = true;
-    const int current = static_cast<int>(targetEnemyIndex_);
-    const int count = static_cast<int>(kEnemyCount);
-    targetEnemyIndex_ = static_cast<size_t>((current + direction + count) % count);
     debug_.lastDefense = "Lock on";
     StartCameraShake(4, 0.018f);
 }

@@ -229,6 +229,7 @@ private:
     const CombatActor& TargetEnemy() const;
     CombatActor& EnemyAt(size_t index);
     const CombatActor& EnemyAt(size_t index) const;
+    size_t FindNearestEnemyIndex() const;
     const CombatActor* FindOrbitSwayTarget() const;
     void CycleLockOnTarget(int direction);
     Vec2 ReadMovementInput() const;
