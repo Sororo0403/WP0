@@ -40,6 +40,8 @@ constexpr int kKnockdownFrames = 90;
 constexpr float kHitKnockbackDistance = 0.18f;
 constexpr float kFinisherKnockbackDistance = 0.34f;
 constexpr float kBlockKnockbackDistance = 0.08f;
+constexpr float kHitPullTargetDistance = 0.72f;
+constexpr float kHitPullStrength = 0.55f;
 constexpr float kDownAttackDistance = 1.5f;
 constexpr float kMaxExGauge = 100.0f;
 constexpr float kExBoostCost = 50.0f;
@@ -53,6 +55,8 @@ constexpr int kSingleStyleFinisherBlockstunBonus = 6;
 constexpr float kCrowdStyleDamageScale = 0.65f;
 constexpr float kCrowdStyleRangeScale = 1.18f;
 constexpr float kCrowdStyleHalfWidthScale = 2.1f;
+constexpr float kCameraYawSpeed = 2.35f;
+constexpr float kCameraStickDeadZone = 0.18f;
 constexpr size_t kEnemyCount = 3;
 } // namespace
 
@@ -305,6 +309,7 @@ bool GameScene::CombatActor::IsAlive() const {
 void GameScene::ResetPhaseOne() {
     combatAccumulator_ = 0.0f;
     exGauge_ = 0.0f;
+    combatCameraYaw_ = 0.0f;
     cameraShakeMagnitude_ = 0.0f;
     hitstopFrames_ = 0;
     enemyTrainingCooldown_ = 45;
@@ -403,6 +408,25 @@ void GameScene::CaptureFrameInput() {
     if (input.IsKeyTrigger(DIK_R)) {
         ResetPhaseOne();
         return;
+    }
+
+    float cameraYawInput = 0.0f;
+    if (input.IsKeyPress(DIK_LEFT)) {
+        cameraYawInput -= 1.0f;
+    }
+    if (input.IsKeyPress(DIK_RIGHT)) {
+        cameraYawInput += 1.0f;
+    }
+    const float rightStickX = input.GetGamepadRightStickX();
+    if (std::abs(rightStickX) > kCameraStickDeadZone) {
+        cameraYawInput += rightStickX;
+    }
+    if (cameraYawInput != 0.0f) {
+        const float dt = ctx_ ? (std::max)(0.0f, ctx_->frame.deltaTime) : 0.0f;
+        combatCameraYaw_ =
+            std::remainder(combatCameraYaw_ + cameraYawInput * kCameraYawSpeed * dt,
+                           kPi * 2.0f);
+        UpdateCombatCamera();
     }
 
     pendingInput_.movement = ReadPlayerMovement(input);
@@ -586,20 +610,20 @@ void GameScene::UpdatePlayerCombatState() {
 }
 
 void GameScene::UpdateCombatCamera() {
-    const CombatActor& target = TargetEnemy();
-    const Vec2 center{(player_.position.x + target.position.x) * 0.5f,
-                      (player_.position.z + target.position.z) * 0.5f};
-    const float distance = Distance(player_.position, target.position);
-    const float cameraDistance = (std::max)(6.5f, distance + 5.0f);
-    combatCamera_.SetPosition({center.x, 4.4f, center.z - cameraDistance});
+    const Vec2 center{player_.position.x, player_.position.z};
+    constexpr float cameraDistance = 4.8f - 1.15f;
+    const Vec2 cameraForward{std::sin(combatCameraYaw_), std::cos(combatCameraYaw_)};
+    const Vec2 cameraPosition{center.x - cameraForward.x * cameraDistance,
+                              center.z - cameraForward.z * cameraDistance};
+    combatCamera_.SetPosition({cameraPosition.x, 2.7f, cameraPosition.z});
     if (cameraShakeFrames_ > 0) {
         const float phase = static_cast<float>(debug_.combatFrame);
         const float xShake = std::sin(phase * 1.71f) * cameraShakeMagnitude_;
         const float yShake = std::cos(phase * 2.17f) * cameraShakeMagnitude_ * 0.65f;
-        combatCamera_.SetPosition({center.x + xShake, 4.4f + yShake,
-                                   center.z - cameraDistance});
+        combatCamera_.SetPosition({cameraPosition.x + xShake, 2.7f + yShake,
+                                   cameraPosition.z});
     }
-    combatCamera_.SetRotation({0.55f, 0.0f, 0.0f});
+    combatCamera_.SetRotation({0.34f, combatCameraYaw_, 0.0f});
 }
 
 void GameScene::UpdateFeedbackTimers() {
@@ -906,15 +930,19 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
 }
 
 void GameScene::ApplyAttackMovement(CombatActor& actor, const AttackData& attack) {
+    const int advanceFrames = attack.startup + attack.active;
     if (actor.state != CombatState::Attack || attack.advanceDistance <= 0.0f ||
-        attack.startup <= 0 || actor.frameInState <= 0 ||
-        actor.frameInState > attack.startup) {
+        advanceFrames <= 0 || actor.frameInState <= 0 ||
+        actor.frameInState > advanceFrames) {
         return;
     }
 
     const Vec2 forward = NormalizeOr(actor.attackFacing, actor.facing);
+    const float progress =
+        static_cast<float>(actor.frameInState - 1) / static_cast<float>(advanceFrames);
+    const float frontLoad = std::clamp(1.75f - progress * 1.35f, 0.4f, 1.75f);
     const float stepDistance =
-        attack.advanceDistance / static_cast<float>(attack.startup);
+        attack.advanceDistance * frontLoad / static_cast<float>(advanceFrames);
     actor.position.x += forward.x * stepDistance;
     actor.position.z += forward.z * stepDistance;
     actor.attackOrigin = actor.position;
@@ -1319,9 +1347,11 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
     defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
-    ApplyKnockback(defender, AttackFacing(attacker),
-                   IsSingleStyleFinisher(attack.id) ? kFinisherKnockbackDistance
-                                                    : kHitKnockbackDistance);
+    if (IsKnockdownAttack(attack.id)) {
+        ApplyKnockback(defender, AttackFacing(attacker), kFinisherKnockbackDistance);
+    } else {
+        ApplyHitPull(attacker, defender, attack);
+    }
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
     AddHitFeedback(attacker, attack);
@@ -1356,6 +1386,20 @@ void GameScene::ApplyKnockback(CombatActor& defender, Vec2 direction, float dist
     defender.position.x += knockback.x * distance;
     defender.position.z += knockback.z * distance;
     debug_.lastKnockback = distance;
+}
+
+void GameScene::ApplyHitPull(CombatActor& attacker, CombatActor& defender,
+                             const AttackData& attack) {
+    const Vec2 facing = AttackFacing(attacker);
+    const float targetDistance =
+        std::clamp(attack.range * 0.58f, kHitPullTargetDistance, attack.range);
+    const Vec2 targetPosition{attacker.position.x + facing.x * targetDistance,
+                              attacker.position.z + facing.z * targetDistance};
+    const Vec2 toTarget{targetPosition.x - defender.position.x,
+                        targetPosition.z - defender.position.z};
+    defender.position.x += toTarget.x * kHitPullStrength;
+    defender.position.z += toTarget.z * kHitPullStrength;
+    debug_.lastKnockback = -Distance({0.0f, 0.0f}, toTarget) * kHitPullStrength;
 }
 
 void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& attack) {
@@ -1588,33 +1632,33 @@ const GameScene::AttackData& GameScene::GetAttackData(MoveId move) {
                                       0, 0, 0, 0, 0.0f};
     static constexpr std::array<AttackData, 14> kAttacks{{
         {MoveId::L1, "L1", 12, 3, 13, 28, 15, 22, MoveId::L2, MoveId::F1, 1.10f,
-         0.35f, 10, 14, 9, 5, 0.10f},
+         0.35f, 10, 14, 9, 5, 0.24f},
         {MoveId::L2, "L2", 14, 3, 15, 32, 18, 26, MoveId::L3, MoveId::F2, 1.15f,
-         0.38f, 11, 15, 10, 5, 0.12f},
+         0.38f, 11, 15, 10, 5, 0.28f},
         {MoveId::L3, "L3", 16, 4, 18, 38, 22, 30, MoveId::L4, MoveId::F3, 1.20f,
-         0.42f, 12, 18, 11, 6, 0.14f},
+         0.42f, 12, 18, 11, 6, 0.32f},
         {MoveId::L4, "L4", 18, 4, 22, 44, 26, 34, MoveId::None, MoveId::F4,
-         1.28f, 0.48f, 14, 20, 13, 6, 0.18f},
+         1.28f, 0.48f, 14, 20, 13, 6, 0.38f},
         {MoveId::F1, "F1", 18, 4, 24, 46, 46, 46, MoveId::None, MoveId::None,
-         1.20f, 0.42f, 18, 22, 16, 8, 0.22f},
+         1.20f, 0.42f, 18, 22, 16, 8, 0.42f},
         {MoveId::F2, "F2", 20, 5, 26, 51, 51, 51, MoveId::None, MoveId::None,
-         1.25f, 0.46f, 21, 24, 18, 8, 0.25f},
+         1.25f, 0.46f, 21, 24, 18, 8, 0.48f},
         {MoveId::F3, "F3", 22, 6, 28, 56, 56, 56, MoveId::None, MoveId::None,
-         1.30f, 0.52f, 24, 26, 19, 9, 0.28f},
+         1.30f, 0.52f, 24, 26, 19, 9, 0.54f},
         {MoveId::F4, "F4", 24, 8, 30, 62, 62, 62, MoveId::None, MoveId::None,
-         1.40f, 0.58f, 30, 30, 22, 10, 0.34f},
+         1.40f, 0.58f, 30, 30, 22, 10, 0.62f},
         {MoveId::SwayAttack, "SWA", 11, 4, 17, 32, 32, 32, MoveId::None,
-         MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7, 0.18f},
+         MoveId::None, 1.00f, 0.35f, 13, 18, 12, 7, 0.36f},
         {MoveId::CounterAttack, "CTR", 1, 12, 29, 42, 42, 42, MoveId::None,
-         MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12, 0.32f},
+         MoveId::None, 1.35f, 0.45f, 24, 36, 0, 12, 0.62f},
         {MoveId::DownAttack, "DWN", 15, 5, 18, 38, 38, 38, MoveId::None,
-         MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8, 0.20f},
+         MoveId::None, 1.20f, 0.45f, 20, 20, 0, 8, 0.34f},
         {MoveId::ExAction, "EX", 4, 6, 32, 42, 42, 42, MoveId::None,
-         MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12, 0.55f},
+         MoveId::None, 1.55f, 0.60f, 38, 36, 0, 12, 0.95f},
         {MoveId::EnemyPoke, "EnemyPoke", 22, 5, 28, 55, 55, 55, MoveId::None,
-         MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5, 0.12f},
+         MoveId::None, 1.10f, 0.40f, 8, 14, 12, 5, 0.24f},
         {MoveId::EnemyHeavy, "EnemyHeavy", 36, 7, 34, 77, 77, 77, MoveId::None,
-         MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9, 0.22f},
+         MoveId::None, 1.45f, 0.55f, 18, 28, 18, 9, 0.42f},
     }};
 
     const auto match = std::find_if(kAttacks.begin(), kAttacks.end(),

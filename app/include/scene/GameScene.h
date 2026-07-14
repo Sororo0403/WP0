@@ -221,6 +221,8 @@ private:
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyKnockback(CombatActor& defender, Vec2 direction, float distance);
+    void ApplyHitPull(CombatActor& attacker, CombatActor& defender,
+                      const AttackData& attack);
     void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
     void AddBlockFeedback(const CombatActor& attacker);
     void StartCameraShake(int frames, float magnitude);
@@ -270,6 +272,7 @@ private:
     float elapsedSeconds_ = 0.0f;
     float combatAccumulator_ = 0.0f;
     float exGauge_ = 0.0f;
+    float combatCameraYaw_ = 0.0f;
     float cameraShakeMagnitude_ = 0.0f;
     int hitstopFrames_ = 0;
     int enemyTrainingCooldown_ = 45;
