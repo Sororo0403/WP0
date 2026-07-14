@@ -53,7 +53,7 @@ constexpr int kSingleStyleFinisherBlockstunBonus = 6;
 constexpr float kCrowdStyleDamageScale = 0.65f;
 constexpr float kCrowdStyleRangeScale = 1.18f;
 constexpr float kCrowdStyleHalfWidthScale = 2.1f;
-constexpr size_t kEnemyCount = 1;
+constexpr size_t kEnemyCount = 3;
 } // namespace
 
 void GameScene::Initialize(const SceneContext& ctx) {
@@ -347,7 +347,7 @@ void GameScene::ResetPhaseOne() {
     supportEnemies_[0].position = {-1.45f, 0.45f};
     supportEnemies_[0].facing = {0.0f, -1.0f};
     supportEnemies_[0].attackFacing = supportEnemies_[0].facing;
-    supportEnemies_[0].hp = 0;
+    supportEnemies_[0].hp = 100;
     supportEnemies_[0].aiCooldownFrames = 80;
     supportEnemies_[0].aiAttackCount = 1;
 
@@ -356,7 +356,7 @@ void GameScene::ResetPhaseOne() {
     supportEnemies_[1].position = {1.65f, 1.85f};
     supportEnemies_[1].facing = {0.0f, -1.0f};
     supportEnemies_[1].attackFacing = supportEnemies_[1].facing;
-    supportEnemies_[1].hp = 0;
+    supportEnemies_[1].hp = 100;
     supportEnemies_[1].aiCooldownFrames = 120;
     supportEnemies_[1].aiAttackCount = 2;
 
@@ -852,6 +852,7 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
         return;
     }
 
+    const bool supportEnemy = &actor != &enemy_;
     const float distance = Distance(actor.position, player_.position);
     const Vec2 toPlayer =
         Normalize(Vec2{player_.position.x - actor.position.x,
@@ -883,7 +884,8 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     const bool playerGuarding = player_.state == CombatState::Guard;
     const bool shouldUseHeavy =
         distance <= heavy.range &&
-        (playerGuarding || playerInRecovery || actor.aiAttackCount >= 2);
+        (playerGuarding || playerInRecovery ||
+         (!supportEnemy && actor.aiAttackCount >= 2));
     const bool shouldPoke =
         distance <= poke.range &&
         (player_.state == CombatState::Idle ||
@@ -894,7 +896,8 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
         (shouldPoke || shouldUseHeavy)) {
         StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
         actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
-        actor.aiCooldownFrames = kEnemyTrainingAttackCooldown;
+        actor.aiCooldownFrames =
+            supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
     }
 }
 
