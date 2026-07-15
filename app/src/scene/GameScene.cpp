@@ -47,7 +47,9 @@ constexpr float kHitKnockbackDistance = 0.18f;
 constexpr float kFinisherKnockbackDistance = 0.34f;
 constexpr float kBlockKnockbackDistance = 0.08f;
 constexpr float kHitPullTargetDistance = 0.72f;
-constexpr float kHitPullStrength = 0.55f;
+constexpr float kHitPullSpeed = 0.045f;
+constexpr float kPlayerAttackHomingRange = 1.75f;
+constexpr float kPlayerAttackHomingStrength = 0.42f;
 constexpr float kDownAttackDistance = 1.5f;
 constexpr float kMaxExGauge = 100.0f;
 constexpr float kExBoostCost = 50.0f;
@@ -838,6 +840,19 @@ void GameScene::FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge
 
 void GameScene::UpdateHitStun(CombatActor& actor) {
     ++actor.frameInState;
+    if (IsEnemyActor(actor) && player_.state == CombatState::Attack) {
+        const Vec2 facing = AttackFacing(player_);
+        const Vec2 targetPosition{player_.position.x + facing.x * kHitPullTargetDistance,
+                                  player_.position.z + facing.z * kHitPullTargetDistance};
+        const Vec2 toTarget{targetPosition.x - actor.position.x,
+                            targetPosition.z - actor.position.z};
+        if (HasDirection(toTarget)) {
+            const float pullDistance = (std::min)(kHitPullSpeed, Distance({0.0f, 0.0f}, toTarget));
+            const Vec2 pullDirection = Normalize(toTarget);
+            actor.position.x += pullDirection.x * pullDistance;
+            actor.position.z += pullDirection.z * pullDistance;
+        }
+    }
     if (actor.frameInState >= actor.hitstunFrames) {
         actor.state = actor.IsAlive() ? CombatState::Idle : CombatState::Down;
         actor.currentMove = MoveId::None;
@@ -1008,7 +1023,26 @@ void GameScene::ApplyAttackMovement(CombatActor& actor, const AttackData& attack
         return;
     }
 
-    const Vec2 forward = NormalizeOr(actor.attackFacing, actor.facing);
+    Vec2 forward = NormalizeOr(actor.attackFacing, actor.facing);
+    if (&actor == &player_) {
+        const size_t targetIndex = FindNearestEnemyIndex();
+        const CombatActor& target = EnemyAt(targetIndex);
+        if (target.IsAlive()) {
+            const Vec2 toTarget{target.position.x - actor.position.x,
+                                target.position.z - actor.position.z};
+            const float targetDistance = Distance(actor.position, target.position);
+            const Vec2 targetDirection = Normalize(toTarget);
+            if (targetDistance <= kPlayerAttackHomingRange &&
+                Dot(forward, targetDirection) > -0.15f) {
+                forward = NormalizeOr(
+                    Vec2{forward.x * (1.0f - kPlayerAttackHomingStrength) +
+                             targetDirection.x * kPlayerAttackHomingStrength,
+                         forward.z * (1.0f - kPlayerAttackHomingStrength) +
+                             targetDirection.z * kPlayerAttackHomingStrength},
+                    forward);
+            }
+        }
+    }
     const float progress =
         static_cast<float>(actor.frameInState - 1) / static_cast<float>(advanceFrames);
     const float frontLoad = std::clamp(1.75f - progress * 1.35f, 0.4f, 1.75f);
@@ -1418,10 +1452,9 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
     defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
+    defender.aiMoveDirection = {};
     if (IsKnockdownAttack(attack.id)) {
         ApplyKnockback(defender, AttackFacing(attacker), kFinisherKnockbackDistance);
-    } else {
-        ApplyHitPull(attacker, defender, attack);
     }
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
@@ -1457,20 +1490,6 @@ void GameScene::ApplyKnockback(CombatActor& defender, Vec2 direction, float dist
     defender.position.x += knockback.x * distance;
     defender.position.z += knockback.z * distance;
     debug_.lastKnockback = distance;
-}
-
-void GameScene::ApplyHitPull(CombatActor& attacker, CombatActor& defender,
-                             const AttackData& attack) {
-    const Vec2 facing = AttackFacing(attacker);
-    const float targetDistance =
-        std::clamp(attack.range * 0.58f, kHitPullTargetDistance, attack.range);
-    const Vec2 targetPosition{attacker.position.x + facing.x * targetDistance,
-                              attacker.position.z + facing.z * targetDistance};
-    const Vec2 toTarget{targetPosition.x - defender.position.x,
-                        targetPosition.z - defender.position.z};
-    defender.position.x += toTarget.x * kHitPullStrength;
-    defender.position.z += toTarget.z * kHitPullStrength;
-    debug_.lastKnockback = -Distance({0.0f, 0.0f}, toTarget) * kHitPullStrength;
 }
 
 void GameScene::AddHitFeedback(const CombatActor& attacker, const AttackData& attack) {

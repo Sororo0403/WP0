@@ -205,11 +205,11 @@ private:
                                     bool moving);
     bool TryChainDodge(const CombatActor& actor, bool moving, bool recovery);
     static void FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge);
-    static void UpdateHitStun(CombatActor& actor);
+    void UpdateHitStun(CombatActor& actor);
     static void UpdateDown(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
-    static void ApplyAttackMovement(CombatActor& actor, const AttackData& attack);
+    void ApplyAttackMovement(CombatActor& actor, const AttackData& attack);
     static bool CanStartAttack(const CombatActor& actor);
     static bool CanStartGuard(const CombatActor& actor);
     static bool CanStartDodge(const CombatActor& actor);
@@ -233,8 +233,6 @@ private:
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyKnockback(CombatActor& defender, Vec2 direction, float distance);
-    void ApplyHitPull(CombatActor& attacker, CombatActor& defender,
-                      const AttackData& attack);
     void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
     void AddBlockFeedback(const CombatActor& attacker);
     void StartCameraShake(int frames, float magnitude);
