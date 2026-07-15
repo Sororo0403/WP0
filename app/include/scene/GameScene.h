@@ -62,6 +62,7 @@ private:
         Dodge,
         HitStun,
         Down,
+        GetUp,
     };
 
     enum class CombatStyle {
@@ -207,9 +208,12 @@ private:
     static void FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge);
     void UpdateHitStun(CombatActor& actor);
     static void UpdateDown(CombatActor& actor);
+    static void UpdateGetUp(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
     void ApplyAttackMovement(CombatActor& actor, const AttackData& attack);
+    void ClampCombatantsToFloor();
+    static void ClampActorToFloor(CombatActor& actor);
     static bool CanStartAttack(const CombatActor& actor);
     static bool CanStartGuard(const CombatActor& actor);
     static bool CanStartDodge(const CombatActor& actor);

@@ -43,6 +43,7 @@ constexpr float kOrbitSwayInputThreshold = 0.6f;
 constexpr float kOrbitSwayApproachThreshold = 0.55f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
+constexpr int kGetUpFrames = 34;
 constexpr float kHitKnockbackDistance = 0.18f;
 constexpr float kFinisherKnockbackDistance = 0.34f;
 constexpr float kBlockKnockbackDistance = 0.08f;
@@ -65,6 +66,10 @@ constexpr float kCrowdStyleRangeScale = 1.18f;
 constexpr float kCrowdStyleHalfWidthScale = 2.1f;
 constexpr float kCameraYawSpeed = 2.35f;
 constexpr float kCameraStickDeadZone = 0.18f;
+constexpr float kCombatFloorCenterX = 0.0f;
+constexpr float kCombatFloorCenterZ = 2.0f;
+constexpr float kCombatFloorHalfExtent = 6.0f;
+constexpr float kActorFloorInset = 0.85f;
 constexpr size_t kEnemyCount = 1;
 } // namespace
 
@@ -536,6 +541,7 @@ void GameScene::StepCombat() {
 
     if (hitstopFrames_ > 0) {
         --hitstopFrames_;
+        ClampCombatantsToFloor();
         UpdateCombatCamera();
         return;
     }
@@ -543,6 +549,7 @@ void GameScene::StepCombat() {
     FaceCombatants();
     UpdateEnemyCombatants();
     UpdatePlayerCombatState();
+    ClampCombatantsToFloor();
     inputBuffer_.Tick();
     UpdateCombatCamera();
 }
@@ -583,19 +590,27 @@ void GameScene::ApplyRequestedCombatActions() {
 }
 
 void GameScene::FaceCombatants() {
-    if (lockOnActive_) {
+    const auto canTurn = [](const CombatActor& actor) {
+        return actor.state != CombatState::Down && actor.state != CombatState::GetUp;
+    };
+
+    if (lockOnActive_ && canTurn(player_)) {
         if (!TargetEnemy().IsAlive()) {
             targetEnemyIndex_ = FindNearestEnemyIndex();
             lockOnActive_ = TargetEnemy().IsAlive();
         }
         FaceActorToward(player_, TargetEnemy());
     }
-    FaceActorToward(enemy_, player_);
+    if (canTurn(enemy_)) {
+        FaceActorToward(enemy_, player_);
+    }
     for (CombatActor& enemy : supportEnemies_) {
         if (!enemy.IsAlive()) {
             continue;
         }
-        FaceActorToward(enemy, player_);
+        if (canTurn(enemy)) {
+            FaceActorToward(enemy, player_);
+        }
     }
 }
 
@@ -619,6 +634,8 @@ void GameScene::UpdatePlayerCombatState() {
         UpdateHitStun(player_);
     } else if (player_.state == CombatState::Down) {
         UpdateDown(player_);
+    } else if (player_.state == CombatState::GetUp) {
+        UpdateGetUp(player_);
     } else if (player_.state == CombatState::GuardStun) {
         UpdateGuardStun(player_);
     } else if (player_.state == CombatState::Dodge) {
@@ -872,6 +889,18 @@ void GameScene::UpdateDown(CombatActor& actor) {
     }
 
     if (actor.downFrames <= 0) {
+        actor.state = CombatState::GetUp;
+        actor.frameInState = 0;
+    }
+}
+
+void GameScene::UpdateGetUp(CombatActor& actor) {
+    if (!actor.IsAlive()) {
+        return;
+    }
+
+    ++actor.frameInState;
+    if (actor.frameInState >= kGetUpFrames) {
         actor.state = CombatState::Idle;
         actor.frameInState = 0;
     }
@@ -888,6 +917,10 @@ void GameScene::UpdateEnemyActor(CombatActor& actor) {
     }
     if (actor.state == CombatState::Down) {
         UpdateDown(actor);
+        return;
+    }
+    if (actor.state == CombatState::GetUp) {
+        UpdateGetUp(actor);
         return;
     }
     if (actor.state == CombatState::GuardStun) {
@@ -1053,6 +1086,23 @@ void GameScene::ApplyAttackMovement(CombatActor& actor, const AttackData& attack
     actor.attackOrigin = actor.position;
 }
 
+void GameScene::ClampCombatantsToFloor() {
+    ClampActorToFloor(player_);
+    ClampActorToFloor(enemy_);
+    for (CombatActor& enemy : supportEnemies_) {
+        ClampActorToFloor(enemy);
+    }
+}
+
+void GameScene::ClampActorToFloor(CombatActor& actor) {
+    const float minX = kCombatFloorCenterX - kCombatFloorHalfExtent + kActorFloorInset;
+    const float maxX = kCombatFloorCenterX + kCombatFloorHalfExtent - kActorFloorInset;
+    const float minZ = kCombatFloorCenterZ - kCombatFloorHalfExtent + kActorFloorInset;
+    const float maxZ = kCombatFloorCenterZ + kCombatFloorHalfExtent - kActorFloorInset;
+    actor.position.x = std::clamp(actor.position.x, minX, maxX);
+    actor.position.z = std::clamp(actor.position.z, minZ, maxZ);
+}
+
 bool GameScene::CanStartAttack(const CombatActor& actor) {
     if (!actor.IsAlive()) {
         return false;
@@ -1067,6 +1117,7 @@ bool GameScene::CanStartAttack(const CombatActor& actor) {
     case CombatState::GuardStun:
     case CombatState::HitStun:
     case CombatState::Down:
+    case CombatState::GetUp:
         return false;
     }
 
@@ -1091,6 +1142,7 @@ bool GameScene::CanStartDodge(const CombatActor& actor) {
     case CombatState::GuardStun:
     case CombatState::HitStun:
     case CombatState::Down:
+    case CombatState::GetUp:
         return false;
     }
 
@@ -1446,14 +1498,15 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     if (!(IsEnemyActor(defender) && kEnemyInvincibleForDebug)) {
         defender.hp = (std::max)(0, defender.hp - damage);
     }
-    const bool knockdown = IsKnockdownAttack(attack.id);
+    const bool knockdown =
+        IsKnockdownAttack(attack.id) || (&attacker == &player_ && IsEnemyActor(defender));
     defender.state = defender.IsAlive() && !knockdown ? CombatState::HitStun : CombatState::Down;
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
     defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
     defender.aiMoveDirection = {};
-    if (IsKnockdownAttack(attack.id)) {
+    if (knockdown) {
         ApplyKnockback(defender, AttackFacing(attacker), kFinisherKnockbackDistance);
     }
     hitstopFrames_ = attack.hitstop;
@@ -1833,6 +1886,8 @@ const char* GameScene::StateName(CombatState state) {
         return "HitStun";
     case CombatState::Down:
         return "Down";
+    case CombatState::GetUp:
+        return "GetUp";
     default:
         return "Unknown";
     }
@@ -1880,16 +1935,27 @@ Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
     transform.position = {actor.position.x, 0.0f, actor.position.z};
     transform.scale = {widthScale, 1.0f, widthScale};
 
+    const float yaw = FacingYaw(actor.facing);
+    float downPitch = 0.0f;
+    if (actor.state == CombatState::Down) {
+        downPitch = -kPi * 0.5f;
+    } else if (actor.state == CombatState::GetUp) {
+        const float t = std::clamp(static_cast<float>(actor.frameInState) /
+                                       static_cast<float>(kGetUpFrames),
+                                   0.0f, 1.0f);
+        downPitch = -kPi * 0.5f * (1.0f - t);
+    }
     const DirectX::XMVECTOR rotation =
-        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(actor.facing), 0.0f);
+        DirectX::XMQuaternionRotationRollPitchYaw(downPitch, yaw, 0.0f);
     DirectX::XMStoreFloat4(&transform.rotation, rotation);
     return transform;
 }
 
 Transform GameScene::MakeFloorTransform() {
     Transform transform{};
-    transform.position = {0.0f, 0.0f, 2.0f};
-    transform.scale = {12.0f, 12.0f, 1.0f};
+    transform.position = {kCombatFloorCenterX, 0.0f, kCombatFloorCenterZ};
+    transform.scale = {kCombatFloorHalfExtent * 2.0f, kCombatFloorHalfExtent * 2.0f,
+                       1.0f};
 
     const DirectX::XMVECTOR rotation =
         DirectX::XMQuaternionRotationRollPitchYaw(kPi * 0.5f, 0.0f, 0.0f);

@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # imGui .ini file (can be regenerated, contains window layout)
 imgui.ini
+
+# Codex files
+/.codex
