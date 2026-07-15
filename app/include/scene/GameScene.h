@@ -104,6 +104,18 @@ private:
         bool dodgeRequested = false;
     };
 
+    struct Vec3 {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+    };
+
+    struct Box3D {
+        Vec3 center{};
+        Vec3 half{};
+        Vec2 facing{0.0f, 1.0f};
+    };
+
     struct AttackData {
         MoveId id = MoveId::L1;
         const char* name = "L1";
@@ -139,6 +151,9 @@ private:
         Vec2 attackFacing{0.0f, 1.0f};
         Vec2 dodgeDirection{0.0f, -1.0f};
         Vec2 aiMoveDirection{};
+        Vec2 downSlideDirection{};
+        Vec2 downReelTarget{};
+        Vec2 pendingKnockdownDirection{};
         Vec2 orbitCenter{};
         Vec2 lastOrbitTarget{};
         float dodgeDistance = 0.8f;
@@ -152,6 +167,8 @@ private:
         int hitstunFrames = 0;
         int guardStunFrames = 0;
         int downFrames = 0;
+        int downSlideFrames = 0;
+        int downReelFrames = 0;
         int aiCooldownFrames = 0;
         int aiIntentFrames = 0;
         int aiAttackCount = 0;
@@ -162,8 +179,11 @@ private:
         uint64_t attackSerial = 0;
         uint64_t lastHitAttackSerial = 0;
         bool hitApplied = false;
+        bool pendingKnockdown = false;
+        bool pendingKnockdownFromPlayer = false;
         bool orbitDodgeActive = false;
         bool hasLastOrbitTarget = false;
+        uint64_t pendingKnockdownAttackSerial = 0;
 
         bool IsAlive() const;
     };
@@ -183,9 +203,16 @@ private:
     void ResetPhaseOne();
     void InitializeVisuals();
     void DrawActors(ModelManager& models) const;
+    void DrawHurtboxes(ModelManager& models) const;
+    void DrawActorHurtbox(ModelManager& models, const CombatActor& actor,
+                          ModelHandle model) const;
     void DrawAttackRanges(ModelManager& models) const;
     void DrawCombatMarkers(ModelManager& models) const;
     void DrawDebugCombatants() const;
+    void DrawDebugStatus() const;
+    void DrawDebugHitInfo() const;
+    void DrawDebugInputBuffer() const;
+    void DrawDebugMeters() const;
     void CaptureFrameInput();
     Vec2 ReadPlayerMovement(const Input& input) const;
     void CaptureActionInputs(const Input& input);
@@ -207,10 +234,18 @@ private:
     bool TryChainDodge(const CombatActor& actor, bool moving, bool recovery);
     static void FinishDodgeIfComplete(CombatActor& actor, const DodgeData& dodge);
     void UpdateHitStun(CombatActor& actor);
-    static void UpdateDown(CombatActor& actor);
+    void UpdateDown(CombatActor& actor);
     static void UpdateGetUp(CombatActor& actor);
     void UpdateEnemyActor(CombatActor& actor);
     void UpdateEnemyTraining(CombatActor& actor);
+    bool TryStartEnemyTrainingAttack(CombatActor& actor, float distance,
+                                     bool supportEnemy);
+    MoveId ChooseEnemyTrainingAttack(const CombatActor& actor, float distance,
+                                     bool supportEnemy) const;
+    static Vec2 ResolveEnemyTrainingMovement(CombatActor& actor, float distance,
+                                             Vec2 toPlayer, float& speedScale);
+    static void BlendEnemyMoveDirection(CombatActor& actor, Vec2 movement);
+    void UpdateEnemyTrainingCooldowns(CombatActor& actor);
     void ApplyAttackMovement(CombatActor& actor, const AttackData& attack);
     void ClampCombatantsToFloor();
     static void ClampActorToFloor(CombatActor& actor);
@@ -236,6 +271,8 @@ private:
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
+    void BeginKnockdown(CombatActor& defender, Vec2 fallAway, bool followupKnockdown);
+    bool IsPendingKnockdownReady(const CombatActor& actor) const;
     void ApplyKnockback(CombatActor& defender, Vec2 direction, float distance);
     void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
     void AddBlockFeedback(const CombatActor& attacker);
@@ -258,6 +295,12 @@ private:
                                        const AttackData& attack) const;
     static bool IsDodgeInvulnerable(const CombatActor& actor);
     static bool IsAttackHitboxActive(const CombatActor& actor);
+    static bool IsDefenderInAttackArea(const CombatActor& defender,
+                                       const CombatActor& attacker,
+                                       const AttackData& attack);
+    static bool Overlaps(const Box3D& a, const Box3D& b);
+    static Box3D MakeHurtbox(const CombatActor& actor);
+    static Box3D MakeAttackHitbox(const CombatActor& actor, const AttackData& attack);
     static bool IsSingleStyleFinisher(MoveId move);
     static bool IsFacingIncomingAttack(const CombatActor& defender,
                                        const CombatActor& attacker);
@@ -272,12 +315,14 @@ private:
     static Vec2 NormalizeOr(Vec2 value, Vec2 fallback);
     static Vec2 AttackOrigin(const CombatActor& actor);
     static Vec2 AttackFacing(const CombatActor& actor);
+    static Vec2 DownedBodyAxis(const CombatActor& actor);
     static const char* StateName(CombatState state);
     static const char* CommandName(CombatCommand command);
     static const char* StyleName(CombatStyle style);
     static Material MakeMaterial(float r, float g, float b, float a = 1.0f);
     static Transform MakeActorTransform(const CombatActor& actor, float height,
                                         float widthScale = 1.0f);
+    static Transform MakeBoxTransform(const Box3D& box);
     static Transform MakeFloorTransform();
     static Transform MakeAttackRangeTransform(const CombatActor& actor,
                                               const AttackData& attack);
@@ -320,4 +365,6 @@ private:
     ModelHandle floorModel_{};
     ModelHandle attackRangeModel_{};
     ModelHandle guardMarkerModel_{};
+    ModelHandle playerHurtboxModel_{};
+    ModelHandle enemyHurtboxModel_{};
 };

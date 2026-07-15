@@ -44,6 +44,26 @@ constexpr float kOrbitSwayApproachThreshold = 0.55f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr int kGetUpFrames = 34;
+constexpr int kKnockdownSlideFrames = 14;
+constexpr int kKnockdownReelFrames = 12;
+constexpr float kKnockdownSlideDistance = 0.12f;
+constexpr float kKnockdownReelSpeed = 0.09f;
+constexpr float kKnockdownFollowupDistance = 0.82f;
+constexpr float kKnockdownFollowupKnockbackDistance = 0.08f;
+constexpr float kHitStunLeanPitch = -0.22f;
+constexpr float kPendingKnockdownLeanPitch = -0.44f;
+constexpr float kHitStunLeanRoll = 0.08f;
+constexpr float kPendingKnockdownLeanRoll = 0.15f;
+constexpr float kStandingHurtboxHalfWidth = 0.32f;
+constexpr float kStandingHurtboxHalfDepth = 0.30f;
+constexpr float kStandingHurtboxHalfHeight = 0.76f;
+constexpr float kDownedHurtboxHalfWidth = 0.26f;
+constexpr float kDownedHurtboxHalfLength = 0.70f;
+constexpr float kDownedHurtboxHalfHeight = 0.20f;
+constexpr float kAttackHitboxHalfHeight = 0.72f;
+constexpr float kAttackHitboxCenterY = 0.84f;
+constexpr float kLowAttackHitboxHalfHeight = 0.32f;
+constexpr float kLowAttackHitboxCenterY = 0.32f;
 constexpr float kHitKnockbackDistance = 0.18f;
 constexpr float kFinisherKnockbackDistance = 0.34f;
 constexpr float kBlockKnockbackDistance = 0.08f;
@@ -111,6 +131,7 @@ void GameScene::Draw() {
 
     models.PreDraw();
     DrawActors(models);
+    DrawHurtboxes(models);
     DrawAttackRanges(models);
     DrawCombatMarkers(models);
     models.PostDraw();
@@ -126,6 +147,26 @@ void GameScene::DrawActors(ModelManager& models) const {
         }
         models.Draw(enemyModel_, MakeActorTransform(enemy, 1.55f, 0.9f), combatCamera_);
     }
+}
+
+void GameScene::DrawHurtboxes(ModelManager& models) const {
+    DrawActorHurtbox(models, player_, playerHurtboxModel_);
+    DrawActorHurtbox(models, enemy_, enemyHurtboxModel_);
+    for (const CombatActor& enemy : supportEnemies_) {
+        if (!enemy.IsAlive()) {
+            continue;
+        }
+        DrawActorHurtbox(models, enemy, enemyHurtboxModel_);
+    }
+}
+
+void GameScene::DrawActorHurtbox(ModelManager& models, const CombatActor& actor,
+                                 ModelHandle model) const {
+    if (!actor.IsAlive()) {
+        return;
+    }
+
+    models.Draw(model, MakeBoxTransform(MakeHurtbox(actor)), combatCamera_);
 }
 
 void GameScene::DrawAttackRanges(ModelManager& models) const {
@@ -187,48 +228,12 @@ void GameScene::DrawPostProcessOverlay() {
         ImGui::Text(
             "Controls: WASD move / J/X light / K/Y heavy / C or RB lock toggle / Tab or DPadUp style / E or R2 EX boost / EX+Heavy action / Heavy near downed / L or LB guard / Guard+Heavy counter / Space or B sway / R reset");
         ImGui::Separator();
-        ImGui::Text("Combat frame: %llu",
-                    static_cast<unsigned long long>(debug_.combatFrame));
-        ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
-        ImGui::Text("Hitstop frames: %d", hitstopFrames_);
-        ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
-        ImGui::Text("Style: %s", StyleName(combatStyle_));
-        ImGui::Text("Lock target: %s Enemy%zu", lockOnActive_ ? "on" : "off",
-                    targetEnemyIndex_ + 1);
-        ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
-                    IsExBoostActive() ? "active" : "off", exBoostFrames_,
-                    exGauge_ >= kExBoostCost ? "yes" : "no");
-        ImGui::Text("EX Action: %s  drain/frame=%.2f",
-                    IsExBoostActive() && exGauge_ >= kExActionCost ? "ready" : "no",
-                    kExBoostGaugeDrainPerFrame);
-        ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
+        DrawDebugStatus();
         ImGui::Separator();
         DrawDebugCombatants();
-        ImGui::Text("Distance: %.2f", debug_.lastDistance);
-        ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
-        ImGui::Text("Last hit connected: %s", debug_.lastHitConnected ? "yes" : "no");
-        ImGui::Text("Last defense: %s", debug_.lastDefense);
-        ImGui::Text("Blocked: %s  Dodged: %s", debug_.lastBlocked ? "yes" : "no",
-                    debug_.lastDodged ? "yes" : "no");
-        ImGui::Text("Last knockback: %.2f", debug_.lastKnockback);
-        ImGui::Text("Guard front: %s  Sway invul: %s",
-                    IsFacingIncomingAttack(player_, TargetEnemy()) ? "yes" : "no",
-                    IsDodgeInvulnerable(player_) ? "yes" : "no");
-        ImGui::Text("Enemy training cooldown: %d", enemyTrainingCooldown_);
-        ImGui::Text("Buffered inputs:");
-        for (const BufferedInput& entry : inputBuffer_.entries) {
-            if (entry.active) {
-                ImGui::BulletText("%s %df", CommandName(entry.command), entry.framesLeft);
-            }
-        }
-
-        const float playerHp = static_cast<float>((std::max)(player_.hp, 0)) / 100.0f;
-        const float enemyHp = static_cast<float>((std::max)(enemy_.hp, 0)) / 100.0f;
-        const float exRatio = std::clamp(exGauge_ / kMaxExGauge, 0.0f, 1.0f);
-        ImGui::ProgressBar(playerHp, ImVec2(-1.0f, 0.0f), "Player HP");
-        ImGui::ProgressBar(enemyHp, ImVec2(-1.0f, 0.0f), "Enemy HP");
-        ImGui::ProgressBar(exRatio, ImVec2(-1.0f, 0.0f), "EX");
-
+        DrawDebugHitInfo();
+        DrawDebugInputBuffer();
+        DrawDebugMeters();
         ImGui::Separator();
         ImGui::Text("Player position: %.2f, %.2f", player_.position.x,
                     player_.position.z);
@@ -239,6 +244,24 @@ void GameScene::DrawPostProcessOverlay() {
 }
 
 #ifdef _DEBUG
+void GameScene::DrawDebugStatus() const {
+    ImGui::Text("Combat frame: %llu",
+                static_cast<unsigned long long>(debug_.combatFrame));
+    ImGui::Text("Fixed steps this render frame: %d", debug_.fixedStepsThisFrame);
+    ImGui::Text("Hitstop frames: %d", hitstopFrames_);
+    ImGui::Text("Combo: %d  timer=%d", comboCount_, comboTimerFrames_);
+    ImGui::Text("Style: %s", StyleName(combatStyle_));
+    ImGui::Text("Lock target: %s Enemy%zu", lockOnActive_ ? "on" : "off",
+                targetEnemyIndex_ + 1);
+    ImGui::Text("EX Boost: %s  frames=%d  ready=%s",
+                IsExBoostActive() ? "active" : "off", exBoostFrames_,
+                exGauge_ >= kExBoostCost ? "yes" : "no");
+    ImGui::Text("EX Action: %s  drain/frame=%.2f",
+                IsExBoostActive() && exGauge_ >= kExActionCost ? "ready" : "no",
+                kExBoostGaugeDrainPerFrame);
+    ImGui::Text("Camera shake frames: %d", cameraShakeFrames_);
+}
+
 void GameScene::DrawDebugCombatants() const {
     ImGui::Text("Player: %s  move=%s  frame=%d  hp=%d", StateName(player_.state),
                 GetAttackData(player_.currentMove).name, player_.frameInState, player_.hp);
@@ -262,8 +285,44 @@ void GameScene::DrawDebugCombatants() const {
     }
 }
 
+void GameScene::DrawDebugHitInfo() const {
+    ImGui::Text("Distance: %.2f", debug_.lastDistance);
+    ImGui::Text("Hitbox active: %s", debug_.lastHitboxActive ? "yes" : "no");
+    ImGui::Text("Last hit connected: %s", debug_.lastHitConnected ? "yes" : "no");
+    ImGui::Text("Last defense: %s", debug_.lastDefense);
+    ImGui::Text("Blocked: %s  Dodged: %s", debug_.lastBlocked ? "yes" : "no",
+                debug_.lastDodged ? "yes" : "no");
+    ImGui::Text("Last knockback: %.2f", debug_.lastKnockback);
+    ImGui::Text("Guard front: %s  Sway invul: %s",
+                IsFacingIncomingAttack(player_, TargetEnemy()) ? "yes" : "no",
+                IsDodgeInvulnerable(player_) ? "yes" : "no");
+    ImGui::Text("Enemy training cooldown: %d", enemyTrainingCooldown_);
+}
+
+void GameScene::DrawDebugInputBuffer() const {
+    ImGui::Text("Buffered inputs:");
+    for (const BufferedInput& entry : inputBuffer_.entries) {
+        if (entry.active) {
+            ImGui::BulletText("%s %df", CommandName(entry.command), entry.framesLeft);
+        }
+    }
+}
+
+void GameScene::DrawDebugMeters() const {
+    const float playerHp = static_cast<float>((std::max)(player_.hp, 0)) / 100.0f;
+    const float enemyHp = static_cast<float>((std::max)(enemy_.hp, 0)) / 100.0f;
+    const float exRatio = std::clamp(exGauge_ / kMaxExGauge, 0.0f, 1.0f);
+    ImGui::ProgressBar(playerHp, ImVec2(-1.0f, 0.0f), "Player HP");
+    ImGui::ProgressBar(enemyHp, ImVec2(-1.0f, 0.0f), "Enemy HP");
+    ImGui::ProgressBar(exRatio, ImVec2(-1.0f, 0.0f), "EX");
+}
+
 #else
+void GameScene::DrawDebugStatus() const {}
 void GameScene::DrawDebugCombatants() const {}
+void GameScene::DrawDebugHitInfo() const {}
+void GameScene::DrawDebugInputBuffer() const {}
+void GameScene::DrawDebugMeters() const {}
 #endif
 
 void GameScene::InputBuffer::Push(CombatCommand command, int bufferFrames) {
@@ -421,10 +480,14 @@ void GameScene::InitializeVisuals() {
     floorModel_ = models.CreatePlaneHandle(kInvalidResourceId,
                                            MakeMaterial(0.18f, 0.20f, 0.20f));
     attackRangeModel_ = models.CreateBoxHandle(
-        kInvalidResourceId, MakeMaterial(1.0f, 0.86f, 0.20f, 0.34f), 1.0f, 0.08f, 1.0f);
+        kInvalidResourceId, MakeMaterial(1.0f, 0.86f, 0.20f, 0.34f), 1.0f, 1.0f, 1.0f);
     guardMarkerModel_ = models.CreateBoxHandle(kInvalidResourceId,
                                                MakeMaterial(0.15f, 0.9f, 1.0f), 0.8f,
                                                0.25f, 0.12f);
+    playerHurtboxModel_ = models.CreateBoxHandle(
+        kInvalidResourceId, MakeMaterial(0.15f, 0.65f, 1.0f, 0.42f), 1.0f, 1.0f, 1.0f);
+    enemyHurtboxModel_ = models.CreateBoxHandle(
+        kInvalidResourceId, MakeMaterial(1.0f, 0.12f, 0.16f, 0.42f), 1.0f, 1.0f, 1.0f);
 }
 
 void GameScene::CaptureFrameInput() {
@@ -870,11 +933,20 @@ void GameScene::UpdateHitStun(CombatActor& actor) {
             actor.position.z += pullDirection.z * pullDistance;
         }
     }
+    if (actor.pendingKnockdown) {
+        if (IsPendingKnockdownReady(actor)) {
+            const bool followupKnockdown =
+                actor.pendingKnockdownFromPlayer && IsEnemyActor(actor);
+            BeginKnockdown(actor, actor.pendingKnockdownDirection, followupKnockdown);
+        }
+        return;
+    }
     if (actor.frameInState >= actor.hitstunFrames) {
         actor.state = actor.IsAlive() ? CombatState::Idle : CombatState::Down;
         actor.currentMove = MoveId::None;
         actor.frameInState = 0;
         actor.hitstunFrames = 0;
+        actor.pendingKnockdown = false;
     }
 }
 
@@ -884,6 +956,35 @@ void GameScene::UpdateDown(CombatActor& actor) {
     }
 
     ++actor.frameInState;
+    if (IsEnemyActor(actor) && actor.downReelFrames > 0 &&
+        player_.state == CombatState::Attack) {
+        const Vec2 facing = AttackFacing(player_);
+        actor.downReelTarget = {
+            player_.position.x + facing.x * kKnockdownFollowupDistance,
+            player_.position.z + facing.z * kKnockdownFollowupDistance};
+    }
+    if (actor.downReelFrames > 0) {
+        const Vec2 toTarget{actor.downReelTarget.x - actor.position.x,
+                            actor.downReelTarget.z - actor.position.z};
+        if (HasDirection(toTarget)) {
+            const float reelDistance =
+                (std::min)(kKnockdownReelSpeed, Distance({0.0f, 0.0f}, toTarget));
+            const Vec2 reelDirection = Normalize(toTarget);
+            actor.position.x += reelDirection.x * reelDistance;
+            actor.position.z += reelDirection.z * reelDistance;
+        }
+        --actor.downReelFrames;
+    }
+    if (actor.downSlideFrames > 0) {
+        const float t = static_cast<float>(actor.downSlideFrames) /
+                        static_cast<float>(kKnockdownSlideFrames);
+        const float slideStep =
+            kKnockdownSlideDistance * (0.35f + t * 0.65f) /
+            static_cast<float>(kKnockdownSlideFrames);
+        actor.position.x += actor.downSlideDirection.x * slideStep;
+        actor.position.z += actor.downSlideDirection.z * slideStep;
+        --actor.downSlideFrames;
+    }
     if (actor.downFrames > 0) {
         --actor.downFrames;
     }
@@ -891,6 +992,8 @@ void GameScene::UpdateDown(CombatActor& actor) {
     if (actor.downFrames <= 0) {
         actor.state = CombatState::GetUp;
         actor.frameInState = 0;
+        actor.downSlideFrames = 0;
+        actor.downReelFrames = 0;
     }
 }
 
@@ -954,6 +1057,63 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     const Vec2 toPlayer =
         Normalize(Vec2{player_.position.x - actor.position.x,
                        player_.position.z - actor.position.z});
+
+    if (TryStartEnemyTrainingAttack(actor, distance, supportEnemy)) {
+        return;
+    }
+
+    float speedScale = kEnemyStrafeSpeedScale;
+    const Vec2 movement =
+        ResolveEnemyTrainingMovement(actor, distance, toPlayer, speedScale);
+
+    if (HasDirection(movement)) {
+        BlendEnemyMoveDirection(actor, movement);
+    } else {
+        actor.aiMoveDirection =
+            Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend),
+                           actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend)});
+        speedScale = 0.0f;
+    }
+
+    if (HasDirection(actor.aiMoveDirection) && speedScale > 0.0f) {
+        actor.position.x +=
+            actor.aiMoveDirection.x * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
+        actor.position.z +=
+            actor.aiMoveDirection.z * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
+    }
+
+    UpdateEnemyTrainingCooldowns(actor);
+}
+
+bool GameScene::TryStartEnemyTrainingAttack(CombatActor& actor, float distance,
+                                            bool supportEnemy) {
+    const bool attackReady =
+        actor.aiCooldownFrames <= 0 && enemyTrainingCooldown_ <= 0 &&
+        !IsAnyEnemyAttacking() && CanStartAttack(actor);
+    if (!attackReady) {
+        actor.aiIntent = EnemyIntent::Strafe;
+        return false;
+    }
+
+    const MoveId attackMove = ChooseEnemyTrainingAttack(actor, distance, supportEnemy);
+    if (attackMove == MoveId::None) {
+        actor.aiIntent = EnemyIntent::Approach;
+        return false;
+    }
+
+    const bool shouldUseHeavy = attackMove == MoveId::EnemyHeavy;
+    StartAttack(actor, attackMove);
+    actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
+    actor.aiIntent = EnemyIntent::Strafe;
+    actor.aiIntentFrames = kEnemyIntentMaxFrames;
+    actor.aiCooldownFrames =
+        supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
+    return true;
+}
+
+GameScene::MoveId GameScene::ChooseEnemyTrainingAttack(const CombatActor& actor,
+                                                       float distance,
+                                                       bool supportEnemy) const {
     const AttackData& playerAttack = GetAttackData(player_.currentMove);
     const bool playerInRecovery =
         player_.state == CombatState::Attack &&
@@ -967,76 +1127,62 @@ void GameScene::UpdateEnemyTraining(CombatActor& actor) {
     const bool wantsPoke =
         player_.state == CombatState::Idle || player_.state == CombatState::Attack ||
         player_.state == CombatState::Dodge;
-    const bool attackReady =
-        actor.aiCooldownFrames <= 0 && enemyTrainingCooldown_ <= 0 &&
-        !IsAnyEnemyAttacking() && CanStartAttack(actor);
-
-    if (attackReady && (wantsPoke || wantsHeavy)) {
-        const bool canHeavy = wantsHeavy && distance <= heavy.range;
-        const bool canPoke = wantsPoke && distance <= poke.range;
-        if (canHeavy || canPoke) {
-            const bool shouldUseHeavy = canHeavy;
-            StartAttack(actor, shouldUseHeavy ? MoveId::EnemyHeavy : MoveId::EnemyPoke);
-            actor.aiAttackCount = shouldUseHeavy ? 0 : actor.aiAttackCount + 1;
-            actor.aiIntent = EnemyIntent::Strafe;
-            actor.aiIntentFrames = kEnemyIntentMaxFrames;
-            actor.aiCooldownFrames =
-                supportEnemy ? kEnemySupportAttackCooldown : kEnemyTrainingAttackCooldown;
-            return;
-        }
-
-        actor.aiIntent = EnemyIntent::Approach;
-    } else {
-        actor.aiIntent = EnemyIntent::Strafe;
+    if (!wantsPoke && !wantsHeavy) {
+        return MoveId::None;
     }
 
+    if (wantsHeavy && distance <= heavy.range) {
+        return MoveId::EnemyHeavy;
+    }
+    if (wantsPoke && distance <= poke.range) {
+        return MoveId::EnemyPoke;
+    }
+
+    return MoveId::None;
+}
+
+GameScene::Vec2 GameScene::ResolveEnemyTrainingMovement(CombatActor& actor,
+                                                        float distance,
+                                                        Vec2 toPlayer,
+                                                        float& speedScale) {
     actor.aiStrafePhase += 0.035f;
     const Vec2 strafe{toPlayer.z * actor.aiStrafeSign,
                       -toPlayer.x * actor.aiStrafeSign};
-    Vec2 movement{};
-    float speedScale = kEnemyStrafeSpeedScale;
     if (actor.aiIntent == EnemyIntent::Approach) {
-        movement = toPlayer;
         speedScale = kEnemyAttackRunSpeedScale;
-    } else {
-        const float distanceError = distance - kEnemyPreferredRange;
-        const float radialCorrection = std::clamp(distanceError * 1.15f, -0.72f, 0.72f);
-        movement = Normalize(Vec2{strafe.x + toPlayer.x * radialCorrection,
-                                  strafe.z + toPlayer.z * radialCorrection});
-        if (distance < kEnemyRetreatRange) {
-            movement = Normalize(Vec2{strafe.x - toPlayer.x * 0.95f,
-                                      strafe.z - toPlayer.z * 0.95f});
-            speedScale = kEnemyRetreatSpeedScale;
-        } else if (distance > kEnemyEngageRange) {
-            movement = Normalize(Vec2{strafe.x + toPlayer.x * 0.95f,
-                                      strafe.z + toPlayer.z * 0.95f});
-            speedScale = 0.9f;
-        }
+        return toPlayer;
     }
 
-    if (HasDirection(movement)) {
-        if (actor.aiIntent == EnemyIntent::Approach) {
-            actor.aiMoveDirection = movement;
-        } else {
-            actor.aiMoveDirection =
-                Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend) +
-                                   movement.x * kEnemyMoveBlend,
-                               actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend) +
-                                   movement.z * kEnemyMoveBlend});
-        }
-    } else {
-        actor.aiMoveDirection =
-            Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend),
-                           actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend)});
-        speedScale = 0.0f;
+    const float distanceError = distance - kEnemyPreferredRange;
+    const float radialCorrection = std::clamp(distanceError * 1.15f, -0.72f, 0.72f);
+    Vec2 movement = Normalize(Vec2{strafe.x + toPlayer.x * radialCorrection,
+                                   strafe.z + toPlayer.z * radialCorrection});
+    if (distance < kEnemyRetreatRange) {
+        movement = Normalize(Vec2{strafe.x - toPlayer.x * 0.95f,
+                                  strafe.z - toPlayer.z * 0.95f});
+        speedScale = kEnemyRetreatSpeedScale;
+    } else if (distance > kEnemyEngageRange) {
+        movement = Normalize(Vec2{strafe.x + toPlayer.x * 0.95f,
+                                  strafe.z + toPlayer.z * 0.95f});
+        speedScale = 0.9f;
     }
-    if (HasDirection(actor.aiMoveDirection) && speedScale > 0.0f) {
-        actor.position.x +=
-            actor.aiMoveDirection.x * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
-        actor.position.z +=
-            actor.aiMoveDirection.z * kEnemyMoveSpeed * speedScale * kFixedCombatDt;
+    return movement;
+}
+
+void GameScene::BlendEnemyMoveDirection(CombatActor& actor, Vec2 movement) {
+    if (actor.aiIntent == EnemyIntent::Approach) {
+        actor.aiMoveDirection = movement;
+        return;
     }
 
+    actor.aiMoveDirection =
+        Normalize(Vec2{actor.aiMoveDirection.x * (1.0f - kEnemyMoveBlend) +
+                           movement.x * kEnemyMoveBlend,
+                       actor.aiMoveDirection.z * (1.0f - kEnemyMoveBlend) +
+                           movement.z * kEnemyMoveBlend});
+}
+
+void GameScene::UpdateEnemyTrainingCooldowns(CombatActor& actor) {
     if (actor.aiCooldownFrames > 0) {
         --actor.aiCooldownFrames;
         return;
@@ -1440,16 +1586,7 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
         return;
     }
 
-    const Vec2 origin = AttackOrigin(attacker);
-    const Vec2 facing = AttackFacing(attacker);
-    const Vec2 toDefender{defender.position.x - origin.x,
-                          defender.position.z - origin.z};
-    const float forwardDistance = Dot(toDefender, facing);
-    const Vec2 right{facing.z, -facing.x};
-    const float sideDistance = std::abs(Dot(toDefender, right));
-    const bool inHitArea = forwardDistance >= 0.0f &&
-                           forwardDistance <= attack.range &&
-                           sideDistance <= attack.halfWidth;
+    const bool inHitArea = IsDefenderInAttackArea(defender, attacker, attack);
 
     if (inHitArea) {
         if (IsDodgeInvulnerable(defender)) {
@@ -1476,6 +1613,76 @@ void GameScene::TryResolveAttackHit(CombatActor& attacker, CombatActor& defender
     }
 }
 
+bool GameScene::IsDefenderInAttackArea(const CombatActor& defender,
+                                       const CombatActor& attacker,
+                                       const AttackData& attack) {
+    return Overlaps(MakeAttackHitbox(attacker, attack), MakeHurtbox(defender));
+}
+
+bool GameScene::Overlaps(const Box3D& a, const Box3D& b) {
+    const Vec2 aForward = NormalizeOr(a.facing, {0.0f, 1.0f});
+    const Vec2 aRight{aForward.z, -aForward.x};
+    const Vec2 bForward = NormalizeOr(b.facing, {0.0f, 1.0f});
+    const Vec2 bRight{bForward.z, -bForward.x};
+    const Vec2 delta{b.center.x - a.center.x, b.center.z - a.center.z};
+
+    const auto separatedOnAxis = [&](Vec2 axis) {
+        const float distance = std::abs(Dot(delta, axis));
+        const float aProjection =
+            std::abs(Dot(aRight, axis)) * a.half.x +
+            std::abs(Dot(aForward, axis)) * a.half.z;
+        const float bProjection =
+            std::abs(Dot(bRight, axis)) * b.half.x +
+            std::abs(Dot(bForward, axis)) * b.half.z;
+        return distance > aProjection + bProjection;
+    };
+
+    if (std::abs(a.center.y - b.center.y) > a.half.y + b.half.y) {
+        return false;
+    }
+    return !separatedOnAxis(aRight) && !separatedOnAxis(aForward) &&
+           !separatedOnAxis(bRight) && !separatedOnAxis(bForward);
+}
+
+GameScene::Box3D GameScene::MakeHurtbox(const CombatActor& actor) {
+    Box3D box{};
+    box.center = {actor.position.x,
+                  kStandingHurtboxHalfHeight,
+                  actor.position.z};
+    box.half = {kStandingHurtboxHalfWidth,
+                kStandingHurtboxHalfHeight,
+                kStandingHurtboxHalfDepth};
+    box.facing = NormalizeOr(actor.facing, {0.0f, 1.0f});
+
+    if (actor.state == CombatState::Down) {
+        const Vec2 axis = DownedBodyAxis(actor);
+        box.center.x += axis.x * kDownedHurtboxHalfLength;
+        box.center.y = kDownedHurtboxHalfHeight;
+        box.center.z += axis.z * kDownedHurtboxHalfLength;
+        box.half = {kDownedHurtboxHalfWidth,
+                    kDownedHurtboxHalfHeight,
+                    kDownedHurtboxHalfLength};
+        box.facing = axis;
+    }
+    return box;
+}
+
+GameScene::Box3D GameScene::MakeAttackHitbox(const CombatActor& actor,
+                                             const AttackData& attack) {
+    const Vec2 origin = AttackOrigin(actor);
+    const Vec2 facing = AttackFacing(actor);
+    const bool lowAttack = attack.id == MoveId::DownAttack;
+    Box3D box{};
+    box.center = {origin.x + facing.x * (attack.range * 0.5f),
+                  lowAttack ? kLowAttackHitboxCenterY : kAttackHitboxCenterY,
+                  origin.z + facing.z * (attack.range * 0.5f)};
+    box.half = {attack.halfWidth,
+                lowAttack ? kLowAttackHitboxHalfHeight : kAttackHitboxHalfHeight,
+                attack.range * 0.5f};
+    box.facing = facing;
+    return box;
+}
+
 void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
                          const AttackData& attack) {
     if (&attacker == &player_) {
@@ -1500,18 +1707,61 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     }
     const bool knockdown =
         IsKnockdownAttack(attack.id) || (&attacker == &player_ && IsEnemyActor(defender));
-    defender.state = defender.IsAlive() && !knockdown ? CombatState::HitStun : CombatState::Down;
+    const bool delayedKnockdown = defender.IsAlive() && knockdown;
+    defender.state = defender.IsAlive() ? CombatState::HitStun : CombatState::Down;
     defender.currentMove = MoveId::None;
     defender.frameInState = 0;
     defender.hitstunFrames = attack.hitstun;
-    defender.downFrames = defender.state == CombatState::Down ? kKnockdownFrames : 0;
+    defender.downFrames = 0;
+    defender.downSlideFrames = 0;
+    defender.downReelFrames = 0;
+    defender.pendingKnockdown = delayedKnockdown;
+    defender.pendingKnockdownFromPlayer = &attacker == &player_;
+    defender.pendingKnockdownAttackSerial = attacker.attackSerial;
     defender.aiMoveDirection = {};
     if (knockdown) {
-        ApplyKnockback(defender, AttackFacing(attacker), kFinisherKnockbackDistance);
+        const Vec2 fallAway = NormalizeOr(AttackFacing(attacker), defender.facing);
+        defender.pendingKnockdownDirection = fallAway;
+        if (!delayedKnockdown) {
+            BeginKnockdown(defender, fallAway, false);
+        }
     }
     hitstopFrames_ = attack.hitstop;
     debug_.lastHitConnected = true;
     AddHitFeedback(attacker, attack);
+}
+
+void GameScene::BeginKnockdown(CombatActor& defender, Vec2 fallAway,
+                               bool followupKnockdown) {
+    fallAway = NormalizeOr(fallAway, defender.facing);
+    defender.state = CombatState::Down;
+    defender.currentMove = MoveId::None;
+    defender.frameInState = 0;
+    defender.hitstunFrames = 0;
+    defender.downFrames = kKnockdownFrames;
+    defender.downSlideFrames = kKnockdownSlideFrames;
+    defender.downReelFrames = 0;
+    defender.pendingKnockdown = false;
+    defender.pendingKnockdownFromPlayer = false;
+    defender.pendingKnockdownAttackSerial = 0;
+    defender.pendingKnockdownDirection = {};
+    defender.facing = NormalizeOr(Vec2{-fallAway.x, -fallAway.z}, defender.facing);
+    defender.downSlideDirection = fallAway;
+
+    if (followupKnockdown) {
+        defender.downReelTarget = {
+            player_.position.x + fallAway.x * kKnockdownFollowupDistance,
+            player_.position.z + fallAway.z * kKnockdownFollowupDistance};
+        defender.downReelFrames = kKnockdownReelFrames;
+        ApplyKnockback(defender, fallAway, kKnockdownFollowupKnockbackDistance);
+    } else {
+        ApplyKnockback(defender, fallAway, kFinisherKnockbackDistance);
+    }
+}
+
+bool GameScene::IsPendingKnockdownReady(const CombatActor& actor) const {
+    const CombatActor& source = actor.pendingKnockdownFromPlayer ? player_ : enemy_;
+    return source.state != CombatState::Attack;
 }
 
 void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
@@ -1870,6 +2120,12 @@ GameScene::Vec2 GameScene::AttackFacing(const CombatActor& actor) {
                                               : NormalizeOr(actor.facing, {0.0f, 1.0f});
 }
 
+GameScene::Vec2 GameScene::DownedBodyAxis(const CombatActor& actor) {
+    return NormalizeOr(actor.downSlideDirection,
+                       NormalizeOr(Vec2{-actor.facing.x, -actor.facing.z},
+                                   Vec2{0.0f, 1.0f}));
+}
+
 const char* GameScene::StateName(CombatState state) {
     switch (state) {
     case CombatState::Idle:
@@ -1937,6 +2193,7 @@ Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
 
     const float yaw = FacingYaw(actor.facing);
     float downPitch = 0.0f;
+    float hitRoll = 0.0f;
     if (actor.state == CombatState::Down) {
         downPitch = -kPi * 0.5f;
     } else if (actor.state == CombatState::GetUp) {
@@ -1944,9 +2201,25 @@ Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
                                        static_cast<float>(kGetUpFrames),
                                    0.0f, 1.0f);
         downPitch = -kPi * 0.5f * (1.0f - t);
+    } else if (actor.state == CombatState::HitStun) {
+        downPitch = actor.pendingKnockdown ? kPendingKnockdownLeanPitch
+                                           : kHitStunLeanPitch;
+        hitRoll = actor.pendingKnockdown ? kPendingKnockdownLeanRoll
+                                         : kHitStunLeanRoll;
     }
     const DirectX::XMVECTOR rotation =
-        DirectX::XMQuaternionRotationRollPitchYaw(downPitch, yaw, 0.0f);
+        DirectX::XMQuaternionRotationRollPitchYaw(downPitch, yaw, hitRoll);
+    DirectX::XMStoreFloat4(&transform.rotation, rotation);
+    return transform;
+}
+
+Transform GameScene::MakeBoxTransform(const Box3D& box) {
+    Transform transform{};
+    transform.position = {box.center.x, box.center.y - box.half.y, box.center.z};
+    transform.scale = {box.half.x * 2.0f, box.half.y * 2.0f, box.half.z * 2.0f};
+
+    const DirectX::XMVECTOR rotation =
+        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(box.facing), 0.0f);
     DirectX::XMStoreFloat4(&transform.rotation, rotation);
     return transform;
 }
@@ -1965,18 +2238,7 @@ Transform GameScene::MakeFloorTransform() {
 
 Transform GameScene::MakeAttackRangeTransform(const CombatActor& actor,
                                               const AttackData& attack) {
-    const Vec2 origin = AttackOrigin(actor);
-    const Vec2 facing = AttackFacing(actor);
-    Transform transform{};
-    transform.position = {origin.x + facing.x * (attack.range * 0.5f),
-                          0.03f,
-                          origin.z + facing.z * (attack.range * 0.5f)};
-    transform.scale = {attack.halfWidth * 2.0f, 1.0f, attack.range};
-
-    const DirectX::XMVECTOR rotation =
-        DirectX::XMQuaternionRotationRollPitchYaw(0.0f, FacingYaw(facing), 0.0f);
-    DirectX::XMStoreFloat4(&transform.rotation, rotation);
-    return transform;
+    return MakeBoxTransform(MakeAttackHitbox(actor, attack));
 }
 
 float GameScene::FacingYaw(const Vec2& facing) {
