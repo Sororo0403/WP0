@@ -44,12 +44,18 @@ constexpr float kOrbitSwayApproachThreshold = 0.55f;
 constexpr int kComboTimerFrames = 90;
 constexpr int kKnockdownFrames = 90;
 constexpr int kGetUpFrames = 34;
+constexpr int kKnockdownFallFrames = 10;
 constexpr int kKnockdownSlideFrames = 14;
 constexpr int kKnockdownReelFrames = 12;
+constexpr float kKnockbackStepDistance = 0.12f;
 constexpr float kKnockdownSlideDistance = 0.12f;
 constexpr float kKnockdownReelSpeed = 0.09f;
 constexpr float kKnockdownFollowupDistance = 0.82f;
 constexpr float kKnockdownFollowupKnockbackDistance = 0.08f;
+constexpr float kFinisherLaunchKnockbackDistance = 1.25f;
+constexpr int kFinisherLaunchHitstopBonus = 1;
+constexpr int kFinisherLaunchShakeFrames = 16;
+constexpr float kFinisherLaunchShakeMagnitude = 0.085f;
 constexpr float kHitStunLeanPitch = -0.22f;
 constexpr float kPendingKnockdownLeanPitch = -0.44f;
 constexpr float kHitStunLeanRoll = 0.08f;
@@ -937,7 +943,8 @@ void GameScene::UpdateHitStun(CombatActor& actor) {
         if (IsPendingKnockdownReady(actor)) {
             const bool followupKnockdown =
                 actor.pendingKnockdownFromPlayer && IsEnemyActor(actor);
-            BeginKnockdown(actor, actor.pendingKnockdownDirection, followupKnockdown);
+            BeginKnockdown(actor, actor.pendingKnockdownDirection, followupKnockdown,
+                           actor.pendingKnockdownFinisher);
         }
         return;
     }
@@ -956,6 +963,7 @@ void GameScene::UpdateDown(CombatActor& actor) {
     }
 
     ++actor.frameInState;
+    UpdateInterpolatedKnockback(actor);
     if (IsEnemyActor(actor) && actor.downReelFrames > 0 &&
         player_.state == CombatState::Attack) {
         const Vec2 facing = AttackFacing(player_);
@@ -994,6 +1002,7 @@ void GameScene::UpdateDown(CombatActor& actor) {
         actor.frameInState = 0;
         actor.downSlideFrames = 0;
         actor.downReelFrames = 0;
+        actor.knockbackRemaining = 0.0f;
     }
 }
 
@@ -1705,8 +1714,7 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     if (!(IsEnemyActor(defender) && kEnemyInvincibleForDebug)) {
         defender.hp = (std::max)(0, defender.hp - damage);
     }
-    const bool knockdown =
-        IsKnockdownAttack(attack.id) || (&attacker == &player_ && IsEnemyActor(defender));
+    const bool knockdown = IsKnockdownAttack(attack.id);
     const bool delayedKnockdown = defender.IsAlive() && knockdown;
     defender.state = defender.IsAlive() ? CombatState::HitStun : CombatState::Down;
     defender.currentMove = MoveId::None;
@@ -1717,22 +1725,25 @@ void GameScene::ApplyHit(CombatActor& attacker, CombatActor& defender,
     defender.downReelFrames = 0;
     defender.pendingKnockdown = delayedKnockdown;
     defender.pendingKnockdownFromPlayer = &attacker == &player_;
+    defender.pendingKnockdownFinisher =
+        knockdown && &attacker == &player_ && IsSingleStyleFinisher(attack.id);
     defender.pendingKnockdownAttackSerial = attacker.attackSerial;
     defender.aiMoveDirection = {};
     if (knockdown) {
         const Vec2 fallAway = NormalizeOr(AttackFacing(attacker), defender.facing);
         defender.pendingKnockdownDirection = fallAway;
         if (!delayedKnockdown) {
-            BeginKnockdown(defender, fallAway, false);
+            BeginKnockdown(defender, fallAway, false, defender.pendingKnockdownFinisher);
         }
     }
-    hitstopFrames_ = attack.hitstop;
+    hitstopFrames_ = attack.hitstop +
+                     (defender.pendingKnockdownFinisher ? kFinisherLaunchHitstopBonus : 0);
     debug_.lastHitConnected = true;
     AddHitFeedback(attacker, attack);
 }
 
 void GameScene::BeginKnockdown(CombatActor& defender, Vec2 fallAway,
-                               bool followupKnockdown) {
+                               bool followupKnockdown, bool dramaticKnockdown) {
     fallAway = NormalizeOr(fallAway, defender.facing);
     defender.state = CombatState::Down;
     defender.currentMove = MoveId::None;
@@ -1741,27 +1752,53 @@ void GameScene::BeginKnockdown(CombatActor& defender, Vec2 fallAway,
     defender.downFrames = kKnockdownFrames;
     defender.downSlideFrames = kKnockdownSlideFrames;
     defender.downReelFrames = 0;
+    defender.knockbackRemaining = 0.0f;
     defender.pendingKnockdown = false;
     defender.pendingKnockdownFromPlayer = false;
+    defender.pendingKnockdownFinisher = false;
     defender.pendingKnockdownAttackSerial = 0;
     defender.pendingKnockdownDirection = {};
     defender.facing = NormalizeOr(Vec2{-fallAway.x, -fallAway.z}, defender.facing);
     defender.downSlideDirection = fallAway;
 
-    if (followupKnockdown) {
+    if (dramaticKnockdown) {
+        defender.downReelFrames = 0;
+        StartInterpolatedKnockback(defender, fallAway,
+                                   kFinisherLaunchKnockbackDistance);
+        StartCameraShake(kFinisherLaunchShakeFrames, kFinisherLaunchShakeMagnitude);
+    } else if (followupKnockdown) {
         defender.downReelTarget = {
             player_.position.x + fallAway.x * kKnockdownFollowupDistance,
             player_.position.z + fallAway.z * kKnockdownFollowupDistance};
         defender.downReelFrames = kKnockdownReelFrames;
-        ApplyKnockback(defender, fallAway, kKnockdownFollowupKnockbackDistance);
+        StartInterpolatedKnockback(defender, fallAway,
+                                   kKnockdownFollowupKnockbackDistance);
     } else {
-        ApplyKnockback(defender, fallAway, kFinisherKnockbackDistance);
+        StartInterpolatedKnockback(defender, fallAway, kFinisherKnockbackDistance);
     }
 }
 
 bool GameScene::IsPendingKnockdownReady(const CombatActor& actor) const {
-    const CombatActor& source = actor.pendingKnockdownFromPlayer ? player_ : enemy_;
-    return source.state != CombatState::Attack;
+    (void)actor;
+    return hitstopFrames_ <= 0;
+}
+
+void GameScene::StartInterpolatedKnockback(CombatActor& defender, Vec2 direction,
+                                           float distance) {
+    defender.knockbackDirection = NormalizeOr(direction, defender.facing);
+    defender.knockbackRemaining = (std::max)(0.0f, distance);
+    debug_.lastKnockback = defender.knockbackRemaining;
+}
+
+void GameScene::UpdateInterpolatedKnockback(CombatActor& actor) {
+    if (actor.knockbackRemaining <= 0.0f) {
+        return;
+    }
+
+    const float step = (std::min)(kKnockbackStepDistance, actor.knockbackRemaining);
+    actor.position.x += actor.knockbackDirection.x * step;
+    actor.position.z += actor.knockbackDirection.z * step;
+    actor.knockbackRemaining -= step;
 }
 
 void GameScene::ApplyBlock(CombatActor& attacker, CombatActor& defender,
@@ -2195,7 +2232,10 @@ Transform GameScene::MakeActorTransform(const CombatActor& actor, float height,
     float downPitch = 0.0f;
     float hitRoll = 0.0f;
     if (actor.state == CombatState::Down) {
-        downPitch = -kPi * 0.5f;
+        const float t = std::clamp(static_cast<float>(actor.frameInState) /
+                                       static_cast<float>(kKnockdownFallFrames),
+                                   0.0f, 1.0f);
+        downPitch = -kPi * 0.5f * t;
     } else if (actor.state == CombatState::GetUp) {
         const float t = std::clamp(static_cast<float>(actor.frameInState) /
                                        static_cast<float>(kGetUpFrames),

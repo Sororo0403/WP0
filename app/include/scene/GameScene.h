@@ -152,6 +152,7 @@ private:
         Vec2 dodgeDirection{0.0f, -1.0f};
         Vec2 aiMoveDirection{};
         Vec2 downSlideDirection{};
+        Vec2 knockbackDirection{};
         Vec2 downReelTarget{};
         Vec2 pendingKnockdownDirection{};
         Vec2 orbitCenter{};
@@ -174,6 +175,7 @@ private:
         int aiAttackCount = 0;
         float aiStrafePhase = 0.0f;
         float aiStrafeSign = 1.0f;
+        float knockbackRemaining = 0.0f;
         int dodgeChainCount = 0;
         EnemyIntent aiIntent = EnemyIntent::Approach;
         uint64_t attackSerial = 0;
@@ -181,6 +183,7 @@ private:
         bool hitApplied = false;
         bool pendingKnockdown = false;
         bool pendingKnockdownFromPlayer = false;
+        bool pendingKnockdownFinisher = false;
         bool orbitDodgeActive = false;
         bool hasLastOrbitTarget = false;
         uint64_t pendingKnockdownAttackSerial = 0;
@@ -271,8 +274,12 @@ private:
     void TryResolveAttackHit(CombatActor& attacker, CombatActor& defender);
     void ApplyHit(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
     void ApplyBlock(CombatActor& attacker, CombatActor& defender, const AttackData& attack);
-    void BeginKnockdown(CombatActor& defender, Vec2 fallAway, bool followupKnockdown);
+    void BeginKnockdown(CombatActor& defender, Vec2 fallAway,
+                        bool followupKnockdown, bool dramaticKnockdown);
     bool IsPendingKnockdownReady(const CombatActor& actor) const;
+    void StartInterpolatedKnockback(CombatActor& defender, Vec2 direction,
+                                    float distance);
+    static void UpdateInterpolatedKnockback(CombatActor& actor);
     void ApplyKnockback(CombatActor& defender, Vec2 direction, float distance);
     void AddHitFeedback(const CombatActor& attacker, const AttackData& attack);
     void AddBlockFeedback(const CombatActor& attacker);
