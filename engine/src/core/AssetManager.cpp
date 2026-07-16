@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <exception>
 #include <mutex>
+#include <string_view>
 #include <system_error>
 
 namespace {
@@ -18,7 +19,25 @@ std::filesystem::path SafeCurrentPath() {
 }
 
 std::filesystem::path gAssetRoot;
+std::filesystem::path gEngineResourceRoot;
+std::filesystem::path gProjectAssetRoot;
+std::filesystem::path gUserDataRoot;
 std::mutex gAssetRootMutex;
+
+bool StripScheme(const std::filesystem::path& path, std::wstring_view scheme,
+                 std::filesystem::path& relative) {
+    try {
+        std::wstring value = path.generic_wstring();
+        const std::wstring prefix = std::wstring(scheme) + L"://";
+        if (value.rfind(prefix, 0u) != 0u) {
+            return false;
+        }
+        relative = std::filesystem::path(value.substr(prefix.size())).lexically_normal();
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
 
 std::filesystem::path CanonicalizePath(const std::filesystem::path& path) {
     std::error_code ec;
@@ -59,6 +78,18 @@ bool IsWithinRoot(const std::filesystem::path& root, const std::filesystem::path
     } catch (const std::exception&) {
         return false;
     }
+}
+
+std::filesystem::path ResolveMountedPath(const std::filesystem::path& root,
+                                         const std::filesystem::path& relative) {
+    if (root.empty() || relative.empty() || relative.is_absolute() ||
+        relative.has_root_name() || relative.has_root_directory() ||
+        HasParentTraversal(relative)) {
+        return {};
+    }
+    const std::filesystem::path canonicalRoot = CanonicalizePath(root);
+    const std::filesystem::path resolved = CanonicalizePath(canonicalRoot / relative);
+    return IsWithinRoot(canonicalRoot, resolved) ? resolved : std::filesystem::path{};
 }
 
 bool ExistsNoThrow(const std::filesystem::path& path) {
@@ -131,6 +162,41 @@ void AssetManager::SetAssetRoot(std::filesystem::path assetRoot) {
     }
 }
 
+void AssetManager::SetEngineResourceRoot(std::filesystem::path root) {
+    std::lock_guard<std::mutex> lock(gAssetRootMutex);
+    gEngineResourceRoot = ResolveRoot(root);
+}
+
+void AssetManager::SetProjectAssetRoot(std::filesystem::path root) {
+    std::lock_guard<std::mutex> lock(gAssetRootMutex);
+    gProjectAssetRoot = ResolveRoot(root);
+}
+
+void AssetManager::SetUserDataRoot(std::filesystem::path root) {
+    std::lock_guard<std::mutex> lock(gAssetRootMutex);
+    gUserDataRoot = ResolveRoot(root);
+}
+
+std::filesystem::path AssetManager::GetEngineResourceRoot() {
+    {
+        std::lock_guard<std::mutex> lock(gAssetRootMutex);
+        if (!gEngineResourceRoot.empty()) {
+            return gEngineResourceRoot;
+        }
+    }
+    return GetAssetRoot() / L"engine" / L"resources";
+}
+
+std::filesystem::path AssetManager::GetProjectAssetRoot() {
+    std::lock_guard<std::mutex> lock(gAssetRootMutex);
+    return gProjectAssetRoot;
+}
+
+std::filesystem::path AssetManager::GetUserDataRoot() {
+    std::lock_guard<std::mutex> lock(gAssetRootMutex);
+    return gUserDataRoot;
+}
+
 std::filesystem::path AssetManager::GetAssetRoot() {
     std::lock_guard<std::mutex> lock(gAssetRootMutex);
     if (gAssetRoot.empty()) {
@@ -144,6 +210,16 @@ std::filesystem::path AssetManager::GetAssetRoot() {
 }
 
 std::filesystem::path AssetManager::ResolvePath(const std::filesystem::path& relativePath) {
+    std::filesystem::path uriPath;
+    if (StripScheme(relativePath, L"engine", uriPath)) {
+        return ResolveMountedPath(GetEngineResourceRoot(), uriPath);
+    }
+    if (StripScheme(relativePath, L"asset", uriPath)) {
+        return ResolvePathStrict(relativePath);
+    }
+    if (StripScheme(relativePath, L"user", uriPath)) {
+        return ResolveMountedPath(GetUserDataRoot(), uriPath);
+    }
     std::filesystem::path normalized;
     try {
         normalized = relativePath.lexically_normal();
@@ -189,10 +265,18 @@ std::filesystem::path AssetManager::ResolvePathStrict(const std::filesystem::pat
         return {};
     }
 
-    const std::filesystem::path assetRoot = Canonicalize(GetAssetRoot());
+    const std::filesystem::path assetRoot = Canonicalize(GetProjectAssetRoot());
+    if (assetRoot.empty()) {
+        return {};
+    }
     std::filesystem::path normalized;
     try {
-        normalized = relativePath.lexically_normal();
+        if (!StripScheme(relativePath, L"asset", normalized)) {
+            normalized = relativePath.lexically_normal();
+            if (normalized.begin() != normalized.end() && *normalized.begin() == L"assets") {
+                normalized = normalized.lexically_relative(L"assets");
+            }
+        }
     } catch (const std::exception&) {
         return {};
     }

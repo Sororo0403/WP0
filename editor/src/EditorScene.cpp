@@ -1,5 +1,6 @@
 #include "EditorScene.h"
 
+#include "core/AssetManager.h"
 #include "graphics/DirectXCommon.h"
 #include "graphics/RenderScene.h"
 #include "graphics/SrvManager.h"
@@ -12,8 +13,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstring>
+#include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace {
@@ -22,7 +26,17 @@ constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFl
 
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
 constexpr const char* kEntityDragPayload = "WP0_ENTITY";
+constexpr const char* kModelAssetDragPayload = "WP0_MODEL_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
+
+bool IsModelAsset(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    constexpr std::string_view extensions[] = {".fbx", ".obj", ".gltf", ".glb",
+                                                ".dae", ".3ds", ".ply"};
+    return std::ranges::find(extensions, extension) != std::end(extensions);
+}
 
 Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
     using namespace DirectX;
@@ -39,8 +53,10 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
 }
 }
 
-EditorScene::EditorScene(std::function<void()> requestClose)
-    : requestClose_(std::move(requestClose)) {
+EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
+                         std::filesystem::path startupScene, std::function<void()> requestClose)
+    : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
+      assetRoot_(std::move(assetRoot)), scenePath_(std::move(startupScene)) {
     NewScene();
     ClearHistory(true);
 }
@@ -72,6 +88,7 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     sceneViewCamera_.SetPosition({0.0f, 0.35f, -4.0f});
     sceneViewCamera_.SetRotation({0.08f, 0.0f, 0.0f});
     sceneViewCamera_.Initialize(960.0f / 540.0f);
+    RefreshAssetBrowser();
     ResolveMeshResources();
 }
 
@@ -175,9 +192,7 @@ void EditorScene::DrawPanels() {
     ImGui::End();
 
     BeginFixedPanel("Project", origin.x, origin.y + upperHeight, leftWidth, bottomHeight);
-    ImGui::TextUnformatted("Current Scene");
-    ImGui::Separator();
-    ImGui::TextWrapped("%s", scenePath_.string().c_str());
+    DrawProjectPanel();
     ImGui::End();
 
     BeginFixedPanel("Scene", origin.x + leftWidth, origin.y, centerWidth, upperHeight);
@@ -220,6 +235,33 @@ void EditorScene::DrawPanels() {
                     size.y);
     DrawInspectorPanel();
     ImGui::End();
+}
+
+void EditorScene::DrawProjectPanel() {
+    if (ImGui::Button("Refresh")) {
+        RefreshAssetBrowser();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu model(s)", modelAssets_.size());
+    ImGui::Separator();
+    ImGui::TextDisabled("Project: %s", projectRoot_.string().c_str());
+    ImGui::TextDisabled("Scene: %s", scenePath_.string().c_str());
+    if (modelAssets_.empty()) {
+        ImGui::TextWrapped("No model assets found under assets.");
+        return;
+    }
+    for (const std::filesystem::path& path : modelAssets_) {
+        const std::string assetPath = path.generic_string();
+        ImGui::PushID(assetPath.c_str());
+        ImGui::Selectable(assetPath.c_str(), false);
+        if (ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload(kModelAssetDragPayload, assetPath.c_str(),
+                                      assetPath.size() + 1u);
+            ImGui::TextUnformatted(assetPath.c_str());
+            ImGui::EndDragDropSource();
+        }
+        ImGui::PopID();
+    }
 }
 
 void EditorScene::DrawHierarchyPanel() {
@@ -304,6 +346,11 @@ void EditorScene::DrawEntityNode(EntityId id) {
             EntityId child{};
             std::memcpy(&child, payload->Data, sizeof(child));
             ReparentEntity(child, id);
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignModelAsset(id, static_cast<const char*>(payload->Data));
         }
         ImGui::EndDragDropTarget();
     }
@@ -403,15 +450,17 @@ void EditorScene::DrawInspectorPanel() {
     } else {
         std::array<char, 512> pathBuffer{};
         strncpy_s(pathBuffer.data(), pathBuffer.size(), renderer.modelPath.c_str(), _TRUNCATE);
-        before = WorldSerializer::Serialize(world_);
         if (ImGui::InputText("Model", pathBuffer.data(), pathBuffer.size(),
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
-            const std::string previousPath = renderer.modelPath;
-            renderer.modelPath = pathBuffer.data();
-            loadedModels_.erase(previousPath);
-            loadedModels_.erase(renderer.modelPath);
-            RecordImmediateEdit("Change Model Reference", std::move(before), selectionBefore);
-            status_ = "Changed model reference.";
+            AssignModelAsset(selection_, pathBuffer.data());
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
+                payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                AssignModelAsset(selection_, static_cast<const char*>(payload->Data));
+            }
+            ImGui::EndDragDropTarget();
         }
     }
 }
@@ -464,6 +513,74 @@ void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
     selection_ = child;
     RecordImmediateEdit("Reparent Entity", before, selectionBefore);
     status_ = parent.IsValid() ? "Reparented the entity." : "Moved the entity to the scene root.";
+}
+
+void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !IsModelAsset(path)) {
+        status_ = "The dropped model asset is invalid.";
+        return;
+    }
+    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped model asset no longer exists.";
+        return;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    std::string assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
+        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped model asset path is too long.";
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const std::string previousPath =
+        entity->meshRenderer ? entity->meshRenderer->modelPath : std::string{};
+    if (!entity->meshRenderer) {
+        entity->meshRenderer = MeshRendererComponent{};
+    }
+    entity->meshRenderer->sourceType = MeshSourceType::Model;
+    entity->meshRenderer->modelPath = assetPath;
+    loadedModels_.erase(previousPath);
+    loadedModels_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Model Asset", before, selectionBefore);
+    status_ = "Assigned model asset: " + assetPath;
+}
+
+void EditorScene::RefreshAssetBrowser() {
+    modelAssets_.clear();
+    std::error_code error;
+    if (!std::filesystem::is_directory(assetRoot_, error) || error) {
+        return;
+    }
+    std::filesystem::recursive_directory_iterator iterator(
+        assetRoot_, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!error && iterator != end) {
+        if (iterator->is_regular_file(error) && !error && IsModelAsset(iterator->path())) {
+            std::filesystem::path relative =
+                std::filesystem::relative(iterator->path(), assetRoot_, error);
+            if (!error) {
+                modelAssets_.push_back((std::filesystem::path("assets") / relative).lexically_normal());
+            }
+        }
+        iterator.increment(error);
+    }
+    std::ranges::sort(modelAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+}
+
+std::optional<std::filesystem::path>
+EditorScene::ResolveProjectAssetPath(const std::filesystem::path& path) const {
+    const std::filesystem::path resolved = AssetManager::ResolvePathStrict(path);
+    return resolved.empty() ? std::nullopt
+                            : std::optional<std::filesystem::path>(resolved);
 }
 
 EditorScene::HistoryState EditorScene::CaptureHistoryState() const {
@@ -576,9 +693,12 @@ void EditorScene::ResolveMeshResources() {
             loadedModels_.contains(entity.meshRenderer->modelPath)) {
             continue;
         }
-        const std::filesystem::path path(entity.meshRenderer->modelPath);
+        if (!ResolveProjectAssetPath(entity.meshRenderer->modelPath)) {
+            continue;
+        }
         loadedModels_.emplace(entity.meshRenderer->modelPath,
-                              ctx_->rendering.model->LoadHandle(path.wstring()));
+                              ctx_->rendering.model->LoadHandle(
+                                  std::filesystem::path(entity.meshRenderer->modelPath).wstring()));
     }
 }
 

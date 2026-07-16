@@ -17,7 +17,8 @@
 
 class EditorScene final : public BaseScene {
 public:
-    explicit EditorScene(std::function<void()> requestClose);
+    EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
+                std::filesystem::path startupScene, std::function<void()> requestClose);
 
     void Initialize(const SceneContext& ctx) override;
     void Update() override;
@@ -27,12 +28,17 @@ public:
 private:
     void DrawMainMenu();
     void DrawPanels();
+    void DrawProjectPanel();
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
     void HandleEditorShortcuts();
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
+    void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
+    void RefreshAssetBrowser();
+    [[nodiscard]] std::optional<std::filesystem::path>
+    ResolveProjectAssetPath(const std::filesystem::path& path) const;
     void Undo();
     void Redo();
     void BeginHistoryEdit(std::string label);
@@ -68,9 +74,11 @@ private:
     bool RestoreHistoryState(const HistoryState& state);
 
     std::function<void()> requestClose_;
+    std::filesystem::path projectRoot_;
+    std::filesystem::path assetRoot_;
     World world_;
     EntityId selection_{};
-    std::filesystem::path scenePath_ = L"Assets/Scenes/Untitled.wp0scene";
+    std::filesystem::path scenePath_;
     std::string status_ = "Editor session started.";
     std::string savedWorldSnapshot_;
     std::vector<HistoryEntry> undoHistory_;
@@ -84,6 +92,7 @@ private:
     Camera sceneViewCamera_{};
     ModelHandle primitiveModels_[4]{};
     std::unordered_map<std::string, ModelHandle> loadedModels_;
+    std::vector<std::filesystem::path> modelAssets_;
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
     bool postProcessInitializationAttempted_ = false;

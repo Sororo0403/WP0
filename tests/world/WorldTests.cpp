@@ -1,3 +1,4 @@
+#include "core/AssetManager.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
 
@@ -124,6 +125,26 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidRenderer, rejected, &error),
                "Invalid MeshRenderer data was accepted.")) {
         return 14;
+    }
+    const std::filesystem::path projectAssets =
+        std::filesystem::temp_directory_path() / L"wp0-external-project" / L"assets";
+    AssetManager::SetProjectAssetRoot(projectAssets);
+    const std::filesystem::path resolvedAsset =
+        AssetManager::ResolvePathStrict(L"asset://models/brain_stem/BrainStem.glb");
+    if (!Check(resolvedAsset ==
+                   (projectAssets / L"models" / L"brain_stem" / L"BrainStem.glb")
+                       .lexically_normal(),
+               "asset:// URI did not resolve against the project asset root.")) {
+        return 15;
+    }
+    if (!Check(AssetManager::ResolvePathStrict(L"asset://../outside.glb").empty(),
+               "Project asset traversal was accepted.")) {
+        return 16;
+    }
+    AssetManager::SetEngineResourceRoot(projectAssets / L"engine-resources");
+    if (!Check(AssetManager::ResolvePath(L"engine://../outside.hlsl").empty(),
+               "Engine resource traversal was accepted.")) {
+        return 17;
     }
     return 0;
 }

@@ -114,7 +114,7 @@ void LoadJapaneseImguiFont() {
     glyphRangesBuilder.BuildRanges(&fontRanges);
 
     ImFont* font = TryLoadImguiFont(
-        AssetManager::ResolvePath(L"engine/resources/fonts/MPLUS1/MPLUS1-ExtraBold.ttf"),
+        AssetManager::ResolvePath(L"engine://fonts/MPLUS1/MPLUS1-ExtraBold.ttf"),
         fontRanges.Data);
     if (font == nullptr) {
         static constexpr const wchar_t* kFallbackFontPaths[] = {

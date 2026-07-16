@@ -67,12 +67,14 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)..\engine\externals\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;shell32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>if exist "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" copy /Y "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" "$(OutDir)"
 if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" "$(OutDir)"
-if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"</Command>
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"
+"%SystemRoot%\System32\xcopy.exe" /E /I /Y /Q "$(MSBuildThisFileDirectory)..\engine\resources" "$(OutDir)resources\engine"
+if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe" /E /I /Y /Q "$(MSBuildThisFileDirectory)resources" "$(OutDir)resources\editor"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -91,20 +93,26 @@ if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdk
     <Link>
       <SubSystem>Windows</SubSystem>
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)..\engine\externals\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;shell32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>if exist "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" copy /Y "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" "$(OutDir)"
 if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" "$(OutDir)"
-if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"</Command>
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"
+"%SystemRoot%\System32\xcopy.exe" /E /I /Y /Q "$(MSBuildThisFileDirectory)..\engine\resources" "$(OutDir)resources\engine"
+if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe" /E /I /Y /Q "$(MSBuildThisFileDirectory)resources" "$(OutDir)resources\editor"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\ApplicationPaths.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\engine\Engine.vcxproj">

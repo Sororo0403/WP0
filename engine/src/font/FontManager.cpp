@@ -535,7 +535,7 @@ void FontManager::Initialize(TextureManager* textureManager) {
         return;
     }
 
-    state_->defaultFont = LoadFont(L"engine/resources/fonts/MPLUS1/MPLUS1-ExtraBold.ttf");
+    state_->defaultFont = LoadFont(L"engine://fonts/MPLUS1/MPLUS1-ExtraBold.ttf");
     if (!state_->defaultFont.IsValid()) {
         static constexpr const wchar_t* kFallbackFamilies[] = {L"Yu Gothic UI", L"Meiryo UI",
                                                                L"Segoe UI", L"Arial"};
