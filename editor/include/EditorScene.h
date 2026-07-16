@@ -10,8 +10,10 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class EditorScene final : public BaseScene {
 public:
@@ -28,6 +30,14 @@ private:
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
+    void HandleEditorShortcuts();
+    void Undo();
+    void Redo();
+    void BeginHistoryEdit(std::string label);
+    void CommitHistoryEdit();
+    void RecordImmediateEdit(std::string label, std::string before, EntityId selectionBefore);
+    void ClearHistory(bool markClean);
+    void RefreshDirty();
     void BuildRenderScene();
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
@@ -36,11 +46,34 @@ private:
     void LoadScene();
     static void BeginFixedPanel(const char* name, float x, float y, float width, float height);
 
+    struct HistoryState {
+        std::string world;
+        EntityId selection{};
+    };
+
+    struct HistoryEntry {
+        std::string label;
+        HistoryState before;
+        HistoryState after;
+    };
+
+    struct PendingHistoryEdit {
+        std::string label;
+        HistoryState before;
+    };
+
+    [[nodiscard]] HistoryState CaptureHistoryState() const;
+    bool RestoreHistoryState(const HistoryState& state);
+
     std::function<void()> requestClose_;
     World world_;
     EntityId selection_{};
     std::filesystem::path scenePath_ = L"Assets/Scenes/Untitled.wp0scene";
     std::string status_ = "Editor session started.";
+    std::string savedWorldSnapshot_;
+    std::vector<HistoryEntry> undoHistory_;
+    std::vector<HistoryEntry> redoHistory_;
+    std::optional<PendingHistoryEdit> pendingHistoryEdit_;
     bool dirty_ = false;
     RenderSurface sceneViewSurface_{};
     PostProcessSystem sceneViewPostProcess_{};

@@ -21,6 +21,7 @@ constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFl
                                          ImGuiWindowFlags_NoCollapse;
 
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
+constexpr size_t kMaxHistoryEntries = 128;
 
 Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
     using namespace DirectX;
@@ -40,7 +41,7 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
 EditorScene::EditorScene(std::function<void()> requestClose)
     : requestClose_(std::move(requestClose)) {
     NewScene();
-    dirty_ = false;
+    ClearHistory(true);
 }
 
 void EditorScene::Initialize(const SceneContext& ctx) {
@@ -105,6 +106,7 @@ void EditorScene::Update() {
 void EditorScene::Draw() {}
 
 void EditorScene::DrawPostProcessOverlay() {
+    HandleEditorShortcuts();
     DrawMainMenu();
     DrawPanels();
 }
@@ -130,8 +132,14 @@ void EditorScene::DrawMainMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
-        ImGui::MenuItem("Undo", "Ctrl+Z", false, false);
-        ImGui::MenuItem("Redo", "Ctrl+Y", false, false);
+        const bool canUndo = !undoHistory_.empty();
+        const bool canRedo = !redoHistory_.empty();
+        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) {
+            Undo();
+        }
+        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo)) {
+            Redo();
+        }
         ImGui::EndMenu();
     }
     ImGui::TextUnformatted(dirty_ ? "WP0 Editor *" : "WP0 Editor");
@@ -210,8 +218,10 @@ void EditorScene::DrawPanels() {
 
 void EditorScene::DrawHierarchyPanel() {
     if (ImGui::Button("Create Empty")) {
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
         selection_ = world_.CreateEntity();
-        dirty_ = true;
+        RecordImmediateEdit("Create Entity", before, selectionBefore);
         status_ = "Created a new entity.";
     }
     ImGui::SameLine();
@@ -220,9 +230,11 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Delete")) {
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
         world_.DestroyEntity(selection_);
         selection_ = {};
-        dirty_ = true;
+        RecordImmediateEdit("Delete Entity", before, selectionBefore);
         status_ = "Deleted the selected entity hierarchy.";
     }
     if (!canDelete) {
@@ -272,32 +284,47 @@ void EditorScene::DrawInspectorPanel() {
 
     std::array<char, 256> nameBuffer{};
     strncpy_s(nameBuffer.data(), nameBuffer.size(), entity->name.c_str(), _TRUNCATE);
-    if (ImGui::InputText("Name", nameBuffer.data(), nameBuffer.size())) {
+    const bool nameChanged = ImGui::InputText("Name", nameBuffer.data(), nameBuffer.size());
+    if (ImGui::IsItemActivated()) {
+        BeginHistoryEdit("Rename Entity");
+    }
+    if (nameChanged) {
         entity->name = nameBuffer.data();
         if (entity->name.empty()) {
             entity->name = "Entity";
         }
-        dirty_ = true;
+        RefreshDirty();
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        CommitHistoryEdit();
     }
     ImGui::TextDisabled("ID: %s", entity->id.ToString().c_str());
     ImGui::Separator();
     ImGui::TextUnformatted("Transform");
-    bool transformChanged = false;
-    transformChanged |=
-        ImGui::DragFloat3("Position", &entity->transform.position.x, 0.05f);
-    transformChanged |=
-        ImGui::DragFloat3("Rotation", &entity->transform.rotationDegrees.x, 0.25f);
-    transformChanged |= ImGui::DragFloat3("Scale", &entity->transform.scale.x, 0.02f);
-    if (transformChanged) {
-        dirty_ = true;
-        status_ = "Modified Transform.";
-    }
+    auto drawTransform = [&](const char* label, DirectX::XMFLOAT3& value, float speed) {
+        const bool changed = ImGui::DragFloat3(label, &value.x, speed);
+        if (ImGui::IsItemActivated()) {
+            BeginHistoryEdit(std::string("Modify Transform ") + label);
+        }
+        if (changed) {
+            RefreshDirty();
+            status_ = "Modified Transform.";
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            CommitHistoryEdit();
+        }
+    };
+    drawTransform("Position", entity->transform.position, 0.05f);
+    drawTransform("Rotation", entity->transform.rotationDegrees, 0.25f);
+    drawTransform("Scale", entity->transform.scale, 0.02f);
 
     ImGui::Separator();
     if (!entity->meshRenderer) {
         if (ImGui::Button("Add Mesh Renderer")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
             entity->meshRenderer = MeshRendererComponent{};
-            dirty_ = true;
+            RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
             status_ = "Added MeshRenderer.";
         }
         return;
@@ -306,37 +333,162 @@ void EditorScene::DrawInspectorPanel() {
     MeshRendererComponent& renderer = *entity->meshRenderer;
     ImGui::TextUnformatted("Mesh Renderer");
     if (ImGui::Button("Remove Mesh Renderer")) {
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
         entity->meshRenderer.reset();
-        dirty_ = true;
+        RecordImmediateEdit("Remove MeshRenderer", before, selectionBefore);
         status_ = "Removed MeshRenderer.";
         return;
     }
-    dirty_ |= ImGui::Checkbox("Enabled", &renderer.enabled);
+    std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (ImGui::Checkbox("Enabled", &renderer.enabled)) {
+        RecordImmediateEdit("Toggle MeshRenderer", std::move(before), selectionBefore);
+    }
     int source = static_cast<int>(renderer.sourceType);
+    before = WorldSerializer::Serialize(world_);
     if (ImGui::Combo("Source", &source, "Primitive\0Model\0")) {
         renderer.sourceType = static_cast<MeshSourceType>(source);
-        dirty_ = true;
+        RecordImmediateEdit("Change Mesh Source", std::move(before), selectionBefore);
     }
     if (renderer.sourceType == MeshSourceType::Primitive) {
         int primitive = static_cast<int>(renderer.primitive);
+        before = WorldSerializer::Serialize(world_);
         if (ImGui::Combo("Primitive", &primitive, kPrimitiveNames,
                          static_cast<int>(std::size(kPrimitiveNames)))) {
             renderer.primitive = static_cast<MeshPrimitive>(primitive);
-            dirty_ = true;
+            RecordImmediateEdit("Change Primitive", std::move(before), selectionBefore);
         }
     } else {
         std::array<char, 512> pathBuffer{};
         strncpy_s(pathBuffer.data(), pathBuffer.size(), renderer.modelPath.c_str(), _TRUNCATE);
+        before = WorldSerializer::Serialize(world_);
         if (ImGui::InputText("Model", pathBuffer.data(), pathBuffer.size(),
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
             const std::string previousPath = renderer.modelPath;
             renderer.modelPath = pathBuffer.data();
             loadedModels_.erase(previousPath);
             loadedModels_.erase(renderer.modelPath);
-            dirty_ = true;
+            RecordImmediateEdit("Change Model Reference", std::move(before), selectionBefore);
             status_ = "Changed model reference.";
         }
     }
+}
+
+void EditorScene::HandleEditorShortcuts() {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!io.KeyCtrl || io.WantTextInput) {
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        if (io.KeyShift) {
+            Redo();
+        } else {
+            Undo();
+        }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+        Redo();
+    }
+}
+
+EditorScene::HistoryState EditorScene::CaptureHistoryState() const {
+    return {WorldSerializer::Serialize(world_), selection_};
+}
+
+bool EditorScene::RestoreHistoryState(const HistoryState& state) {
+    World restored;
+    std::string error;
+    if (!WorldSerializer::Deserialize(state.world, restored, &error)) {
+        status_ = "History restore failed: " + error;
+        return false;
+    }
+    world_ = std::move(restored);
+    selection_ = world_.Contains(state.selection) ? state.selection : EntityId{};
+    RefreshDirty();
+    return true;
+}
+
+void EditorScene::BeginHistoryEdit(std::string label) {
+    if (!pendingHistoryEdit_) {
+        pendingHistoryEdit_ = PendingHistoryEdit{std::move(label), CaptureHistoryState()};
+    }
+}
+
+void EditorScene::CommitHistoryEdit() {
+    if (!pendingHistoryEdit_) {
+        return;
+    }
+    PendingHistoryEdit pending = std::move(*pendingHistoryEdit_);
+    pendingHistoryEdit_.reset();
+    HistoryState after = CaptureHistoryState();
+    if (pending.before.world == after.world && pending.before.selection == after.selection) {
+        return;
+    }
+    undoHistory_.push_back(
+        {std::move(pending.label), std::move(pending.before), std::move(after)});
+    if (undoHistory_.size() > kMaxHistoryEntries) {
+        undoHistory_.erase(undoHistory_.begin());
+    }
+    redoHistory_.clear();
+    RefreshDirty();
+}
+
+void EditorScene::RecordImmediateEdit(std::string label, std::string before,
+                                      EntityId selectionBefore) {
+    pendingHistoryEdit_.reset();
+    HistoryState after = CaptureHistoryState();
+    if (before == after.world && selectionBefore == after.selection) {
+        return;
+    }
+    undoHistory_.push_back({std::move(label), {std::move(before), selectionBefore},
+                            std::move(after)});
+    if (undoHistory_.size() > kMaxHistoryEntries) {
+        undoHistory_.erase(undoHistory_.begin());
+    }
+    redoHistory_.clear();
+    RefreshDirty();
+}
+
+void EditorScene::Undo() {
+    CommitHistoryEdit();
+    if (undoHistory_.empty()) {
+        return;
+    }
+    HistoryEntry entry = std::move(undoHistory_.back());
+    undoHistory_.pop_back();
+    if (!RestoreHistoryState(entry.before)) {
+        undoHistory_.push_back(std::move(entry));
+        return;
+    }
+    status_ = "Undo: " + entry.label;
+    redoHistory_.push_back(std::move(entry));
+}
+
+void EditorScene::Redo() {
+    CommitHistoryEdit();
+    if (redoHistory_.empty()) {
+        return;
+    }
+    HistoryEntry entry = std::move(redoHistory_.back());
+    redoHistory_.pop_back();
+    if (!RestoreHistoryState(entry.after)) {
+        redoHistory_.push_back(std::move(entry));
+        return;
+    }
+    status_ = "Redo: " + entry.label;
+    undoHistory_.push_back(std::move(entry));
+}
+
+void EditorScene::ClearHistory(bool markClean) {
+    undoHistory_.clear();
+    redoHistory_.clear();
+    pendingHistoryEdit_.reset();
+    savedWorldSnapshot_ = markClean ? WorldSerializer::Serialize(world_) : std::string{};
+    RefreshDirty();
+}
+
+void EditorScene::RefreshDirty() {
+    dirty_ = WorldSerializer::Serialize(world_) != savedWorldSnapshot_;
 }
 
 void EditorScene::ResolveMeshResources() {
@@ -418,7 +570,7 @@ void EditorScene::NewScene() {
     if (WorldEntity* cube = world_.Find(selection_)) {
         cube->meshRenderer = MeshRendererComponent{};
     }
-    dirty_ = true;
+    ClearHistory(false);
     status_ = "Created a new scene.";
 }
 
@@ -429,6 +581,7 @@ void EditorScene::SaveScene() {
         return;
     }
     dirty_ = false;
+    savedWorldSnapshot_ = WorldSerializer::Serialize(world_);
     status_ = "Saved scene: " + scenePath_.string();
 }
 
@@ -442,5 +595,6 @@ void EditorScene::LoadScene() {
     world_ = std::move(loaded);
     selection_ = world_.Empty() ? EntityId{} : world_.Entities().front().id;
     dirty_ = false;
+    ClearHistory(true);
     status_ = "Loaded scene: " + scenePath_.string();
 }
