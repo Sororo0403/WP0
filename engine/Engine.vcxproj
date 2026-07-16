@@ -206,6 +206,9 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\texture\TextureManagerDecoding.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\texture\TextureManagerDynamic.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\animation\SkeletonPoseBuilder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\EntityId.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\World.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)externals\DirectXTex\DirectXTex_Desktop_2022.vcxproj">
@@ -227,6 +230,9 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)public\EngineRendering.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)public\EngineScene.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)public\EngineUi.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\world\EntityId.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\world\World.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldSerializer.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\Animator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\AnimationSampler.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\AssimpAnimationLoader.h" />

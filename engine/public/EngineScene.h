@@ -8,3 +8,6 @@
 #include "scene/BaseScene.h"
 #include "scene/SceneContext.h"
 #include "scene/SceneManager.h"
+#include "world/EntityId.h"
+#include "world/World.h"
+#include "world/WorldSerializer.h"
