@@ -51,6 +51,17 @@ std::string WorldSerializer::Serialize(const World& world) {
         encoded["components"]["Transform"]["rotation"] =
             EncodeFloat3(entity.transform.rotationDegrees);
         encoded["components"]["Transform"]["scale"] = EncodeFloat3(entity.transform.scale);
+        if (entity.meshRenderer) {
+            const MeshRendererComponent& renderer = *entity.meshRenderer;
+            Json meshRenderer;
+            meshRenderer["enabled"] = renderer.enabled;
+            meshRenderer["source"] = renderer.sourceType == MeshSourceType::Primitive
+                                         ? "Primitive"
+                                         : "Model";
+            meshRenderer["primitive"] = static_cast<uint32_t>(renderer.primitive);
+            meshRenderer["model"] = renderer.modelPath;
+            encoded["components"]["MeshRenderer"] = std::move(meshRenderer);
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -104,6 +115,41 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             !DecodeFloat3(transform["scale"], entity.transform.scale)) {
             SetError(error, "Scene Transform component is invalid.");
             return false;
+        }
+        if (encoded["components"].contains("MeshRenderer")) {
+            const Json& renderer = encoded["components"]["MeshRenderer"];
+            if (!renderer.is_object() || !renderer.contains("enabled") ||
+                !renderer["enabled"].is_boolean() || !renderer.contains("source") ||
+                !renderer["source"].is_string() || !renderer.contains("primitive") ||
+                !renderer["primitive"].is_number_unsigned() || !renderer.contains("model") ||
+                !renderer["model"].is_string()) {
+                SetError(error, "Scene MeshRenderer component is invalid.");
+                return false;
+            }
+            MeshRendererComponent component{};
+            component.enabled = renderer["enabled"].get<bool>();
+            const std::string source = renderer["source"].get<std::string>();
+            if (source == "Primitive") {
+                component.sourceType = MeshSourceType::Primitive;
+            } else if (source == "Model") {
+                component.sourceType = MeshSourceType::Model;
+            } else {
+                SetError(error, "Scene MeshRenderer source is invalid.");
+                return false;
+            }
+            const uint32_t primitive = renderer["primitive"].get<uint32_t>();
+            if (primitive > static_cast<uint32_t>(MeshPrimitive::Cylinder)) {
+                SetError(error, "Scene MeshRenderer primitive is invalid.");
+                return false;
+            }
+            component.primitive = static_cast<MeshPrimitive>(primitive);
+            component.modelPath = renderer["model"].get<std::string>();
+            if (component.modelPath.size() > 1024u ||
+                component.modelPath.find('\0') != std::string::npos) {
+                SetError(error, "Scene MeshRenderer model path is invalid.");
+                return false;
+            }
+            entity.meshRenderer = std::move(component);
         }
         entities.push_back(std::move(entity));
     }

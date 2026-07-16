@@ -47,7 +47,18 @@ bool DirectXCommon::IsDeviceRemoved() const {
     return state_->device && FAILED(state_->device->GetDeviceRemovedReason());
 }
 void DirectXCommon::CreateFactory() {
-    if (LogIfFailed(CreateDXGIFactory(IID_PPV_ARGS(&state_->factory)),
+#ifdef _DEBUG
+    UINT factoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+    Microsoft::WRL::ComPtr<ID3D12Debug> debugController;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+        debugController->EnableDebugLayer();
+    } else {
+        factoryFlags = 0;
+    }
+#else
+    constexpr UINT factoryFlags = 0;
+#endif
+    if (LogIfFailed(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&state_->factory)),
                     "CreateDXGIFactory failed")) {
         state_->factory.Reset();
     }

@@ -3,6 +3,7 @@
 #include "world/EntityId.h"
 
 #include <DirectXMath.h>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -12,11 +13,31 @@ struct TransformComponent {
     DirectX::XMFLOAT3 scale{1.0f, 1.0f, 1.0f};
 };
 
+enum class MeshSourceType : uint8_t {
+    Primitive = 0,
+    Model = 1,
+};
+
+enum class MeshPrimitive : uint8_t {
+    Box = 0,
+    Sphere = 1,
+    Plane = 2,
+    Cylinder = 3,
+};
+
+struct MeshRendererComponent {
+    bool enabled = true;
+    MeshSourceType sourceType = MeshSourceType::Primitive;
+    MeshPrimitive primitive = MeshPrimitive::Box;
+    std::string modelPath;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
     std::string name = "Entity";
     TransformComponent transform{};
+    std::optional<MeshRendererComponent> meshRenderer;
 };
 
 class World {
@@ -33,6 +54,7 @@ public:
     [[nodiscard]] std::vector<EntityId> GetChildren(EntityId parent) const;
     [[nodiscard]] const std::vector<WorldEntity>& Entities() const;
     [[nodiscard]] bool Empty() const;
+    [[nodiscard]] bool TryGetWorldMatrix(EntityId id, DirectX::XMFLOAT4X4& result) const;
 
     void Clear();
     bool ReplaceEntities(std::vector<WorldEntity> entities, std::string* error = nullptr);

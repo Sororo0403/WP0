@@ -1,15 +1,40 @@
 #include "EditorScene.h"
 
+#include "graphics/DirectXCommon.h"
+#include "graphics/RenderScene.h"
+#include "graphics/SrvManager.h"
 #include "imgui.h"
+#include "model/Model.h"
+#include "model/ModelManager.h"
+#include "model/MeshRenderer.h"
+#include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <utility>
 
 namespace {
 constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                                          ImGuiWindowFlags_NoCollapse;
+
+constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
+
+Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
+    using namespace DirectX;
+    XMVECTOR scale;
+    XMVECTOR rotation;
+    XMVECTOR translation;
+    Transform result{};
+    if (XMMatrixDecompose(&scale, &rotation, &translation, XMLoadFloat4x4(&matrix))) {
+        XMStoreFloat3(&result.scale, scale);
+        XMStoreFloat4(&result.rotation, rotation);
+        XMStoreFloat3(&result.position, translation);
+    }
+    return result;
+}
 }
 
 EditorScene::EditorScene(std::function<void()> requestClose)
@@ -18,7 +43,64 @@ EditorScene::EditorScene(std::function<void()> requestClose)
     dirty_ = false;
 }
 
-void EditorScene::Update() {}
+void EditorScene::Initialize(const SceneContext& ctx) {
+    BaseScene::Initialize(ctx);
+    if (ctx.rendering.dxCommon == nullptr || ctx.rendering.srv == nullptr ||
+        !sceneViewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 960, 540)) {
+        status_ = "Scene View RenderSurface initialization failed.";
+        return;
+    }
+    if (ctx.rendering.model == nullptr || ctx.rendering.meshRenderer == nullptr ||
+        ctx.rendering.texture == nullptr) {
+        status_ = "Scene View rendering services are unavailable.";
+        return;
+    }
+    sceneRenderer_.Initialize(ctx.rendering.meshRenderer);
+    Material material{};
+    material.enableTexture = 0;
+    const uint32_t whiteTexture = ctx.rendering.texture->GetWhiteTextureId();
+    primitiveModels_[static_cast<size_t>(MeshPrimitive::Box)] =
+        ctx.rendering.model->CreateBoxHandle(whiteTexture, material);
+    primitiveModels_[static_cast<size_t>(MeshPrimitive::Sphere)] =
+        ctx.rendering.model->CreateSphereHandle(whiteTexture, material);
+    primitiveModels_[static_cast<size_t>(MeshPrimitive::Plane)] =
+        ctx.rendering.model->CreatePlaneHandle(whiteTexture, material);
+    primitiveModels_[static_cast<size_t>(MeshPrimitive::Cylinder)] =
+        ctx.rendering.model->CreateCylinderHandle(whiteTexture, material);
+    sceneViewCamera_.SetPosition({0.0f, 0.35f, -4.0f});
+    sceneViewCamera_.SetRotation({0.08f, 0.0f, 0.0f});
+    sceneViewCamera_.Initialize(960.0f / 540.0f);
+    ResolveMeshResources();
+}
+
+void EditorScene::Update() {
+    ResolveMeshResources();
+    if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
+        ctx_->rendering.dxCommon != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording() &&
+        (requestedSceneWidth_ != sceneViewSurface_.GetWidth() ||
+         requestedSceneHeight_ != sceneViewSurface_.GetHeight())) {
+        const int width = (std::max)(1, requestedSceneWidth_);
+        const int height = (std::max)(1, requestedSceneHeight_);
+        if (sceneViewSurface_.Resize(width, height) &&
+            sceneViewPostProcess_.Resize(width, height)) {
+            sceneViewCamera_.SetAspect(static_cast<float>(width) / static_cast<float>(height));
+        } else {
+            status_ = "Scene View resize failed.";
+        }
+    }
+    if (!postProcessInitializationAttempted_ && sceneViewSurface_.IsReady() && ctx_ != nullptr &&
+        ctx_->rendering.dxCommon != nullptr && ctx_->rendering.srv != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording()) {
+        postProcessInitializationAttempted_ = true;
+        sceneViewPostProcess_.Initialize(ctx_->rendering.dxCommon, ctx_->rendering.srv,
+                                         sceneViewSurface_.GetWidth(),
+                                         sceneViewSurface_.GetHeight());
+        if (!sceneViewPostProcess_.IsReady()) {
+            status_ = "Scene View PostProcess initialization failed.";
+        }
+    }
+}
 
 void EditorScene::Draw() {}
 
@@ -64,6 +146,7 @@ void EditorScene::BeginFixedPanel(const char* name, float x, float y, float widt
 }
 
 void EditorScene::DrawPanels() {
+    sceneViewSurface_.ReleaseCompletedFrameResources();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->WorkPos;
     const ImVec2 size = viewport->WorkSize;
@@ -84,9 +167,34 @@ void EditorScene::DrawPanels() {
     ImGui::End();
 
     BeginFixedPanel("Scene", origin.x + leftWidth, origin.y, centerWidth, upperHeight);
-    ImGui::TextUnformatted("Scene View");
-    ImGui::Separator();
-    ImGui::TextDisabled("RenderSurface will be connected here.");
+    const ImVec2 available = ImGui::GetContentRegionAvail();
+    requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
+    requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
+    if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
+        ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
+        BuildRenderScene();
+        sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
+                              {0.025f, 0.035f, 0.055f, 1.0f});
+        sceneViewSurface_.TransitionDepthToShaderResource();
+        sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+        const PostProcessOutputTarget target{
+            sceneViewSurface_.GetOutputRtvHandle(),
+            static_cast<uint32_t>(sceneViewSurface_.GetWidth()),
+            static_cast<uint32_t>(sceneViewSurface_.GetHeight()),
+            DirectXCommon::kBackBufferFormat,
+        };
+        sceneViewPostProcess_.DrawToTarget(sceneViewSurface_.GetSceneColorGpuHandle(),
+                                           sceneViewSurface_.GetDepthGpuHandle(), target);
+        sceneViewSurface_.EndOutputPass();
+        sceneViewSurface_.TransitionDepthToWrite();
+        ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+        const D3D12_GPU_DESCRIPTOR_HANDLE output = sceneViewSurface_.GetOutputGpuHandle();
+        ImGui::Image(static_cast<ImTextureID>(output.ptr),
+                     ImVec2(static_cast<float>(requestedSceneWidth_),
+                            static_cast<float>(requestedSceneHeight_)));
+    } else {
+        ImGui::TextDisabled("Scene View RenderSurface is not ready.");
+    }
     ImGui::End();
 
     BeginFixedPanel("Console", origin.x + leftWidth, origin.y + upperHeight, centerWidth,
@@ -184,6 +292,120 @@ void EditorScene::DrawInspectorPanel() {
         dirty_ = true;
         status_ = "Modified Transform.";
     }
+
+    ImGui::Separator();
+    if (!entity->meshRenderer) {
+        if (ImGui::Button("Add Mesh Renderer")) {
+            entity->meshRenderer = MeshRendererComponent{};
+            dirty_ = true;
+            status_ = "Added MeshRenderer.";
+        }
+        return;
+    }
+
+    MeshRendererComponent& renderer = *entity->meshRenderer;
+    ImGui::TextUnformatted("Mesh Renderer");
+    if (ImGui::Button("Remove Mesh Renderer")) {
+        entity->meshRenderer.reset();
+        dirty_ = true;
+        status_ = "Removed MeshRenderer.";
+        return;
+    }
+    dirty_ |= ImGui::Checkbox("Enabled", &renderer.enabled);
+    int source = static_cast<int>(renderer.sourceType);
+    if (ImGui::Combo("Source", &source, "Primitive\0Model\0")) {
+        renderer.sourceType = static_cast<MeshSourceType>(source);
+        dirty_ = true;
+    }
+    if (renderer.sourceType == MeshSourceType::Primitive) {
+        int primitive = static_cast<int>(renderer.primitive);
+        if (ImGui::Combo("Primitive", &primitive, kPrimitiveNames,
+                         static_cast<int>(std::size(kPrimitiveNames)))) {
+            renderer.primitive = static_cast<MeshPrimitive>(primitive);
+            dirty_ = true;
+        }
+    } else {
+        std::array<char, 512> pathBuffer{};
+        strncpy_s(pathBuffer.data(), pathBuffer.size(), renderer.modelPath.c_str(), _TRUNCATE);
+        if (ImGui::InputText("Model", pathBuffer.data(), pathBuffer.size(),
+                             ImGuiInputTextFlags_EnterReturnsTrue)) {
+            const std::string previousPath = renderer.modelPath;
+            renderer.modelPath = pathBuffer.data();
+            loadedModels_.erase(previousPath);
+            loadedModels_.erase(renderer.modelPath);
+            dirty_ = true;
+            status_ = "Changed model reference.";
+        }
+    }
+}
+
+void EditorScene::ResolveMeshResources() {
+    if (ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+        return;
+    }
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model ||
+            entity.meshRenderer->modelPath.empty() ||
+            loadedModels_.contains(entity.meshRenderer->modelPath)) {
+            continue;
+        }
+        const std::filesystem::path path(entity.meshRenderer->modelPath);
+        loadedModels_.emplace(entity.meshRenderer->modelPath,
+                              ctx_->rendering.model->LoadHandle(path.wstring()));
+    }
+}
+
+ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) const {
+    if (component.sourceType == MeshSourceType::Primitive) {
+        const size_t index = static_cast<size_t>(component.primitive);
+        return index < std::size(primitiveModels_) ? primitiveModels_[index] : ModelHandle{};
+    }
+    const auto found = loadedModels_.find(component.modelPath);
+    return found != loadedModels_.end() ? found->second : ModelHandle{};
+}
+
+void EditorScene::BuildRenderScene() {
+    renderScene_.BeginFrame();
+    ModelManager* models = ctx_ ? ctx_->rendering.model : nullptr;
+    if (models == nullptr) {
+        return;
+    }
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.meshRenderer || !entity.meshRenderer->enabled) {
+            continue;
+        }
+        const ModelHandle handle = ResolveModel(*entity.meshRenderer);
+        const Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
+        DirectX::XMFLOAT4X4 worldMatrix{};
+        if (model == nullptr || !world_.TryGetWorldMatrix(entity.id, worldMatrix)) {
+            continue;
+        }
+        const Transform transform = DecomposeTransform(worldMatrix);
+        auto submit = [&](uint32_t meshId, uint32_t materialId, uint32_t textureId,
+                          uint32_t normalTextureId) {
+            if (!IsValidResourceId(meshId)) {
+                return;
+            }
+            RenderMeshItem item{};
+            item.mesh = &models->GetMesh(meshId);
+            if (IsValidResourceId(materialId)) {
+                item.material = models->GetMaterial(materialId);
+            }
+            item.transform = transform;
+            item.textureId = textureId;
+            item.normalTextureId = normalTextureId;
+            item.objectId = static_cast<uint32_t>(EntityIdHash{}(entity.id));
+            renderScene_.SubmitMesh(item);
+        };
+        if (!model->subMeshes.empty()) {
+            for (const ModelSubMesh& subMesh : model->subMeshes) {
+                submit(subMesh.meshId, subMesh.materialId, subMesh.textureId,
+                       subMesh.normalTextureId);
+            }
+        } else {
+            submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
+        }
+    }
 }
 
 void EditorScene::NewScene() {
@@ -193,6 +415,9 @@ void EditorScene::NewScene() {
         cameraEntity->transform.position = {0.0f, 2.0f, -5.0f};
     }
     selection_ = world_.CreateEntity("Cube");
+    if (WorldEntity* cube = world_.Find(selection_)) {
+        cube->meshRenderer = MeshRendererComponent{};
+    }
     dirty_ = true;
     status_ = "Created a new scene.";
 }

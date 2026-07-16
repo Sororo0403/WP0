@@ -98,6 +98,37 @@ bool World::Empty() const {
     return entities_.empty();
 }
 
+bool World::TryGetWorldMatrix(EntityId id, DirectX::XMFLOAT4X4& result) const {
+    using namespace DirectX;
+    const WorldEntity* entity = Find(id);
+    if (entity == nullptr) {
+        return false;
+    }
+
+    XMMATRIX world = XMMatrixIdentity();
+    EntityId current = id;
+    for (size_t depth = 0; depth <= entities_.size(); ++depth) {
+        entity = Find(current);
+        if (entity == nullptr) {
+            return false;
+        }
+        const TransformComponent& transform = entity->transform;
+        const XMMATRIX local =
+            XMMatrixScaling(transform.scale.x, transform.scale.y, transform.scale.z) *
+            XMMatrixRotationRollPitchYaw(XMConvertToRadians(transform.rotationDegrees.x),
+                                         XMConvertToRadians(transform.rotationDegrees.y),
+                                         XMConvertToRadians(transform.rotationDegrees.z)) *
+            XMMatrixTranslation(transform.position.x, transform.position.y, transform.position.z);
+        world *= local;
+        if (!entity->parent.IsValid()) {
+            XMStoreFloat4x4(&result, world);
+            return true;
+        }
+        current = entity->parent;
+    }
+    return false;
+}
+
 void World::Clear() {
     entities_.clear();
 }
@@ -114,6 +145,18 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             !IsFinite(entity.transform.scale)) {
             SetError(error, "Scene contains a non-finite transform value.");
             return false;
+        }
+        if (entity.meshRenderer) {
+            const MeshRendererComponent& renderer = *entity.meshRenderer;
+            const bool validSource = renderer.sourceType == MeshSourceType::Primitive ||
+                                     renderer.sourceType == MeshSourceType::Model;
+            const bool validPrimitive = renderer.primitive >= MeshPrimitive::Box &&
+                                        renderer.primitive <= MeshPrimitive::Cylinder;
+            if (!validSource || !validPrimitive || renderer.modelPath.size() > 1024u ||
+                renderer.modelPath.find('\0') != std::string::npos) {
+                SetError(error, "Scene contains an invalid MeshRenderer component.");
+                return false;
+            }
         }
         if (entity.name.empty()) {
             entity.name = "Entity";

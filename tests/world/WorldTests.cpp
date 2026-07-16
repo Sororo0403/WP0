@@ -2,6 +2,7 @@
 #include "world/WorldSerializer.h"
 
 #include <filesystem>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -39,19 +40,34 @@ int main() {
     }
     childEntity->transform.position = {1.0f, 2.0f, 3.0f};
     childEntity->transform.rotationDegrees = {10.0f, 20.0f, 30.0f};
+    childEntity->meshRenderer = MeshRendererComponent{};
+    childEntity->meshRenderer->primitive = MeshPrimitive::Sphere;
+    if (WorldEntity* rootEntity = source.Find(root)) {
+        rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
+    }
+
+    DirectX::XMFLOAT4X4 childWorld{};
+    if (!Check(source.TryGetWorldMatrix(child, childWorld) &&
+                   std::abs(childWorld._41 - 5.0f) < 0.001f &&
+                   std::abs(childWorld._42 - 2.0f) < 0.001f,
+               "Parent and child transforms were not composed.")) {
+        return 5;
+    }
 
     const std::string serialized = WorldSerializer::Serialize(source);
     World restored;
     std::string error;
     if (!Check(WorldSerializer::Deserialize(serialized, restored, &error), error.c_str())) {
-        return 5;
+        return 6;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restoredChild->parent == root && restoredChild->transform.position.x == 1.0f &&
-                   restoredChild->transform.rotationDegrees.z == 30.0f,
+                   restoredChild->transform.rotationDegrees.z == 30.0f &&
+                   restoredChild->meshRenderer &&
+                   restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere,
                "World JSON round-trip changed entity data.")) {
-        return 6;
+        return 7;
     }
 
     const std::filesystem::path testPath =
@@ -62,7 +78,7 @@ int main() {
         !Check(fileRestored.Find(child) != nullptr, "Scene file round-trip lost an entity.")) {
         std::error_code cleanupError;
         std::filesystem::remove(testPath, cleanupError);
-        return 7;
+        return 8;
     }
     std::error_code cleanupError;
     std::filesystem::remove(testPath, cleanupError);
@@ -72,16 +88,24 @@ int main() {
     invalidEntities[0].parent = EntityId::New();
     if (!Check(!restored.ReplaceEntities(std::move(invalidEntities), &error),
                "Missing hierarchy parent was accepted.")) {
-        return 8;
+        return 9;
     }
     if (!Check(restored.Entities().size() == 2u,
                "Failed replacement modified the existing world.")) {
-        return 9;
+        return 10;
     }
 
     if (!Check(restored.DestroyEntity(root) && restored.Empty(),
                "Recursive hierarchy deletion failed.")) {
-        return 10;
+        return 11;
+    }
+
+    const std::string invalidRenderer =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MeshRenderer":{"enabled":true,"source":"Primitive","primitive":99,"model":""}}}]})";
+    World rejected;
+    if (!Check(!WorldSerializer::Deserialize(invalidRenderer, rejected, &error),
+               "Invalid MeshRenderer data was accepted.")) {
+        return 12;
     }
     return 0;
 }

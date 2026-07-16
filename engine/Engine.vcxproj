@@ -106,6 +106,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\LightingScene.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\RenderGraph.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\RenderScene.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\SceneRenderer.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\PipelineManager.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\ShaderCompiler.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\PostEffectManager.cpp" />
@@ -114,6 +115,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\PostProcessSystemConstants.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\PostProcessSystemPipeline.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\RenderPassController.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\RenderSurface.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\RenderTexture.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\ShadowMapRenderer.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\graphics\TransparentRenderQueue.cpp" />
@@ -292,6 +294,8 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\RenderPass.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\RenderPassController.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\RenderScene.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\SceneRenderer.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\RenderSurface.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\RenderTexture.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\ShadowMapRenderer.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\graphics\TransparentRenderQueue.h" />

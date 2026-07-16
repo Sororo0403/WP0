@@ -166,8 +166,24 @@ void PostProcessSystem::Draw(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
         return;
     }
 
-    BindDrawContext(context, textureHandle, depthHandle);
+    BindDrawContext(context, textureHandle, depthHandle, nullptr);
     DrawFullscreenTriangle(context.commandList);
+}
+
+bool PostProcessSystem::DrawToTarget(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+                                     D3D12_GPU_DESCRIPTOR_HANDLE depthHandle,
+                                     const PostProcessOutputTarget& target) {
+    if (target.rtv.ptr == 0 || target.width == 0 || target.height == 0 ||
+        target.format != DirectXCommon::kBackBufferFormat) {
+        return false;
+    }
+    DrawContext context;
+    if (!TryCreateDrawContext(textureHandle, depthHandle, context)) {
+        return false;
+    }
+    BindDrawContext(context, textureHandle, depthHandle, &target);
+    DrawFullscreenTriangle(context.commandList);
+    return true;
 }
 
 bool PostProcessSystem::TryCreateDrawContext(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
@@ -219,12 +235,23 @@ PostProcessConstants PostProcessSystem::PrepareDrawConstants(
 
 void PostProcessSystem::BindDrawContext(const DrawContext& context,
                                         D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
-                                        D3D12_GPU_DESCRIPTOR_HANDLE depthHandle) {
+                                        D3D12_GPU_DESCRIPTOR_HANDLE depthHandle,
+                                        const PostProcessOutputTarget* target) {
     ID3D12DescriptorHeap* heaps[] = {context.heap};
     context.commandList->SetDescriptorHeaps(1, heaps);
-    dxCommon_->SetBackBufferRenderTarget(false, false);
-    context.commandList->RSSetViewports(1, &state_->viewport);
-    context.commandList->RSSetScissorRects(1, &state_->scissorRect);
+    D3D12_VIEWPORT viewport = state_->viewport;
+    D3D12_RECT scissor = state_->scissorRect;
+    if (target != nullptr) {
+        context.commandList->OMSetRenderTargets(1, &target->rtv, FALSE, nullptr);
+        viewport = {0.0f, 0.0f, static_cast<float>(target->width),
+                    static_cast<float>(target->height), 0.0f, 1.0f};
+        scissor = {0, 0, static_cast<LONG>(target->width),
+                   static_cast<LONG>(target->height)};
+    } else {
+        dxCommon_->SetBackBufferRenderTarget(false, false);
+    }
+    context.commandList->RSSetViewports(1, &viewport);
+    context.commandList->RSSetScissorRects(1, &scissor);
     context.commandList->SetPipelineState(context.requiresPostProcess
                                               ? state_->pipelineState.Get()
                                               : state_->copyPipelineState.Get());

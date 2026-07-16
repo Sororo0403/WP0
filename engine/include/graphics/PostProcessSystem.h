@@ -7,6 +7,13 @@
 class DirectXCommon;
 class SrvManager;
 
+struct PostProcessOutputTarget {
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
+    uint32_t width = 0;
+    uint32_t height = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+};
+
 class PostProcessSystem {
 public:
     PostProcessSystem();
@@ -22,6 +29,9 @@ public:
     bool Resize(int width, int height);
 
     void Draw(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle, D3D12_GPU_DESCRIPTOR_HANDLE depthHandle);
+    bool DrawToTarget(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+                      D3D12_GPU_DESCRIPTOR_HANDLE depthHandle,
+                      const PostProcessOutputTarget& target);
 
     /// <summary>
     /// Profileを設定する
@@ -88,7 +98,8 @@ private:
     bool TryCreateDrawContext(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
                               D3D12_GPU_DESCRIPTOR_HANDLE depthHandle, DrawContext& context);
     void BindDrawContext(const DrawContext& context, D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
-                         D3D12_GPU_DESCRIPTOR_HANDLE depthHandle);
+                         D3D12_GPU_DESCRIPTOR_HANDLE depthHandle,
+                         const PostProcessOutputTarget* target);
     static void DrawFullscreenTriangle(ID3D12GraphicsCommandList* commandList);
     bool TransitionBloomLevel(uint32_t level, D3D12_RESOURCE_STATES state);
 
