@@ -22,6 +22,13 @@ struct EngineRuntimeConfig {
     bool enableGpuProfiler = false;
 };
 
+enum class EngineFrameResult {
+    Rendered,
+    Skipped,
+    ExitRequested,
+    Failed,
+};
+
 class EngineRuntime {
 public:
     EngineRuntime();
@@ -31,6 +38,14 @@ public:
     EngineRuntime& operator=(const EngineRuntime&) = delete;
     EngineRuntime(EngineRuntime&&) = delete;
     EngineRuntime& operator=(EngineRuntime&&) = delete;
+
+    bool Initialize(HINSTANCE instance, int showCommand,
+                    const EngineRuntimeConfig& config = {});
+    bool SetScene(std::unique_ptr<BaseScene> scene);
+    bool SetScene(const std::string& sceneName, AbstractSceneFactory* sceneFactory);
+    EngineFrameResult Tick();
+    void RequestClose();
+    bool IsInitialized() const;
 
     int Run(HINSTANCE instance, int showCommand, std::unique_ptr<BaseScene> initialScene,
             const EngineRuntimeConfig& config = {});
@@ -45,7 +60,6 @@ private:
         Failed,
     };
 
-    bool Initialize(HINSTANCE instance, int showCommand, const EngineRuntimeConfig& config);
     bool InitializeWindowAndDevice(HINSTANCE instance, int showCommand,
                                    const EngineRuntimeConfig& config);
     bool InitializeRenderingSystems();
@@ -80,4 +94,5 @@ private:
     bool renderGraphUsesSpotLightShadow_ = false;
     bool renderGraphUsesForeground3D_ = false;
     bool renderGraphUsesVolumetricLighting_ = false;
+    bool initialized_ = false;
 };

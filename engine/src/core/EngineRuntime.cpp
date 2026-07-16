@@ -28,7 +28,7 @@ EngineRuntime::~EngineRuntime() {
     systems_->dxCommon.WaitForGpuIfPossible();
     systems_->sceneManager.Finalize();
     systems_->soundManager.Finalize();
-#ifdef _DEBUG
+#ifdef WP0_WITH_IMGUI
     systems_->imguiManager.Finalize();
 #endif
     systems_->spotLightShadowMapRenderer.Release();
@@ -116,7 +116,9 @@ int EngineRuntime::Run(HINSTANCE instance, int showCommand, std::unique_ptr<Base
     if (!Initialize(instance, showCommand, config)) {
         return -1;
     }
-    systems_->sceneManager.ChangeScene(std::move(initialScene));
+    if (!SetScene(std::move(initialScene))) {
+        return -1;
+    }
     return RunMainLoop();
 }
 
@@ -125,46 +127,23 @@ int EngineRuntime::Run(HINSTANCE instance, int showCommand, const std::string& i
     if (!Initialize(instance, showCommand, config)) {
         return -1;
     }
-    systems_->sceneManager.SetSceneFactory(sceneFactory);
-    systems_->sceneManager.ChangeScene(initialSceneName);
+    if (!SetScene(initialSceneName, sceneFactory)) {
+        return -1;
+    }
     return RunMainLoop();
 }
 
 int EngineRuntime::RunMainLoop() {
     bool runtimeFailed = false;
-    while (systems_->winApp.ProcessMessage()) {
-        systems_->frameTimer.Tick();
-        const ResizeResult resizeResult = ResizeIfNeeded();
-        if (resizeResult == ResizeResult::Skipped) {
-            continue;
+    for (;;) {
+        const EngineFrameResult result = Tick();
+        if (result == EngineFrameResult::ExitRequested) {
+            break;
         }
-        if (resizeResult == ResizeResult::Failed) {
-            Log("Resize failed");
-            systems_->winApp.RequestClose();
+        if (result == EngineFrameResult::Failed) {
             runtimeFailed = true;
             break;
         }
-        UpdateFrameContext();
-        systems_->cpuProfiler.BeginFrame();
-        {
-            CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "Input");
-            systems_->input.Update(systems_->sceneContext.frame.deltaTime);
-        }
-        {
-            CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "SceneUpdate");
-            systems_->sceneManager.Update();
-        }
-        {
-            CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "AudioUpdate");
-            systems_->soundManager.Update();
-        }
-        if (!RenderFrame()) {
-            Log("Render frame failed");
-            systems_->winApp.RequestClose();
-            runtimeFailed = true;
-            break;
-        }
-        systems_->cpuProfiler.EndFrame();
     }
 
     systems_->dxCommon.WaitForGpuIfPossible();
@@ -173,6 +152,10 @@ int EngineRuntime::RunMainLoop() {
 }
 bool EngineRuntime::Initialize(HINSTANCE instance, int showCommand,
                                const EngineRuntimeConfig& config) {
+    if (initialized_) {
+        Log("Initialize rejected: runtime is already initialized");
+        return false;
+    }
     InitializeLog(config.logPath);
     Log("Initialize started");
 
@@ -188,8 +171,79 @@ bool EngineRuntime::Initialize(HINSTANCE instance, int showCommand,
 
     systems_->frameTimer.Reset();
     systems_->sceneManager.Initialize(systems_->sceneContext);
+    initialized_ = true;
     Log("Initialize completed");
     return true;
+}
+
+bool EngineRuntime::SetScene(std::unique_ptr<BaseScene> scene) {
+    if (!initialized_ || !scene) {
+        return false;
+    }
+    systems_->sceneManager.ChangeScene(std::move(scene));
+    return true;
+}
+
+bool EngineRuntime::SetScene(const std::string& sceneName,
+                             AbstractSceneFactory* sceneFactory) {
+    if (!initialized_ || sceneName.empty() || sceneFactory == nullptr) {
+        return false;
+    }
+    systems_->sceneManager.SetSceneFactory(sceneFactory);
+    systems_->sceneManager.ChangeScene(sceneName);
+    return true;
+}
+
+EngineFrameResult EngineRuntime::Tick() {
+    if (!initialized_ || !systems_) {
+        return EngineFrameResult::Failed;
+    }
+    if (!systems_->winApp.ProcessMessage()) {
+        return EngineFrameResult::ExitRequested;
+    }
+
+    systems_->frameTimer.Tick();
+    const ResizeResult resizeResult = ResizeIfNeeded();
+    if (resizeResult == ResizeResult::Skipped) {
+        return EngineFrameResult::Skipped;
+    }
+    if (resizeResult == ResizeResult::Failed) {
+        Log("Resize failed");
+        RequestClose();
+        return EngineFrameResult::Failed;
+    }
+
+    UpdateFrameContext();
+    systems_->cpuProfiler.BeginFrame();
+    {
+        CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "Input");
+        systems_->input.Update(systems_->sceneContext.frame.deltaTime);
+    }
+    {
+        CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "SceneUpdate");
+        systems_->sceneManager.Update();
+    }
+    {
+        CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "AudioUpdate");
+        systems_->soundManager.Update();
+    }
+    if (!RenderFrame()) {
+        Log("Render frame failed");
+        RequestClose();
+        return EngineFrameResult::Failed;
+    }
+    systems_->cpuProfiler.EndFrame();
+    return EngineFrameResult::Rendered;
+}
+
+void EngineRuntime::RequestClose() {
+    if (systems_) {
+        systems_->winApp.RequestClose();
+    }
+}
+
+bool EngineRuntime::IsInitialized() const {
+    return initialized_;
 }
 
 bool EngineRuntime::InitializeWindowAndDevice(HINSTANCE instance, int showCommand,
@@ -316,7 +370,7 @@ bool EngineRuntime::InitializeSceneSystems(HINSTANCE instance, const EngineRunti
     }
     systems_->soundManager.Initialize();
 
-#ifdef _DEBUG
+#ifdef WP0_WITH_IMGUI
     systems_->imguiManager.Initialize(&systems_->winApp, &systems_->dxCommon,
                                       &systems_->srvManager);
     if (!systems_->imguiManager.IsReady()) {
@@ -365,7 +419,7 @@ void EngineRuntime::BindSceneContext() {
     systems_->sceneContext.rendering.gpuProfiler = &systems_->gpuProfiler;
     systems_->sceneContext.rendering.volumetricLighting = &systems_->volumetricLightingSystem;
     systems_->sceneContext.render = systems_->renderPassController.GetContextPtr();
-#ifdef _DEBUG
+#ifdef WP0_WITH_IMGUI
     systems_->sceneContext.systems.imgui = &systems_->imguiManager;
 #endif
 }

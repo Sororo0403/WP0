@@ -1,4 +1,4 @@
-#ifdef _DEBUG
+#ifdef WP0_WITH_IMGUI
 #include "imgui/ImguiManager.h"
 
 #include "core/AssetManager.h"

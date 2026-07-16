@@ -13,14 +13,10 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{E6CC3EC8-7C68-4CC8-8A93-56EC9352FEAE}</ProjectGuid>
-    <RootNamespace>App</RootNamespace>
+    <ProjectGuid>{D4C0A7EF-5B29-4BB2-9BC1-658F167EC70D}</ProjectGuid>
+    <RootNamespace>Editor</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>App</ProjectName>
-  </PropertyGroup>
-  <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" Condition="Exists('$(MSBuildThisFileDirectory)..\Directory.Build.props')" />
-  <PropertyGroup>
-    <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>
+    <ProjectName>Editor</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -58,63 +54,65 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;WP0_WITH_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include\assimp;$(MSBuildThisFileDirectory)..\engine\externals\DirectX-Headers;$(MSBuildThisFileDirectory)..\engine\externals\DirectXTex;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
-      <ProgramDataBaseFileName>$(IntDir)$(ProjectName).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)..\engine\externals\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" copy /Y "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" "$(OutDir)"
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" "$(OutDir)"
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;WP0_WITH_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include\assimp;$(MSBuildThisFileDirectory)..\engine\externals\DirectX-Headers;$(MSBuildThisFileDirectory)..\engine\externals\DirectXTex;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
-      <ProgramDataBaseFileName>$(IntDir)$(ProjectName).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)..\engine\externals\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;dinput8.lib;xinput.lib;dxcompiler.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;xaudio2.lib;dwrite.lib;ole32.lib;user32.lib;gdi32.lib;dwmapi.lib;winmm.lib;assimp-vc145-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" copy /Y "$(MSBuildThisFileDirectory)..\engine\externals\assimp\bin\assimp-vc145-mt.dll" "$(OutDir)"
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxcompiler.dll" "$(OutDir)"
+if exist "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" copy /Y "$(WindowsSdkDir)Redist\D3D\$(Platform)\dxil.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp" />
-    <ClCompile Include="$(MSBuildThisFileDirectory)src\scene\GameScene.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="$(MSBuildThisFileDirectory)include\scene\GameScene.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\engine\Engine.vcxproj">
-      <Project>{8d69c2b4-4f39-47f0-9a40-4cb78ec442a1}</Project>
+      <Project>{8D69C2B4-4F39-47F0-9A40-4CB78EC442A1}</Project>
       <SetPlatform>Platform=$(Platform)</SetPlatform>
       <Properties>Configuration=$(Configuration);Platform=$(Platform)</Properties>
     </ProjectReference>
   </ItemGroup>
-  <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.targets" Condition="Exists('$(MSBuildThisFileDirectory)..\Directory.Build.targets')" />
-  <PropertyGroup>
-    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
-  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>
