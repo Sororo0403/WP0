@@ -21,6 +21,7 @@ constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFl
                                          ImGuiWindowFlags_NoCollapse;
 
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
+constexpr const char* kEntityDragPayload = "WP0_ENTITY";
 constexpr size_t kMaxHistoryEntries = 128;
 
 Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
@@ -134,11 +135,16 @@ void EditorScene::DrawMainMenu() {
     if (ImGui::BeginMenu("Edit")) {
         const bool canUndo = !undoHistory_.empty();
         const bool canRedo = !redoHistory_.empty();
+        const bool canDuplicate = world_.Contains(selection_);
         if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) {
             Undo();
         }
         if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo)) {
             Redo();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, canDuplicate)) {
+            DuplicateSelection();
         }
         ImGui::EndMenu();
     }
@@ -229,6 +235,16 @@ void EditorScene::DrawHierarchyPanel() {
     if (!canDelete) {
         ImGui::BeginDisabled();
     }
+    if (ImGui::Button("Duplicate")) {
+        DuplicateSelection();
+    }
+    if (!canDelete) {
+        ImGui::EndDisabled();
+    }
+    ImGui::SameLine();
+    if (!canDelete) {
+        ImGui::BeginDisabled();
+    }
     if (ImGui::Button("Delete")) {
         const std::string before = WorldSerializer::Serialize(world_);
         const EntityId selectionBefore = selection_;
@@ -243,6 +259,17 @@ void EditorScene::DrawHierarchyPanel() {
     ImGui::Separator();
     for (EntityId id : world_.GetRootEntities()) {
         DrawEntityNode(id);
+    }
+    ImGui::Separator();
+    ImGui::Selectable("Scene Root (drop here)", false);
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
+            EntityId child{};
+            std::memcpy(&child, payload->Data, sizeof(child));
+            ReparentEntity(child, {});
+        }
+        ImGui::EndDragDropTarget();
     }
 }
 
@@ -265,6 +292,20 @@ void EditorScene::DrawEntityNode(EntityId id) {
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
     if (ImGui::IsItemClicked()) {
         selection_ = id;
+    }
+    if (ImGui::BeginDragDropSource()) {
+        ImGui::SetDragDropPayload(kEntityDragPayload, &id, sizeof(id));
+        ImGui::TextUnformatted(entity->name.c_str());
+        ImGui::EndDragDropSource();
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
+            EntityId child{};
+            std::memcpy(&child, payload->Data, sizeof(child));
+            ReparentEntity(child, id);
+        }
+        ImGui::EndDragDropTarget();
     }
     if (open && !children.empty()) {
         for (EntityId child : children) {
@@ -380,7 +421,9 @@ void EditorScene::HandleEditorShortcuts() {
     if (!io.KeyCtrl || io.WantTextInput) {
         return;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_D, false)) {
+        DuplicateSelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
         if (io.KeyShift) {
             Redo();
         } else {
@@ -389,6 +432,38 @@ void EditorScene::HandleEditorShortcuts() {
     } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
         Redo();
     }
+}
+
+void EditorScene::DuplicateSelection() {
+    if (!world_.Contains(selection_)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const EntityId duplicate = world_.DuplicateEntityHierarchy(selection_);
+    if (!duplicate.IsValid()) {
+        status_ = "Could not duplicate the selected entity hierarchy.";
+        return;
+    }
+    selection_ = duplicate;
+    RecordImmediateEdit("Duplicate Entity", before, selectionBefore);
+    status_ = "Duplicated the selected entity hierarchy.";
+}
+
+void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
+    const WorldEntity* childEntity = world_.Find(child);
+    if (childEntity == nullptr || childEntity->parent == parent) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (!world_.SetParent(child, parent)) {
+        status_ = "Cannot create a cyclic or invalid hierarchy.";
+        return;
+    }
+    selection_ = child;
+    RecordImmediateEdit("Reparent Entity", before, selectionBefore);
+    status_ = parent.IsValid() ? "Reparented the entity." : "Moved the entity to the scene root.";
 }
 
 EditorScene::HistoryState EditorScene::CaptureHistoryState() const {

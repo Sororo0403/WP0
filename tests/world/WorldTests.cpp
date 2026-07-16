@@ -70,6 +70,24 @@ int main() {
         return 7;
     }
 
+    const EntityId duplicateRoot = source.DuplicateEntityHierarchy(root);
+    const WorldEntity* duplicateRootEntity = source.Find(duplicateRoot);
+    const std::vector<EntityId> duplicateChildren = source.GetChildren(duplicateRoot);
+    const WorldEntity* duplicateChild =
+        duplicateChildren.size() == 1u ? source.Find(duplicateChildren.front()) : nullptr;
+    if (!Check(duplicateRoot.IsValid() && duplicateRoot != root && duplicateRootEntity != nullptr &&
+                   duplicateRootEntity->name == "Root Copy" && !duplicateRootEntity->parent.IsValid() &&
+                   duplicateChild != nullptr && duplicateChild->id != child &&
+                   duplicateChild->name == "Child" && duplicateChild->meshRenderer &&
+                   duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere,
+               "Hierarchy duplication did not preserve entity data and parenting.")) {
+        return 8;
+    }
+    if (!Check(!source.DuplicateEntityHierarchy({}).IsValid(),
+               "An invalid entity hierarchy was duplicated.")) {
+        return 9;
+    }
+
     const std::filesystem::path testPath =
         std::filesystem::temp_directory_path() / ("wp0-world-" + root.ToString() + ".wp0scene");
     World fileRestored;
@@ -78,7 +96,7 @@ int main() {
         !Check(fileRestored.Find(child) != nullptr, "Scene file round-trip lost an entity.")) {
         std::error_code cleanupError;
         std::filesystem::remove(testPath, cleanupError);
-        return 8;
+        return 10;
     }
     std::error_code cleanupError;
     std::filesystem::remove(testPath, cleanupError);
@@ -88,16 +106,16 @@ int main() {
     invalidEntities[0].parent = EntityId::New();
     if (!Check(!restored.ReplaceEntities(std::move(invalidEntities), &error),
                "Missing hierarchy parent was accepted.")) {
-        return 9;
+        return 11;
     }
     if (!Check(restored.Entities().size() == 2u,
                "Failed replacement modified the existing world.")) {
-        return 10;
+        return 12;
     }
 
     if (!Check(restored.DestroyEntity(root) && restored.Empty(),
                "Recursive hierarchy deletion failed.")) {
-        return 11;
+        return 13;
     }
 
     const std::string invalidRenderer =
@@ -105,7 +123,7 @@ int main() {
     World rejected;
     if (!Check(!WorldSerializer::Deserialize(invalidRenderer, rejected, &error),
                "Invalid MeshRenderer data was accepted.")) {
-        return 12;
+        return 14;
     }
     return 0;
 }

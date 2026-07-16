@@ -31,6 +31,8 @@ private:
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
     void HandleEditorShortcuts();
+    void DuplicateSelection();
+    void ReparentEntity(EntityId child, EntityId parent);
     void Undo();
     void Redo();
     void BeginHistoryEdit(std::string label);

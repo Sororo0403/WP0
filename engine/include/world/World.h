@@ -43,6 +43,7 @@ struct WorldEntity {
 class World {
 public:
     EntityId CreateEntity(std::string name = "Entity");
+    EntityId DuplicateEntityHierarchy(EntityId source);
     bool DestroyEntity(EntityId id);
     bool SetParent(EntityId child, EntityId parent);
 

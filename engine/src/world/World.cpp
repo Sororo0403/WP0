@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -28,6 +29,43 @@ EntityId World::CreateEntity(std::string name) {
     entity.name = name.empty() ? "Entity" : std::move(name);
     entities_.push_back(std::move(entity));
     return id;
+}
+
+EntityId World::DuplicateEntityHierarchy(EntityId source) {
+    const WorldEntity* sourceEntity = Find(source);
+    if (sourceEntity == nullptr) {
+        return {};
+    }
+
+    std::vector<WorldEntity> originals;
+    originals.reserve(entities_.size());
+    originals.push_back(*sourceEntity);
+    for (const WorldEntity& entity : entities_) {
+        if (entity.id != source && IsDescendantOf(entity.id, source)) {
+            originals.push_back(entity);
+        }
+    }
+
+    std::unordered_map<EntityId, EntityId, EntityIdHash> duplicateIds;
+    duplicateIds.reserve(originals.size());
+    for (const WorldEntity& original : originals) {
+        const EntityId duplicateId = CreateEntity(original.name);
+        duplicateIds.emplace(original.id, duplicateId);
+        WorldEntity* duplicate = Find(duplicateId);
+        duplicate->transform = original.transform;
+        duplicate->meshRenderer = original.meshRenderer;
+    }
+
+    for (const WorldEntity& original : originals) {
+        WorldEntity* duplicate = Find(duplicateIds.at(original.id));
+        if (original.id == source) {
+            duplicate->name += " Copy";
+            duplicate->parent = original.parent;
+        } else {
+            duplicate->parent = duplicateIds.at(original.parent);
+        }
+    }
+    return duplicateIds.at(source);
 }
 
 bool World::DestroyEntity(EntityId id) {
