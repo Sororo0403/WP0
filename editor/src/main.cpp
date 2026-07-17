@@ -1,13 +1,14 @@
 #include "ApplicationPaths.h"
 #include "EditorScene.h"
 #include "ProjectDescriptor.h"
+#include "ProjectLauncher.h"
+#include "RecentProjectsStore.h"
 
 #include "core/AssetManager.h"
 #include "core/EngineRuntime.h"
 
 #include <Windows.h>
 #include <shellapi.h>
-#include <shobjidl.h>
 
 #include <filesystem>
 #include <memory>
@@ -16,40 +17,6 @@
 #include <string_view>
 
 namespace {
-std::optional<std::filesystem::path> OpenProjectDialog() {
-    const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    IFileOpenDialog* dialog = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(&dialog)))) {
-        if (SUCCEEDED(comResult)) {
-            CoUninitialize();
-        }
-        return std::nullopt;
-    }
-    const COMDLG_FILTERSPEC filters[] = {{L"WP0 Project", L"*.wp0project"}};
-    dialog->SetFileTypes(1u, filters);
-    dialog->SetDefaultExtension(L"wp0project");
-    dialog->SetTitle(L"Open WP0 Project");
-
-    std::optional<std::filesystem::path> selected;
-    if (SUCCEEDED(dialog->Show(nullptr))) {
-        IShellItem* item = nullptr;
-        if (SUCCEEDED(dialog->GetResult(&item))) {
-            PWSTR path = nullptr;
-            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                selected = std::filesystem::path(path);
-                CoTaskMemFree(path);
-            }
-            item->Release();
-        }
-    }
-    dialog->Release();
-    if (SUCCEEDED(comResult)) {
-        CoUninitialize();
-    }
-    return selected;
-}
-
 std::optional<std::filesystem::path> ParseProjectArgument() {
     int count = 0;
     LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
@@ -70,15 +37,6 @@ std::optional<std::filesystem::path> ParseProjectArgument() {
     }
     LocalFree(arguments);
     return result;
-}
-
-std::optional<std::filesystem::path> FindDevelopmentProject(const ApplicationPaths& paths) {
-    const auto candidate = paths.engineResources.parent_path().parent_path() / L"projects" /
-                           L"sandbox" / L"sandbox.wp0project";
-    std::error_code error;
-    return std::filesystem::is_regular_file(candidate, error) && !error
-               ? std::optional<std::filesystem::path>(candidate)
-               : std::nullopt;
 }
 
 void ShowError(const std::string& message) {
@@ -107,12 +65,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     (void)commandLine;
 
     const ApplicationPaths paths = ApplicationPaths::Discover();
+    const RecentProjectsStore recentProjects(paths.userData / L"settings" /
+                                              L"recent_projects.json");
     std::optional<std::filesystem::path> projectPath = ParseProjectArgument();
     if (!projectPath) {
-        projectPath = FindDevelopmentProject(paths);
-    }
-    if (!projectPath) {
-        projectPath = OpenProjectDialog();
+        projectPath = ProjectLauncher::ChooseProject(recentProjects.Load());
     }
     if (!projectPath) {
         return 0;
@@ -124,6 +81,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
         ShowError(projectError);
         return -1;
     }
+    recentProjects.Record({project.name, project.manifestPath});
 
     AssetManager::SetEngineResourceRoot(paths.engineResources);
     AssetManager::SetProjectAssetRoot(project.assetRoot);
