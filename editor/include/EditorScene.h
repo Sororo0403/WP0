@@ -164,6 +164,10 @@ private:
     };
     GizmoOperation gizmoOperation_ = GizmoOperation::Translate;
     GizmoSpace gizmoSpace_ = GizmoSpace::World;
+    bool gizmoSnapEnabled_ = false;
+    float translationSnap_ = 1.0f;
+    float rotationSnapDegrees_ = 15.0f;
+    float scaleSnap_ = 0.1f;
     bool showSceneGrid_ = true;
     DirectX::XMFLOAT3 sceneContextCreatePosition_{};
     EntityId activeGizmoEntity_{};

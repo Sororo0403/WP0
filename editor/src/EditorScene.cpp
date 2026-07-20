@@ -1480,6 +1480,25 @@ void EditorScene::DrawSceneGizmoToolbar() {
     ImGui::TextDisabled("|");
     ImGui::SameLine();
     ImGui::Checkbox("Grid", &showSceneGrid_);
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    ImGui::Checkbox("Snap", &gizmoSnapEnabled_);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(72.0f);
+    if (gizmoOperation_ == GizmoOperation::Translate) {
+        ImGui::DragFloat("##GizmoSnap", &translationSnap_, 0.05f, 0.001f, 1000.0f, "%.3f m",
+                         ImGuiSliderFlags_AlwaysClamp);
+    } else if (gizmoOperation_ == GizmoOperation::Rotate) {
+        ImGui::DragFloat("##GizmoSnap", &rotationSnapDegrees_, 0.5f, 0.1f, 180.0f, "%.1f deg",
+                         ImGuiSliderFlags_AlwaysClamp);
+    } else {
+        ImGui::DragFloat("##GizmoSnap", &scaleSnap_, 0.01f, 0.001f, 10.0f, "%.3f",
+                         ImGuiSliderFlags_AlwaysClamp);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Enable Snap or hold Ctrl while manipulating.");
+    }
 }
 
 void EditorScene::DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const {
@@ -1530,8 +1549,18 @@ bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& 
     }
     const ImGuizmo::MODE mode =
         gizmoSpace_ == GizmoSpace::Local ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+    float snapValues[3]{};
+    if (gizmoOperation_ == GizmoOperation::Translate) {
+        std::ranges::fill(snapValues, translationSnap_);
+    } else if (gizmoOperation_ == GizmoOperation::Rotate) {
+        std::ranges::fill(snapValues, rotationSnapDegrees_);
+    } else {
+        std::ranges::fill(snapValues, scaleSnap_);
+    }
+    const bool snapActive = gizmoSnapEnabled_ || ImGui::GetIO().KeyCtrl;
     const bool manipulated = ImGuizmo::Manipulate(
-        &view._11, &projection._11, operation, mode, &worldMatrix._11);
+        &view._11, &projection._11, operation, mode, &worldMatrix._11, nullptr,
+        snapActive ? snapValues : nullptr);
     const bool usingNow = ImGuizmo::IsUsing();
     if (usingNow && !gizmoWasUsing_) {
         BeginHistoryEdit("Transform Entity");
