@@ -935,6 +935,8 @@ void EditorScene::DrawEntityNode(EntityId id) {
                               {textColor.x, textColor.y, textColor.z, textColor.w * 0.45f});
     }
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
+    const ImVec2 nodeMin = ImGui::GetItemRectMin();
+    const ImVec2 nodeMax = ImGui::GetItemRectMax();
     if (hasMeshRenderer && !rendererEnabled) {
         ImGui::PopStyleColor();
     }
@@ -1024,11 +1026,30 @@ void EditorScene::DrawEntityNode(EntityId id) {
         ImGui::EndDragDropSource();
     }
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
-            payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
-            EntityId child{};
-            std::memcpy(&child, payload->Data, sizeof(child));
-            ReparentSelection(child, id);
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+                kEntityDragPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
+            payload != nullptr && payload->DataSize == sizeof(EntityId)) {
+            const float rowHeight = nodeMax.y - nodeMin.y;
+            const float mouseY = ImGui::GetIO().MousePos.y;
+            const bool insertBefore = mouseY < nodeMin.y + rowHeight * 0.25f;
+            const bool insertAfter = mouseY > nodeMax.y - rowHeight * 0.25f;
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const ImU32 targetColor = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
+            if (insertBefore || insertAfter) {
+                const float lineY = insertBefore ? nodeMin.y : nodeMax.y;
+                drawList->AddLine({nodeMin.x, lineY}, {nodeMax.x, lineY}, targetColor, 2.0f);
+            } else {
+                drawList->AddRect(nodeMin, nodeMax, targetColor, 2.0f, 0, 2.0f);
+            }
+            if (payload->IsDelivery()) {
+                EntityId dragged{};
+                std::memcpy(&dragged, payload->Data, sizeof(dragged));
+                if (insertBefore || insertAfter) {
+                    MoveSelectionAdjacentTo(dragged, id, insertAfter);
+                } else {
+                    ReparentSelection(dragged, id);
+                }
+            }
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
             payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
@@ -1446,6 +1467,53 @@ bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
     selection_ = entity;
     RecordImmediateEdit("Reorder Entity", before, selectionBefore);
     status_ = direction < 0 ? "Moved the entity up." : "Moved the entity down.";
+    return true;
+}
+
+bool EditorScene::MoveSelectionAdjacentTo(EntityId draggedEntity, EntityId sibling, bool after) {
+    const WorldEntity* dragged = world_.Find(draggedEntity);
+    const WorldEntity* target = world_.Find(sibling);
+    if (dragged == nullptr || target == nullptr || draggedEntity == sibling) {
+        return false;
+    }
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> roots;
+    if (hierarchySelection_.contains(draggedEntity)) {
+        roots = GetTopLevelSelectedEntities();
+    } else {
+        roots.push_back(draggedEntity);
+    }
+    if (roots.empty() || std::ranges::find(roots, sibling) != roots.end()) {
+        return false;
+    }
+    for (EntityId root : roots) {
+        const WorldEntity* entity = world_.Find(root);
+        if (entity == nullptr || entity->parent != target->parent) {
+            status_ = "Sibling reordering requires entities with the same parent.";
+            return false;
+        }
+    }
+
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (after) {
+        for (auto iterator = roots.rbegin(); iterator != roots.rend(); ++iterator) {
+            world_.MoveEntityAfter(*iterator, sibling);
+        }
+    } else {
+        for (EntityId root : roots) {
+            world_.MoveEntityBefore(root, sibling);
+        }
+    }
+    if (WorldSerializer::Serialize(world_) == before) {
+        return false;
+    }
+    selection_ = world_.Contains(draggedEntity) ? draggedEntity : roots.front();
+    RecordImmediateEdit(roots.size() == 1u ? "Reorder Entity" : "Reorder Entities", before,
+                        selectionBefore);
+    status_ = roots.size() == 1u ? "Reordered the entity."
+                                 : "Reordered the selected entities.";
     return true;
 }
 

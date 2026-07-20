@@ -231,5 +231,20 @@ int main() {
                "Entity ordering accepted a sibling from another parent.")) {
         return 28;
     }
+    const EntityId fourth = ordered.CreateEntity("Fourth");
+    ordered.MoveEntityBefore(first, fourth);
+    ordered.MoveEntityBefore(second, fourth);
+    if (!Check(ordered.GetRootEntities() ==
+                   std::vector<EntityId>{third, first, second, fourth},
+               "Moving multiple siblings before a target did not preserve their order.")) {
+        return 29;
+    }
+    ordered.MoveEntityAfter(second, third);
+    ordered.MoveEntityAfter(first, third);
+    if (!Check(ordered.GetRootEntities() ==
+                   std::vector<EntityId>{third, first, second, fourth},
+               "Moving multiple siblings after a target did not preserve their order.")) {
+        return 30;
+    }
     return 0;
 }
