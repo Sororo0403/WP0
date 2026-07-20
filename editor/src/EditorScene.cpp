@@ -246,9 +246,11 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
                          std::filesystem::path sceneRoot,
                          std::filesystem::path startupScene,
                          std::filesystem::path recentScenesPath,
+                         std::filesystem::path layoutSettingsPath,
                          std::function<void()> requestClose)
     : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
+      layoutStore_(std::move(layoutSettingsPath)), layout_(layoutStore_.Load()),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
     recentScenePaths_ = recentScenesStore_.Load();
@@ -414,6 +416,17 @@ void EditorScene::DrawMainMenu() {
         }
         ImGui::EndMenu();
     }
+    if (ImGui::BeginMenu("View")) {
+        if (ImGui::MenuItem("Reset Panel Layout")) {
+            layout_ = {};
+            if (!layoutStore_.Save(layout_)) {
+                status_ = "Could not save the reset panel layout.";
+            } else {
+                status_ = "Reset the panel layout.";
+            }
+        }
+        ImGui::EndMenu();
+    }
     std::string editorLabel = "LikeEngine Editor - ";
     editorLabel += scenePath_.empty() ? "Untitled" : scenePath_.filename().string();
     if (dirty_) {
@@ -519,15 +532,75 @@ void EditorScene::BeginFixedPanel(const char* name, float x, float y, float widt
     ImGui::Begin(name, nullptr, kPanelFlags);
 }
 
+void EditorScene::DrawPanelSplitter(const char* id, const ImVec2& position,
+                                    const ImVec2& splitterSize, bool vertical, float direction,
+                                    float minimum, float maximum, float& ratio) {
+    ImGui::SetNextWindowPos(position);
+    ImGui::SetNextWindowSize(splitterSize);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin(id, nullptr, flags)) {
+        ImGui::InvisibleButton("##Handle", splitterSize);
+        const bool hovered = ImGui::IsItemHovered();
+        const bool active = ImGui::IsItemActive();
+        if (hovered || active) {
+            ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW
+                                           : ImGuiMouseCursor_ResizeNS);
+        }
+        const ImU32 color = ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive
+                                                      : hovered ? ImGuiCol_SeparatorHovered
+                                                                : ImGuiCol_Separator);
+        const float visibleThickness = active || hovered ? 3.0f : 1.0f;
+        const ImVec2 center = {position.x + splitterSize.x * 0.5f,
+                               position.y + splitterSize.y * 0.5f};
+        const ImVec2 lineMin = vertical
+                                   ? ImVec2(center.x - visibleThickness * 0.5f, position.y)
+                                   : ImVec2(position.x, center.y - visibleThickness * 0.5f);
+        const ImVec2 lineMax =
+            vertical ? ImVec2(center.x + visibleThickness * 0.5f,
+                              position.y + splitterSize.y)
+                     : ImVec2(position.x + splitterSize.x,
+                              center.y + visibleThickness * 0.5f);
+        ImGui::GetWindowDrawList()->AddRectFilled(lineMin, lineMax, color);
+        if (active) {
+            const ImVec2 viewportSize = ImGui::GetMainViewport()->WorkSize;
+            const float extent = vertical ? viewportSize.x : viewportSize.y;
+            const float delta = vertical ? ImGui::GetIO().MouseDelta.x
+                                         : ImGui::GetIO().MouseDelta.y;
+            if (extent > 0.0f && delta != 0.0f) {
+                ratio = std::clamp(ratio + direction * delta / extent, minimum, maximum);
+                layoutDirty_ = true;
+            }
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->WorkPos;
     const ImVec2 size = viewport->WorkSize;
-    const float leftWidth = size.x * 0.22f;
-    const float rightWidth = size.x * 0.24f;
+    if (size.x <= 1.0f || size.y <= 1.0f) {
+        return;
+    }
+    layout_ = EditorLayoutStore::Normalize(layout_);
+    const float minimumSideWidth = (std::min)(160.0f, size.x * 0.2f);
+    const float minimumCenterWidth = (std::min)(320.0f, size.x * 0.4f);
+    const float rightWidth = std::clamp(size.x * layout_.rightWidthRatio, minimumSideWidth,
+                                        size.x - minimumSideWidth - minimumCenterWidth);
+    const float leftWidth = std::clamp(size.x * layout_.leftWidthRatio, minimumSideWidth,
+                                       size.x - rightWidth - minimumCenterWidth);
     const float centerWidth = size.x - leftWidth - rightWidth;
-    const float bottomHeight = size.y * 0.28f;
+    const float minimumBottomHeight = (std::min)(120.0f, size.y * 0.2f);
+    const float minimumUpperHeight = (std::min)(240.0f, size.y * 0.4f);
+    const float bottomHeight =
+        std::clamp(size.y * layout_.bottomHeightRatio, minimumBottomHeight,
+                   size.y - minimumUpperHeight);
     const float upperHeight = size.y - bottomHeight;
 
     BeginFixedPanel("Hierarchy", origin.x, origin.y, leftWidth, upperHeight);
@@ -590,6 +663,33 @@ void EditorScene::DrawPanels() {
                     size.y);
     DrawInspectorPanel();
     ImGui::End();
+
+    constexpr float splitterThickness = 6.0f;
+    const float halfSplitter = splitterThickness * 0.5f;
+    DrawPanelSplitter("##LeftPanelSplitter",
+                      {origin.x + leftWidth - halfSplitter, origin.y},
+                      {splitterThickness, size.y}, true, 1.0f,
+                      minimumSideWidth / size.x,
+                      (size.x - rightWidth - minimumCenterWidth) / size.x,
+                      layout_.leftWidthRatio);
+    DrawPanelSplitter("##RightPanelSplitter",
+                      {origin.x + size.x - rightWidth - halfSplitter, origin.y},
+                      {splitterThickness, size.y}, true, -1.0f,
+                      minimumSideWidth / size.x,
+                      (size.x - leftWidth - minimumCenterWidth) / size.x,
+                      layout_.rightWidthRatio);
+    DrawPanelSplitter("##BottomPanelSplitter",
+                      {origin.x, origin.y + upperHeight - halfSplitter},
+                      {size.x - rightWidth, splitterThickness}, false, -1.0f,
+                      minimumBottomHeight / size.y,
+                      (size.y - minimumUpperHeight) / size.y,
+                      layout_.bottomHeightRatio);
+    if (layoutDirty_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        layoutDirty_ = false;
+        if (!layoutStore_.Save(layout_)) {
+            status_ = "Could not save the panel layout.";
+        }
+    }
 }
 
 void EditorScene::DrawProjectPanel() {

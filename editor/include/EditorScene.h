@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EditorLayoutStore.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
 #include "graphics/PostProcessSystem.h"
@@ -24,7 +25,7 @@ class EditorScene final : public BaseScene {
 public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
                 std::filesystem::path sceneRoot, std::filesystem::path startupScene,
-                std::filesystem::path recentScenesPath,
+                std::filesystem::path recentScenesPath, std::filesystem::path layoutSettingsPath,
                 std::function<void()> requestClose);
 
     void Initialize(const SceneContext& ctx) override;
@@ -38,6 +39,9 @@ private:
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
     void DrawPanels();
+    void DrawPanelSplitter(const char* id, const ImVec2& position, const ImVec2& size,
+                           bool vertical, float direction, float minimum, float maximum,
+                           float& ratio);
     void DrawProjectPanel();
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
@@ -137,6 +141,9 @@ private:
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
     std::filesystem::path sceneRoot_;
+    EditorLayoutStore layoutStore_;
+    EditorLayoutSettings layout_{};
+    bool layoutDirty_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
