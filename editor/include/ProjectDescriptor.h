@@ -15,4 +15,6 @@ struct ProjectDescriptor {
 
     static bool Load(const std::filesystem::path& path, ProjectDescriptor& descriptor,
                      std::string& error);
+    static bool Create(const std::filesystem::path& directory, const std::string& name,
+                       ProjectDescriptor& descriptor, std::string& error);
 };

@@ -71,7 +71,7 @@ ApplicationPaths ApplicationPaths::Discover() {
     }
 
     const std::filesystem::path local = LocalAppData();
-    paths.userData = (local.empty() ? paths.installRoot : local) / L"WP0" / L"Editor";
+    paths.userData = (local.empty() ? paths.installRoot : local) / L"LikeEngine" / L"Editor";
     paths.cache = paths.userData / L"cache";
     return paths;
 }

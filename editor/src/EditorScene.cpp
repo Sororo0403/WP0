@@ -165,7 +165,7 @@ void EditorScene::DrawMainMenu() {
         }
         ImGui::EndMenu();
     }
-    ImGui::TextUnformatted(dirty_ ? "WP0 Editor *" : "WP0 Editor");
+    ImGui::TextUnformatted(dirty_ ? "LikeEngine Editor *" : "LikeEngine Editor");
     ImGui::EndMainMenuBar();
 }
 

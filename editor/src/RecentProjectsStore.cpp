@@ -14,7 +14,7 @@ constexpr uintmax_t kMaxSettingsBytes = 1024u * 1024u;
 std::filesystem::path NormalizeExistingManifest(const std::filesystem::path& path) {
     std::error_code error;
     if (!std::filesystem::is_regular_file(path, error) || error ||
-        path.extension() != L".wp0project") {
+        path.extension() != L".likeproject") {
         return {};
     }
     const auto canonical = std::filesystem::weakly_canonical(path, error);

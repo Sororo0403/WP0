@@ -1,0 +1,9 @@
+{
+  "assetRoot": "assets",
+  "engineVersion": "0.1.0",
+  "name": "test",
+  "projectId": "0a5d3ebc-71fa-4a81-a527-0b121dd54f9a",
+  "sceneRoot": "scenes",
+  "schemaVersion": 1,
+  "startupScene": "scenes/untitled.likescene"
+}

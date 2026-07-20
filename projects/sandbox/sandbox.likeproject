@@ -4,6 +4,6 @@
   "name": "Sandbox",
   "assetRoot": "assets",
   "sceneRoot": "scenes",
-  "startupScene": "scenes/untitled.wp0scene",
+  "startupScene": "scenes/untitled.likescene",
   "engineVersion": "0.1.0"
 }

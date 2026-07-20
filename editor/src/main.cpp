@@ -40,7 +40,7 @@ std::optional<std::filesystem::path> ParseProjectArgument() {
 }
 
 void ShowError(const std::string& message) {
-    MessageBoxA(nullptr, message.c_str(), "WP0 Editor", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, message.c_str(), "LikeEngine Editor", MB_OK | MB_ICONERROR);
 }
 
 std::wstring Utf8ToWide(const std::string& value) {
@@ -90,7 +90,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     EngineRuntimeConfig config{};
     config.width = 1600;
     config.height = 900;
-    config.title = L"WP0 Editor - " + Utf8ToWide(project.name);
+    config.title = L"LikeEngine Editor - " + Utf8ToWide(project.name);
     config.cursorVisible = true;
     config.logPath = (paths.userData / L"logs" / L"editor.log").wstring();
 

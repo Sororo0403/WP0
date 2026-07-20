@@ -1,3 +1,4 @@
+#include "ProjectDescriptor.h"
 #include "core/AssetManager.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
@@ -90,7 +91,8 @@ int main() {
     }
 
     const std::filesystem::path testPath =
-        std::filesystem::temp_directory_path() / ("wp0-world-" + root.ToString() + ".wp0scene");
+        std::filesystem::temp_directory_path() /
+        ("likeengine-world-" + root.ToString() + ".likescene");
     World fileRestored;
     if (!Check(WorldSerializer::Save(source, testPath, &error), error.c_str()) ||
         !Check(WorldSerializer::Load(testPath, fileRestored, &error), error.c_str()) ||
@@ -145,6 +147,41 @@ int main() {
     if (!Check(AssetManager::ResolvePath(L"engine://../outside.hlsl").empty(),
                "Engine resource traversal was accepted.")) {
         return 17;
+    }
+
+    const std::filesystem::path projectDirectory =
+        std::filesystem::temp_directory_path() / ("wp0-project-" + root.ToString());
+    std::error_code projectFilesystemError;
+    std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+    projectFilesystemError.clear();
+    if (!Check(std::filesystem::create_directory(projectDirectory, projectFilesystemError) &&
+                   !projectFilesystemError,
+               "Project test directory could not be created.")) {
+        return 18;
+    }
+    ProjectDescriptor createdProject;
+    if (!Check(ProjectDescriptor::Create(projectDirectory, "Created Project", createdProject,
+                                         error),
+               error.c_str()) ||
+        !Check(createdProject.name == "Created Project" &&
+                   createdProject.assetRoot == projectDirectory / L"assets" &&
+                   createdProject.sceneRoot == projectDirectory / L"scenes" &&
+                   std::filesystem::is_regular_file(createdProject.manifestPath) &&
+                   std::filesystem::is_directory(createdProject.assetRoot) &&
+                   std::filesystem::is_directory(createdProject.sceneRoot),
+               "Created project structure is invalid.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 19;
+    }
+    ProjectDescriptor duplicateProject;
+    if (!Check(!ProjectDescriptor::Create(projectDirectory, "Duplicate", duplicateProject, error),
+               "Project creation accepted a non-empty directory.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 20;
+    }
+    std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+    if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {
+        return 21;
     }
     return 0;
 }
