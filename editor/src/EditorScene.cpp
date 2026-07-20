@@ -448,6 +448,7 @@ void EditorScene::DrawPanels() {
         const ImVec2 imageMax = ImGui::GetItemRectMax();
         const bool imageHovered = ImGui::IsItemHovered();
         HandleSceneAssetDrop(imageMin, imageMax);
+        DrawSceneGrid(imageMin, imageMax);
         DrawSceneSelectionOutline(imageMin, imageMax);
         if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
             PickSceneEntity(imageMin, imageMax, imageHovered);
@@ -1395,6 +1396,29 @@ void EditorScene::DrawSceneGizmoToolbar() {
     if (ImGui::RadioButton("World", gizmoSpace_ == GizmoSpace::World)) {
         gizmoSpace_ = GizmoSpace::World;
     }
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    ImGui::Checkbox("Grid", &showSceneGrid_);
+}
+
+void EditorScene::DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const {
+    if (!showSceneGrid_) {
+        return;
+    }
+    DirectX::XMFLOAT4X4 view{};
+    DirectX::XMFLOAT4X4 projection{};
+    DirectX::XMFLOAT4X4 identity{};
+    DirectX::XMStoreFloat4x4(&view, sceneViewCamera_.GetView());
+    DirectX::XMStoreFloat4x4(&projection, sceneViewCamera_.GetProj());
+    DirectX::XMStoreFloat4x4(&identity, DirectX::XMMatrixIdentity());
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x,
+                      imageMax.y - imageMin.y);
+    ImGuizmo::DrawGridCustomColor(
+        &view._11, &projection._11, &identity._11, 50.0f, 5.0f, 5u,
+        IM_COL32(125, 135, 150, 90), IM_COL32(95, 105, 120, 45),
+        IM_COL32(230, 165, 70, 150));
 }
 
 bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax) {

@@ -67,6 +67,7 @@ private:
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
+    void DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const;
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
@@ -158,6 +159,7 @@ private:
     };
     GizmoOperation gizmoOperation_ = GizmoOperation::Translate;
     GizmoSpace gizmoSpace_ = GizmoSpace::World;
+    bool showSceneGrid_ = true;
     EntityId activeGizmoEntity_{};
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
