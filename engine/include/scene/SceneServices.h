@@ -32,7 +32,7 @@ class RenderScene;
 class CpuProfiler;
 class VolumetricLightingSystem;
 
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
 class ImguiManager;
 #endif
 
@@ -48,7 +48,7 @@ struct SceneSystemServices {
     CpuProfiler* cpuProfiler = nullptr;
     std::function<void(const std::string&)> log;
 
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
     ImguiManager* imgui = nullptr;
 #endif
 };

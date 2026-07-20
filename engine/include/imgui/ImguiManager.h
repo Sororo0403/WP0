@@ -1,5 +1,5 @@
 #pragma once
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
 #include <d3d12.h>
 #include <unordered_map>
 

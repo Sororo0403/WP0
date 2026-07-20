@@ -1,4 +1,4 @@
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
 #include "imgui/ImguiManager.h"
 
 #include "core/AssetManager.h"

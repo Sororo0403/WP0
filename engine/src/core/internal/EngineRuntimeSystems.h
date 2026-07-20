@@ -35,7 +35,7 @@
 #include "sprite/SpriteManager.h"
 #include "texture/TextureManager.h"
 
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
 #include "imgui/ImguiManager.h"
 #endif
 
@@ -78,7 +78,7 @@ struct EngineRuntime::Systems {
     SceneContext sceneContext{};
     std::ofstream logFile;
 
-#ifdef WP0_WITH_IMGUI
+#ifdef ENGINE_WITH_IMGUI
     ImguiManager imguiManager;
 #endif
 };

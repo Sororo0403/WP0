@@ -25,8 +25,8 @@ constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFl
                                          ImGuiWindowFlags_NoCollapse;
 
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
-constexpr const char* kEntityDragPayload = "WP0_ENTITY";
-constexpr const char* kModelAssetDragPayload = "WP0_MODEL_ASSET";
+constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
+constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 
 bool IsModelAsset(const std::filesystem::path& path) {

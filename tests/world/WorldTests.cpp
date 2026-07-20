@@ -129,7 +129,7 @@ int main() {
         return 14;
     }
     const std::filesystem::path projectAssets =
-        std::filesystem::temp_directory_path() / L"wp0-external-project" / L"assets";
+        std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";
     AssetManager::SetProjectAssetRoot(projectAssets);
     const std::filesystem::path resolvedAsset =
         AssetManager::ResolvePathStrict(L"asset://models/brain_stem/BrainStem.glb");
@@ -150,7 +150,7 @@ int main() {
     }
 
     const std::filesystem::path projectDirectory =
-        std::filesystem::temp_directory_path() / ("wp0-project-" + root.ToString());
+        std::filesystem::temp_directory_path() / ("engine-project-" + root.ToString());
     std::error_code projectFilesystemError;
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     projectFilesystemError.clear();
