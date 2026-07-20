@@ -50,6 +50,7 @@ private:
     void ClearHierarchySelection();
     [[nodiscard]] bool IsHierarchyEntitySelected(EntityId entity) const;
     [[nodiscard]] std::vector<EntityId> GetTopLevelSelectedEntities() const;
+    void SetSelectedMeshRenderersEnabled(EntityId source, bool enabled);
     bool CopySelection();
     void CutSelection();
     bool PasteEntityClipboard(EntityId parent = {});

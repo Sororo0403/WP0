@@ -916,7 +916,28 @@ void EditorScene::DrawEntityNode(EntityId id) {
 
     const std::string idText = id.ToString();
     ImGui::PushID(idText.c_str());
+    const bool hasMeshRenderer = entity->meshRenderer.has_value();
+    bool rendererEnabled = hasMeshRenderer && entity->meshRenderer->enabled;
+    if (hasMeshRenderer) {
+        if (ImGui::Checkbox("##RendererVisible", &rendererEnabled)) {
+            SetSelectedMeshRenderersEnabled(id, rendererEnabled);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(rendererEnabled ? "Hide MeshRenderer" : "Show MeshRenderer");
+        }
+    } else {
+        ImGui::Dummy({ImGui::GetFrameHeight(), ImGui::GetFrameHeight()});
+    }
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    if (hasMeshRenderer && !rendererEnabled) {
+        const ImVec4 textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              {textColor.x, textColor.y, textColor.z, textColor.w * 0.45f});
+    }
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
+    if (hasMeshRenderer && !rendererEnabled) {
+        ImGui::PopStyleColor();
+    }
     if (ImGui::IsItemClicked()) {
         const ImGuiIO& io = ImGui::GetIO();
         SelectHierarchyEntity(id, io.KeyCtrl, io.KeyShift);
@@ -937,6 +958,10 @@ void EditorScene::DrawEntityNode(EntityId id) {
         ImGui::Separator();
         if (ImGui::MenuItem("Rename", "F2")) {
             RequestEntityRename(id);
+        }
+        if (entity->meshRenderer &&
+            ImGui::MenuItem("Renderer Enabled", nullptr, entity->meshRenderer->enabled)) {
+            SetSelectedMeshRenderersEnabled(id, !entity->meshRenderer->enabled);
         }
         const WorldEntity* contextEntity = world_.Find(id);
         const std::vector<EntityId> siblings =
@@ -1341,6 +1366,49 @@ std::vector<EntityId> EditorScene::GetTopLevelSelectedEntities() const {
         }
     }
     return roots;
+}
+
+void EditorScene::SetSelectedMeshRenderersEnabled(EntityId source, bool enabled) {
+    if (!world_.Contains(source)) {
+        return;
+    }
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> targets;
+    if (hierarchySelection_.contains(source)) {
+        targets.reserve(hierarchySelection_.size());
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (hierarchySelection_.contains(entity.id) && entity.meshRenderer &&
+                entity.meshRenderer->enabled != enabled) {
+                targets.push_back(entity.id);
+            }
+        }
+    } else {
+        const WorldEntity* entity = world_.Find(source);
+        if (entity != nullptr && entity->meshRenderer &&
+            entity->meshRenderer->enabled != enabled) {
+            targets.push_back(source);
+        }
+    }
+    if (targets.empty()) {
+        return;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    for (EntityId target : targets) {
+        WorldEntity* entity = world_.Find(target);
+        if (entity != nullptr && entity->meshRenderer) {
+            entity->meshRenderer->enabled = enabled;
+        }
+    }
+    RecordImmediateEdit(enabled ? "Show Mesh Renderers" : "Hide Mesh Renderers", before,
+                        selectionBefore);
+    if (targets.size() == 1u) {
+        status_ = enabled ? "Enabled the MeshRenderer." : "Disabled the MeshRenderer.";
+    } else {
+        status_ = enabled ? "Enabled the selected MeshRenderers."
+                          : "Disabled the selected MeshRenderers.";
+    }
 }
 
 bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
