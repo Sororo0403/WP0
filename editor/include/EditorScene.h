@@ -60,6 +60,7 @@ private:
     void RefreshDirty();
     void BuildRenderScene();
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax);
+    void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
     enum class PendingSceneAction {
