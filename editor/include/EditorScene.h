@@ -9,6 +9,7 @@
 #include "scene/BaseScene.h"
 #include "world/World.h"
 
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -42,6 +43,10 @@ private:
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void RefreshAssetBrowser();
+    void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
+    void DrawAssetBrowserBreadcrumbs();
+    void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
+                               bool directory);
     [[nodiscard]] std::optional<std::filesystem::path>
     ResolveProjectAssetPath(const std::filesystem::path& path) const;
     void Undo();
@@ -120,6 +125,15 @@ private:
     ModelHandle primitiveModels_[4]{};
     std::unordered_map<std::string, ModelHandle> loadedModels_;
     std::vector<std::filesystem::path> modelAssets_;
+    struct AssetBrowserEntry {
+        std::filesystem::path relativePath;
+        bool directory = false;
+    };
+    std::vector<AssetBrowserEntry> assetBrowserEntries_;
+    std::filesystem::path currentAssetDirectory_;
+    std::optional<std::filesystem::path> pendingAssetDirectory_;
+    std::filesystem::path selectedAsset_;
+    std::array<char, 128> assetSearch_{};
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
     bool postProcessInitializationAttempted_ = false;

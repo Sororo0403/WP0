@@ -42,6 +42,16 @@ bool IsModelAsset(const std::filesystem::path& path) {
     return std::ranges::find(extensions, extension) != std::end(extensions);
 }
 
+bool ContainsCaseInsensitive(std::string value, std::string query) {
+    std::ranges::transform(value, value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    std::ranges::transform(query, query.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value.find(query) != std::string::npos;
+}
+
 bool HasParentTraversal(const std::filesystem::path& path) {
     return std::ranges::any_of(path, [](const std::filesystem::path& part) {
         return part == L"..";
@@ -234,7 +244,12 @@ void EditorScene::DrawMainMenu() {
         }
         ImGui::EndMenu();
     }
-    ImGui::TextUnformatted(dirty_ ? "LikeEngine Editor *" : "LikeEngine Editor");
+    std::string editorLabel = "LikeEngine Editor - ";
+    editorLabel += scenePath_.empty() ? "Untitled" : scenePath_.filename().string();
+    if (dirty_) {
+        editorLabel += " *";
+    }
+    ImGui::TextUnformatted(editorLabel.c_str());
     ImGui::EndMainMenuBar();
 }
 
@@ -347,31 +362,121 @@ void EditorScene::DrawPanels() {
 }
 
 void EditorScene::DrawProjectPanel() {
+    if (pendingAssetDirectory_) {
+        currentAssetDirectory_ = std::move(*pendingAssetDirectory_);
+        pendingAssetDirectory_.reset();
+        selectedAsset_.clear();
+        RefreshAssetBrowser();
+    }
     if (ImGui::Button("Refresh")) {
         RefreshAssetBrowser();
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%zu model(s)", modelAssets_.size());
     ImGui::Separator();
-    ImGui::TextDisabled("Project: %s", projectRoot_.string().c_str());
-    const std::string sceneLabel = scenePath_.empty() ? "Untitled" : scenePath_.string();
-    ImGui::TextDisabled("Scene: %s", sceneLabel.c_str());
-    if (modelAssets_.empty()) {
-        ImGui::TextWrapped("No model assets found under assets.");
+    if (!currentAssetDirectory_.empty()) {
+        if (ImGui::Button("< Back")) {
+            NavigateAssetBrowser(currentAssetDirectory_.parent_path());
+        }
+        ImGui::SameLine();
+    }
+    DrawAssetBrowserBreadcrumbs();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##AssetSearch", "Search model assets...", assetSearch_.data(),
+                             assetSearch_.size());
+    ImGui::Separator();
+
+    const std::string search(assetSearch_.data());
+    if (!search.empty()) {
+        bool found = false;
+        for (const std::filesystem::path& logicalPath : modelAssets_) {
+            if (ContainsCaseInsensitive(logicalPath.generic_string(), search)) {
+                DrawAssetBrowserEntry(logicalPath.lexically_relative("assets"), false);
+                found = true;
+            }
+        }
+        if (!found) {
+            ImGui::TextDisabled("No matching model assets.");
+        }
         return;
     }
-    for (const std::filesystem::path& path : modelAssets_) {
-        const std::string assetPath = path.generic_string();
-        ImGui::PushID(assetPath.c_str());
-        ImGui::Selectable(assetPath.c_str(), false);
-        if (ImGui::BeginDragDropSource()) {
-            ImGui::SetDragDropPayload(kModelAssetDragPayload, assetPath.c_str(),
-                                      assetPath.size() + 1u);
-            ImGui::TextUnformatted(assetPath.c_str());
-            ImGui::EndDragDropSource();
+
+    if (assetBrowserEntries_.empty()) {
+        ImGui::TextDisabled("This folder contains no model assets or folders.");
+        return;
+    }
+    for (const AssetBrowserEntry& entry : assetBrowserEntries_) {
+        DrawAssetBrowserEntry(entry.relativePath, entry.directory);
+    }
+}
+
+void EditorScene::DrawAssetBrowserBreadcrumbs() {
+    if (ImGui::SmallButton("assets")) {
+        NavigateAssetBrowser({});
+    }
+    std::filesystem::path accumulated;
+    for (const std::filesystem::path& component : currentAssetDirectory_) {
+        if (component == L".") {
+            continue;
+        }
+        accumulated /= component;
+        ImGui::SameLine(0.0f, 3.0f);
+        ImGui::TextUnformatted(">");
+        ImGui::SameLine(0.0f, 3.0f);
+        const std::string label = component.string();
+        const std::string id = accumulated.generic_string();
+        ImGui::PushID(id.c_str());
+        if (ImGui::SmallButton(label.c_str())) {
+            NavigateAssetBrowser(accumulated);
         }
         ImGui::PopID();
     }
+}
+
+void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
+                                        bool directory) {
+    const std::filesystem::path logicalPath =
+        (std::filesystem::path("assets") / relativePath).lexically_normal();
+    const std::string id = logicalPath.generic_string();
+    const std::string label = std::string(directory ? "[Folder] " : "[Model] ") +
+                              relativePath.filename().string();
+    ImGui::PushID(id.c_str());
+    const bool selected = selectedAsset_ == relativePath;
+    if (ImGui::Selectable(label.c_str(), selected,
+                          ImGuiSelectableFlags_AllowDoubleClick)) {
+        selectedAsset_ = relativePath;
+        if (directory && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            NavigateAssetBrowser(relativePath);
+        }
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", id.c_str());
+    }
+    if (!directory && ImGui::BeginDragDropSource()) {
+        ImGui::SetDragDropPayload(kModelAssetDragPayload, id.c_str(), id.size() + 1u);
+        ImGui::TextUnformatted(id.c_str());
+        ImGui::EndDragDropSource();
+    }
+    if (ImGui::BeginPopupContextItem("AssetContext")) {
+        if (directory) {
+            if (ImGui::MenuItem("Open")) {
+                NavigateAssetBrowser(relativePath);
+            }
+        } else {
+            const std::string uri =
+                "asset://" + relativePath.lexically_normal().generic_string();
+            if (ImGui::MenuItem("Copy Asset URI")) {
+                ImGui::SetClipboardText(uri.c_str());
+                status_ = "Copied asset URI: " + uri;
+            }
+            if (ImGui::MenuItem("Copy Project Path")) {
+                ImGui::SetClipboardText(id.c_str());
+                status_ = "Copied project asset path: " + id;
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
 }
 
 void EditorScene::DrawHierarchyPanel() {
@@ -674,10 +779,54 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
 
 void EditorScene::RefreshAssetBrowser() {
     modelAssets_.clear();
+    assetBrowserEntries_.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(assetRoot_, error) || error) {
         return;
     }
+
+    std::filesystem::path currentDirectory =
+        (assetRoot_ / currentAssetDirectory_).lexically_normal();
+    if ((!currentAssetDirectory_.empty() &&
+         !IsPathWithinRoot(assetRoot_, currentDirectory)) ||
+        !std::filesystem::is_directory(currentDirectory, error) || error) {
+        currentAssetDirectory_.clear();
+        currentDirectory = assetRoot_;
+        error.clear();
+    }
+
+    std::filesystem::directory_iterator directoryIterator(
+        currentDirectory, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::directory_iterator directoryEnd;
+    while (!error && directoryIterator != directoryEnd) {
+        const std::filesystem::directory_entry entry = *directoryIterator;
+        const bool directory = entry.is_directory(error);
+        if (!error && directory && IsPathWithinRoot(assetRoot_, entry.path())) {
+            const std::filesystem::path relative =
+                std::filesystem::relative(entry.path(), assetRoot_, error);
+            if (!error) {
+                assetBrowserEntries_.push_back({relative.lexically_normal(), true});
+            }
+        } else if (!error && entry.is_regular_file(error) && !error &&
+                   IsModelAsset(entry.path())) {
+            const std::filesystem::path relative =
+                std::filesystem::relative(entry.path(), assetRoot_, error);
+            if (!error) {
+                assetBrowserEntries_.push_back({relative.lexically_normal(), false});
+            }
+        }
+        error.clear();
+        directoryIterator.increment(error);
+    }
+    std::ranges::sort(assetBrowserEntries_, [](const AssetBrowserEntry& left,
+                                               const AssetBrowserEntry& right) {
+        if (left.directory != right.directory) {
+            return left.directory && !right.directory;
+        }
+        return left.relativePath.generic_string() < right.relativePath.generic_string();
+    });
+
+    error.clear();
     std::filesystem::recursive_directory_iterator iterator(
         assetRoot_, std::filesystem::directory_options::skip_permission_denied, error);
     const std::filesystem::recursive_directory_iterator end;
@@ -686,7 +835,8 @@ void EditorScene::RefreshAssetBrowser() {
             std::filesystem::path relative =
                 std::filesystem::relative(iterator->path(), assetRoot_, error);
             if (!error) {
-                modelAssets_.push_back((std::filesystem::path("assets") / relative).lexically_normal());
+                modelAssets_.push_back(
+                    (std::filesystem::path("assets") / relative).lexically_normal());
             }
         }
         iterator.increment(error);
@@ -694,6 +844,26 @@ void EditorScene::RefreshAssetBrowser() {
     std::ranges::sort(modelAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
+}
+
+void EditorScene::NavigateAssetBrowser(
+    const std::filesystem::path& relativeDirectory) {
+    const std::filesystem::path normalized = relativeDirectory.lexically_normal();
+    if (normalized.is_absolute() || normalized.has_root_name() ||
+        normalized.has_root_directory() || HasParentTraversal(normalized)) {
+        status_ = "Asset Browser rejected an invalid directory.";
+        return;
+    }
+    const std::filesystem::path physical =
+        normalized == L"." ? assetRoot_ : assetRoot_ / normalized;
+    std::error_code error;
+    if (!std::filesystem::is_directory(physical, error) || error ||
+        (normalized != L"." && !normalized.empty() &&
+         !IsPathWithinRoot(assetRoot_, physical))) {
+        status_ = "Asset Browser folder no longer exists.";
+        return;
+    }
+    pendingAssetDirectory_ = normalized == L"." ? std::filesystem::path{} : normalized;
 }
 
 std::optional<std::filesystem::path>
