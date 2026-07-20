@@ -79,6 +79,16 @@ private:
     void DrawAssetBrowserBreadcrumbs();
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                bool directory);
+    void DrawAssetOperationDialogs();
+    void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);
+    void RequestAssetDelete(const std::filesystem::path& relativePath, bool directory);
+    bool RenamePendingAsset();
+    bool DeletePendingAsset();
+    bool DuplicateAsset(const std::filesystem::path& relativePath);
+    [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
+                                         bool directory) const;
+    size_t UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
+                                 const std::filesystem::path& newRelativePath, bool directory);
     [[nodiscard]] std::optional<std::filesystem::path>
     ResolveProjectAssetPath(const std::filesystem::path& path) const;
     void Undo();
@@ -204,6 +214,12 @@ private:
     std::optional<std::filesystem::path> pendingAssetDirectory_;
     std::filesystem::path selectedAsset_;
     std::array<char, 128> assetSearch_{};
+    std::filesystem::path pendingAssetOperationPath_;
+    std::array<char, 256> assetRenameBuffer_{};
+    bool pendingAssetOperationIsDirectory_ = false;
+    bool showAssetRenameDialog_ = false;
+    bool showAssetDeleteDialog_ = false;
+    bool focusAssetRenameInput_ = false;
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
     enum class GizmoOperation : uint8_t {

@@ -94,6 +94,57 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
     return result;
 }
 
+bool IsPathAtOrWithinRoot(const std::filesystem::path& root,
+                          const std::filesystem::path& path) {
+    std::error_code error;
+    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, error);
+    if (error) {
+        return false;
+    }
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, error);
+    return !error &&
+           (canonicalPath == canonicalRoot || IsPathWithinRoot(canonicalRoot, canonicalPath));
+}
+
+bool IsValidAssetFilename(std::string_view filename) {
+    if (filename.empty() || filename == "." || filename == ".." ||
+        filename.ends_with('.') || filename.ends_with(' ')) {
+        return false;
+    }
+    constexpr std::string_view invalidCharacters = "<>:\"/\\|?*";
+    return std::ranges::none_of(filename, [invalidCharacters](unsigned char character) {
+        return character < 32u || invalidCharacters.find(static_cast<char>(character)) !=
+                                      std::string_view::npos;
+    });
+}
+
+std::optional<std::filesystem::path> AssetRelativeFromReference(std::string_view reference) {
+    constexpr std::string_view uriPrefix = "asset://";
+    constexpr std::string_view projectPrefix = "assets/";
+    if (reference.starts_with(uriPrefix)) {
+        reference.remove_prefix(uriPrefix.size());
+    } else if (reference.starts_with(projectPrefix)) {
+        reference.remove_prefix(projectPrefix.size());
+    } else {
+        return std::nullopt;
+    }
+    const std::filesystem::path relative =
+        std::filesystem::path(std::string(reference)).lexically_normal();
+    if (relative.empty() || relative.is_absolute() || relative.has_root_name() ||
+        relative.has_root_directory() || HasParentTraversal(relative)) {
+        return std::nullopt;
+    }
+    return relative;
+}
+
+bool AssetPathMatches(const std::filesystem::path& candidate,
+                      const std::filesystem::path& target, bool directory) {
+    const std::string candidateText = candidate.lexically_normal().generic_string();
+    const std::string targetText = target.lexically_normal().generic_string();
+    return candidateText == targetText ||
+           (directory && candidateText.starts_with(targetText + '/'));
+}
+
 bool TryDecomposeTransformComponent(const DirectX::XMMATRIX& matrix,
                                     TransformComponent& transform) {
     DirectX::XMFLOAT4X4 stored{};
@@ -340,6 +391,7 @@ void EditorScene::DrawPostProcessOverlay() {
     DrawDockSpace();
     DrawUnsavedChangesDialog();
     DrawEntityRenameDialog();
+    DrawAssetOperationDialogs();
     DrawPanels();
     CaptureConsoleStatus();
 }
@@ -882,11 +934,23 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::EndDragDropSource();
     }
     if (ImGui::BeginPopupContextItem("AssetContext")) {
+        selectedAsset_ = relativePath;
         if (directory) {
             if (ImGui::MenuItem("Open")) {
                 NavigateAssetBrowser(relativePath);
             }
-        } else {
+        }
+        if (ImGui::MenuItem("Rename")) {
+            RequestAssetRename(relativePath, directory);
+        }
+        if (!directory && ImGui::MenuItem("Duplicate")) {
+            DuplicateAsset(relativePath);
+        }
+        if (ImGui::MenuItem("Delete")) {
+            RequestAssetDelete(relativePath, directory);
+        }
+        if (!directory) {
+            ImGui::Separator();
             const std::string uri =
                 "asset://" + relativePath.lexically_normal().generic_string();
             if (ImGui::MenuItem("Copy Asset URI")) {
@@ -901,6 +965,254 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::EndPopup();
     }
     ImGui::PopID();
+}
+
+void EditorScene::RequestAssetRename(const std::filesystem::path& relativePath,
+                                     bool directory) {
+    pendingAssetOperationPath_ = relativePath.lexically_normal();
+    pendingAssetOperationIsDirectory_ = directory;
+    assetRenameBuffer_.fill('\0');
+    const std::string filename = pendingAssetOperationPath_.filename().string();
+    strncpy_s(assetRenameBuffer_.data(), assetRenameBuffer_.size(), filename.c_str(), _TRUNCATE);
+    showAssetRenameDialog_ = true;
+    focusAssetRenameInput_ = true;
+}
+
+void EditorScene::RequestAssetDelete(const std::filesystem::path& relativePath,
+                                     bool directory) {
+    pendingAssetOperationPath_ = relativePath.lexically_normal();
+    pendingAssetOperationIsDirectory_ = directory;
+    showAssetDeleteDialog_ = true;
+}
+
+void EditorScene::DrawAssetOperationDialogs() {
+    if (showAssetRenameDialog_) {
+        ImGui::OpenPopup("Rename Asset");
+        showAssetRenameDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Rename Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextDisabled("assets/%s", pendingAssetOperationPath_.generic_string().c_str());
+        if (focusAssetRenameInput_) {
+            ImGui::SetKeyboardFocusHere();
+            focusAssetRenameInput_ = false;
+        }
+        ImGui::SetNextItemWidth(360.0f);
+        const bool submitted = ImGui::InputText(
+            "##AssetName", assetRenameBuffer_.data(), assetRenameBuffer_.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        if (submitted || ImGui::Button("Rename", {100.0f, 0.0f})) {
+            if (RenamePendingAsset()) {
+                pendingAssetOperationPath_.clear();
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            ImGui::SameLine();
+            if (cancel || ImGui::Button("Cancel", {100.0f, 0.0f})) {
+                pendingAssetOperationPath_.clear();
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showAssetDeleteDialog_) {
+        ImGui::OpenPopup("Delete Asset");
+        showAssetDeleteDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Delete Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(pendingAssetOperationIsDirectory_
+                                   ? "Delete this asset folder and all of its contents?"
+                                   : "Delete this asset file?");
+        ImGui::TextDisabled("assets/%s", pendingAssetOperationPath_.generic_string().c_str());
+        const bool referenced =
+            IsAssetReferenced(pendingAssetOperationPath_, pendingAssetOperationIsDirectory_);
+        if (referenced) {
+            ImGui::TextColored({1.0f, 0.45f, 0.3f, 1.0f},
+                               "Cannot delete: the current scene references this asset.");
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Button("Delete", {100.0f, 0.0f}) && DeletePendingAsset()) {
+            pendingAssetOperationPath_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        if (referenced) {
+            ImGui::EndDisabled();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {100.0f, 0.0f}) ||
+            ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            pendingAssetOperationPath_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+bool EditorScene::RenamePendingAsset() {
+    const std::filesystem::path oldRelative = pendingAssetOperationPath_.lexically_normal();
+    const std::string filename(assetRenameBuffer_.data());
+    if (oldRelative.empty() || oldRelative.is_absolute() || HasParentTraversal(oldRelative) ||
+        !IsValidAssetFilename(filename)) {
+        status_ = "Asset rename rejected an invalid name.";
+        return false;
+    }
+    const std::filesystem::path filenamePath(filename);
+    std::string newExtension = filenamePath.extension().string();
+    std::string oldExtension = oldRelative.extension().string();
+    std::ranges::transform(newExtension, newExtension.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    std::ranges::transform(oldExtension, oldExtension.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    if (!pendingAssetOperationIsDirectory_ && newExtension != oldExtension) {
+        status_ = "Asset rename cannot change a model file extension.";
+        return false;
+    }
+    const std::filesystem::path newRelative =
+        (oldRelative.parent_path() / filenamePath).lexically_normal();
+    if (newRelative == oldRelative) {
+        status_ = "The asset already has that name.";
+        return false;
+    }
+    const std::filesystem::path source = assetRoot_ / oldRelative;
+    const std::filesystem::path destination = assetRoot_ / newRelative;
+    std::error_code error;
+    const bool sourceTypeMatches =
+        pendingAssetOperationIsDirectory_ ? std::filesystem::is_directory(source, error)
+                                          : std::filesystem::is_regular_file(source, error);
+    if (error || !sourceTypeMatches || !IsPathWithinRoot(assetRoot_, source)) {
+        status_ = "Asset rename failed because the source no longer exists.";
+        return false;
+    }
+    error.clear();
+    if (!IsPathAtOrWithinRoot(assetRoot_, source.parent_path()) ||
+        std::filesystem::exists(destination, error) || error) {
+        status_ = "Asset rename failed because the destination is invalid or already exists.";
+        return false;
+    }
+    std::filesystem::rename(source, destination, error);
+    if (error) {
+        status_ = "Asset rename failed: " + error.message();
+        return false;
+    }
+    const size_t updatedReferences =
+        UpdateAssetReferences(oldRelative, newRelative, pendingAssetOperationIsDirectory_);
+    selectedAsset_ = newRelative;
+    loadedModels_.clear();
+    RefreshAssetBrowser();
+    RefreshDirty();
+    status_ = "Renamed asset to assets/" + newRelative.generic_string();
+    if (updatedReferences != 0u) {
+        status_ += " and updated " + std::to_string(updatedReferences) + " scene reference(s).";
+    }
+    return true;
+}
+
+bool EditorScene::DeletePendingAsset() {
+    const std::filesystem::path relative = pendingAssetOperationPath_.lexically_normal();
+    if (relative.empty() || relative.is_absolute() || HasParentTraversal(relative) ||
+        IsAssetReferenced(relative, pendingAssetOperationIsDirectory_)) {
+        status_ = "Asset deletion rejected an invalid or referenced path.";
+        return false;
+    }
+    const std::filesystem::path physical = assetRoot_ / relative;
+    if (!IsPathWithinRoot(assetRoot_, physical)) {
+        status_ = "Asset deletion rejected a path outside the project assets directory.";
+        return false;
+    }
+    std::error_code error;
+    const uintmax_t removed = std::filesystem::remove_all(physical, error);
+    if (error || removed == 0u) {
+        status_ = "Asset deletion failed" +
+                  (error ? std::string(": ") + error.message() : std::string("."));
+        return false;
+    }
+    selectedAsset_.clear();
+    loadedModels_.clear();
+    RefreshAssetBrowser();
+    status_ = "Deleted asset: assets/" + relative.generic_string();
+    return true;
+}
+
+bool EditorScene::DuplicateAsset(const std::filesystem::path& relativePath) {
+    const std::filesystem::path relative = relativePath.lexically_normal();
+    const std::filesystem::path source = assetRoot_ / relative;
+    std::error_code error;
+    if (relative.empty() || relative.is_absolute() || HasParentTraversal(relative) ||
+        !std::filesystem::is_regular_file(source, error) || error ||
+        !IsPathWithinRoot(assetRoot_, source)) {
+        status_ = "Asset duplication rejected an invalid source.";
+        return false;
+    }
+    const std::string stem = relative.stem().string();
+    const std::string extension = relative.extension().string();
+    std::filesystem::path duplicateRelative;
+    for (size_t copyIndex = 1; copyIndex <= 100u; ++copyIndex) {
+        const std::string suffix = copyIndex == 1u ? " Copy" : " Copy (" +
+                                                                   std::to_string(copyIndex) + ")";
+        duplicateRelative = relative.parent_path() / (stem + suffix + extension);
+        if (!std::filesystem::exists(assetRoot_ / duplicateRelative, error) && !error) {
+            break;
+        }
+        duplicateRelative.clear();
+        error.clear();
+    }
+    if (duplicateRelative.empty()) {
+        status_ = "Asset duplication could not find an available filename.";
+        return false;
+    }
+    std::filesystem::copy_file(source, assetRoot_ / duplicateRelative,
+                               std::filesystem::copy_options::none, error);
+    if (error) {
+        status_ = "Asset duplication failed: " + error.message();
+        return false;
+    }
+    selectedAsset_ = duplicateRelative;
+    RefreshAssetBrowser();
+    status_ = "Duplicated asset: assets/" + duplicateRelative.generic_string();
+    return true;
+}
+
+bool EditorScene::IsAssetReferenced(const std::filesystem::path& relativePath,
+                                    bool directory) const {
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model) {
+            continue;
+        }
+        const std::optional<std::filesystem::path> referenced =
+            AssetRelativeFromReference(entity.meshRenderer->modelPath);
+        if (referenced && AssetPathMatches(*referenced, relativePath, directory)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
+                                          const std::filesystem::path& newRelativePath,
+                                          bool directory) {
+    size_t updated = 0;
+    for (const WorldEntity& candidate : world_.Entities()) {
+        WorldEntity* entity = world_.Find(candidate.id);
+        if (entity == nullptr || !entity->meshRenderer ||
+            entity->meshRenderer->sourceType != MeshSourceType::Model) {
+            continue;
+        }
+        const std::optional<std::filesystem::path> referenced =
+            AssetRelativeFromReference(entity->meshRenderer->modelPath);
+        if (!referenced || !AssetPathMatches(*referenced, oldRelativePath, directory)) {
+            continue;
+        }
+        const std::filesystem::path suffix = referenced->lexically_relative(oldRelativePath);
+        const std::filesystem::path replacement =
+            suffix.empty() || suffix == L"." ? newRelativePath : newRelativePath / suffix;
+        entity->meshRenderer->modelPath =
+            "asset://" + replacement.lexically_normal().generic_string();
+        ++updated;
+    }
+    return updated;
 }
 
 void EditorScene::DrawHierarchyPanel() {
