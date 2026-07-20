@@ -40,7 +40,7 @@ private:
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
-    void DrawCreateEntityMenu(const DirectX::XMFLOAT3& position);
+    bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
@@ -48,8 +48,10 @@ private:
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
                                 bool imageHovered);
-    void CreateEmptyEntity(const DirectX::XMFLOAT3& position);
-    void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position);
+    void CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent = {});
+    void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position,
+                               EntityId parent = {});
+    void DeleteEntity(EntityId entity);
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,

@@ -640,12 +640,7 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Delete")) {
-        const std::string before = WorldSerializer::Serialize(world_);
-        const EntityId selectionBefore = selection_;
-        world_.DestroyEntity(selection_);
-        selection_ = {};
-        RecordImmediateEdit("Delete Entity", before, selectionBefore);
-        status_ = "Deleted the selected entity hierarchy.";
+        DeleteEntity(selection_);
     }
     if (!canDelete) {
         ImGui::EndDisabled();
@@ -667,21 +662,25 @@ void EditorScene::DrawHierarchyPanel() {
     }
 }
 
-void EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position) {
+bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent) {
+    bool created = false;
     if (ImGui::MenuItem("Empty Entity")) {
-        CreateEmptyEntity(position);
+        CreateEmptyEntity(position, parent);
+        created = true;
     }
     if (ImGui::BeginMenu("3D Primitive")) {
         for (size_t index = 0; index < std::size(kPrimitiveNames); ++index) {
             if (ImGui::MenuItem(kPrimitiveNames[index])) {
-                CreatePrimitiveEntity(static_cast<MeshPrimitive>(index), position);
+                CreatePrimitiveEntity(static_cast<MeshPrimitive>(index), position, parent);
+                created = true;
             }
         }
         ImGui::EndMenu();
     }
+    return created;
 }
 
-void EditorScene::CreateEmptyEntity(const DirectX::XMFLOAT3& position) {
+void EditorScene::CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent) {
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
     const EntityId entityId = world_.CreateEntity();
@@ -691,13 +690,18 @@ void EditorScene::CreateEmptyEntity(const DirectX::XMFLOAT3& position) {
         return;
     }
     entity->transform.position = position;
+    if (parent.IsValid() && !world_.SetParent(entityId, parent)) {
+        world_.DestroyEntity(entityId);
+        status_ = "Could not parent the new entity.";
+        return;
+    }
     selection_ = entityId;
     RecordImmediateEdit("Create Entity", before, selectionBefore);
     status_ = "Created a new entity.";
 }
 
 void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
-                                        const DirectX::XMFLOAT3& position) {
+                                        const DirectX::XMFLOAT3& position, EntityId parent) {
     const size_t primitiveIndex = static_cast<size_t>(primitive);
     if (primitiveIndex >= std::size(kPrimitiveNames)) {
         status_ = "Could not create an invalid primitive.";
@@ -715,9 +719,31 @@ void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
     entity->meshRenderer = MeshRendererComponent{};
     entity->meshRenderer->sourceType = MeshSourceType::Primitive;
     entity->meshRenderer->primitive = primitive;
+    if (parent.IsValid() && !world_.SetParent(entityId, parent)) {
+        world_.DestroyEntity(entityId);
+        status_ = "Could not parent the primitive entity.";
+        return;
+    }
     selection_ = entityId;
     RecordImmediateEdit("Create Primitive Entity", before, selectionBefore);
     status_ = std::string("Created primitive: ") + kPrimitiveNames[primitiveIndex];
+}
+
+void EditorScene::DeleteEntity(EntityId entity) {
+    if (!world_.Contains(entity)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (!world_.DestroyEntity(entity)) {
+        status_ = "Could not delete the entity hierarchy.";
+        return;
+    }
+    if (selection_ == entity || !world_.Contains(selection_)) {
+        selection_ = {};
+    }
+    RecordImmediateEdit("Delete Entity", before, selectionBefore);
+    status_ = "Deleted the selected entity hierarchy.";
 }
 
 void EditorScene::DrawEntityNode(EntityId id) {
@@ -739,6 +765,40 @@ void EditorScene::DrawEntityNode(EntityId id) {
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
     if (ImGui::IsItemClicked()) {
         selection_ = id;
+    }
+    bool hierarchyChanged = false;
+    bool deleteRequested = false;
+    if (ImGui::BeginPopupContextItem("EntityContext")) {
+        selection_ = id;
+        if (ImGui::BeginMenu("Create Child")) {
+            hierarchyChanged = DrawCreateEntityMenu({0.0f, 0.0f, 0.0f}, id);
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
+            DuplicateSelection();
+            hierarchyChanged = true;
+        }
+        if (ImGui::MenuItem("Delete", "Delete")) {
+            deleteRequested = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Copy Entity ID")) {
+            ImGui::SetClipboardText(idText.c_str());
+            status_ = "Copied entity ID: " + idText;
+        }
+        ImGui::EndPopup();
+    }
+    if (deleteRequested) {
+        DeleteEntity(id);
+        hierarchyChanged = true;
+    }
+    if (hierarchyChanged) {
+        if (open && !children.empty()) {
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+        return;
     }
     if (ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(kEntityDragPayload, &id, sizeof(id));
@@ -882,6 +942,8 @@ void EditorScene::HandleEditorShortcuts() {
             gizmoOperation_ = GizmoOperation::Rotate;
         } else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
             gizmoOperation_ = GizmoOperation::Scale;
+        } else if (!gizmoWasUsing_ && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+            DeleteEntity(selection_);
         }
         return;
     }
