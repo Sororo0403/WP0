@@ -423,7 +423,28 @@ void EditorScene::DrawMainMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
+        if (ImGui::BeginMenu("Panels")) {
+            ImGui::MenuItem("Hierarchy", nullptr, &showHierarchyPanel_);
+            ImGui::MenuItem("Project", nullptr, &showProjectPanel_);
+            ImGui::MenuItem("Scene", nullptr, &showScenePanel_);
+            ImGui::MenuItem("Console", nullptr, &showConsolePanel_);
+            ImGui::MenuItem("Inspector", nullptr, &showInspectorPanel_);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Show All Panels")) {
+                showHierarchyPanel_ = true;
+                showProjectPanel_ = true;
+                showScenePanel_ = true;
+                showConsolePanel_ = true;
+                showInspectorPanel_ = true;
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::MenuItem("Reset Panel Layout")) {
+            showHierarchyPanel_ = true;
+            showProjectPanel_ = true;
+            showScenePanel_ = true;
+            showConsolePanel_ = true;
+            showInspectorPanel_ = true;
             resetDockLayoutRequested_ = true;
         }
         ImGui::EndMenu();
@@ -560,69 +581,79 @@ void EditorScene::DrawDockSpace() {
 
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
-    if (ImGui::Begin("Hierarchy", nullptr, kPanelFlags)) {
-        DrawHierarchyPanel();
-    }
-    ImGui::End();
-
-    if (ImGui::Begin("Project", nullptr, kPanelFlags)) {
-        DrawProjectPanel();
-    }
-    ImGui::End();
-
-    if (ImGui::Begin("Scene", nullptr, kPanelFlags)) {
-        DrawSceneGizmoToolbar();
-        ImGui::Separator();
-        const ImVec2 available = ImGui::GetContentRegionAvail();
-        requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
-        requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
-        if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
-            ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
-            BuildRenderScene();
-            sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
-                                  {0.025f, 0.035f, 0.055f, 1.0f});
-            sceneViewSurface_.TransitionDepthToShaderResource();
-            sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
-            const PostProcessOutputTarget target{
-                sceneViewSurface_.GetOutputRtvHandle(),
-                static_cast<uint32_t>(sceneViewSurface_.GetWidth()),
-                static_cast<uint32_t>(sceneViewSurface_.GetHeight()),
-                DirectXCommon::kBackBufferFormat,
-            };
-            sceneViewPostProcess_.DrawToTarget(sceneViewSurface_.GetSceneColorGpuHandle(),
-                                               sceneViewSurface_.GetDepthGpuHandle(), target);
-            sceneViewSurface_.EndOutputPass();
-            sceneViewSurface_.TransitionDepthToWrite();
-            ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
-            const D3D12_GPU_DESCRIPTOR_HANDLE output = sceneViewSurface_.GetOutputGpuHandle();
-            ImGui::Image(static_cast<ImTextureID>(output.ptr),
-                         ImVec2(static_cast<float>(requestedSceneWidth_),
-                                static_cast<float>(requestedSceneHeight_)));
-            const ImVec2 imageMin = ImGui::GetItemRectMin();
-            const ImVec2 imageMax = ImGui::GetItemRectMax();
-            const bool imageHovered = ImGui::IsItemHovered();
-            HandleSceneAssetDrop(imageMin, imageMax);
-            HandleSceneContextMenu(imageMin, imageMax, imageHovered);
-            DrawSceneGrid(imageMin, imageMax);
-            DrawSceneSelectionOutline(imageMin, imageMax);
-            if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
-                PickSceneEntity(imageMin, imageMax, imageHovered);
-            }
-        } else {
-            ImGui::TextDisabled("Scene View RenderSurface is not ready.");
+    if (showHierarchyPanel_) {
+        if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
+            DrawHierarchyPanel();
         }
+        ImGui::End();
     }
-    ImGui::End();
 
-    if (ImGui::Begin("Console", nullptr, kPanelFlags)) {
-        ImGui::TextWrapped("%s", status_.c_str());
+    if (showProjectPanel_) {
+        if (ImGui::Begin("Project", &showProjectPanel_, kPanelFlags)) {
+            DrawProjectPanel();
+        }
+        ImGui::End();
     }
-    ImGui::End();
 
-    if (ImGui::Begin("Inspector", nullptr, kPanelFlags)) {
-        DrawInspectorPanel();
+    if (showScenePanel_) {
+        if (ImGui::Begin("Scene", &showScenePanel_, kPanelFlags)) {
+            DrawSceneGizmoToolbar();
+            ImGui::Separator();
+            const ImVec2 available = ImGui::GetContentRegionAvail();
+            requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
+            requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
+            if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
+                ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
+                BuildRenderScene();
+                sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
+                                      {0.025f, 0.035f, 0.055f, 1.0f});
+                sceneViewSurface_.TransitionDepthToShaderResource();
+                sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+                const PostProcessOutputTarget target{
+                    sceneViewSurface_.GetOutputRtvHandle(),
+                    static_cast<uint32_t>(sceneViewSurface_.GetWidth()),
+                    static_cast<uint32_t>(sceneViewSurface_.GetHeight()),
+                    DirectXCommon::kBackBufferFormat,
+                };
+                sceneViewPostProcess_.DrawToTarget(sceneViewSurface_.GetSceneColorGpuHandle(),
+                                                   sceneViewSurface_.GetDepthGpuHandle(), target);
+                sceneViewSurface_.EndOutputPass();
+                sceneViewSurface_.TransitionDepthToWrite();
+                ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+                const D3D12_GPU_DESCRIPTOR_HANDLE output = sceneViewSurface_.GetOutputGpuHandle();
+                ImGui::Image(static_cast<ImTextureID>(output.ptr),
+                             ImVec2(static_cast<float>(requestedSceneWidth_),
+                                    static_cast<float>(requestedSceneHeight_)));
+                const ImVec2 imageMin = ImGui::GetItemRectMin();
+                const ImVec2 imageMax = ImGui::GetItemRectMax();
+                const bool imageHovered = ImGui::IsItemHovered();
+                HandleSceneAssetDrop(imageMin, imageMax);
+                HandleSceneContextMenu(imageMin, imageMax, imageHovered);
+                DrawSceneGrid(imageMin, imageMax);
+                DrawSceneSelectionOutline(imageMin, imageMax);
+                if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
+                    PickSceneEntity(imageMin, imageMax, imageHovered);
+                }
+            } else {
+                ImGui::TextDisabled("Scene View RenderSurface is not ready.");
+            }
+        }
+        ImGui::End();
     }
-    ImGui::End();
+
+    if (showConsolePanel_) {
+        if (ImGui::Begin("Console", &showConsolePanel_, kPanelFlags)) {
+            ImGui::TextWrapped("%s", status_.c_str());
+        }
+        ImGui::End();
+    }
+
+    if (showInspectorPanel_) {
+        if (ImGui::Begin("Inspector", &showInspectorPanel_, kPanelFlags)) {
+            DrawInspectorPanel();
+        }
+        ImGui::End();
+    }
 }
 
 void EditorScene::DrawProjectPanel() {

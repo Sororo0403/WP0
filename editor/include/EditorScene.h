@@ -139,6 +139,11 @@ private:
     std::filesystem::path sceneRoot_;
     std::filesystem::path imguiSettingsPath_;
     bool resetDockLayoutRequested_ = false;
+    bool showHierarchyPanel_ = true;
+    bool showProjectPanel_ = true;
+    bool showScenePanel_ = true;
+    bool showConsolePanel_ = true;
+    bool showInspectorPanel_ = true;
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
