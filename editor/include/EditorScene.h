@@ -17,6 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
+struct ImVec2;
+
 class EditorScene final : public BaseScene {
 public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -57,6 +59,7 @@ private:
     void ClearHistory(bool markClean);
     void RefreshDirty();
     void BuildRenderScene();
+    void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
     enum class PendingSceneAction {

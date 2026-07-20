@@ -205,6 +205,30 @@ uint32_t AppendPrimitiveModel(std::vector<Model>& models, MeshManager& meshManag
 
     ModelSubMesh subMesh{};
     subMesh.vertexCount = static_cast<uint32_t>(primitive.vertices.size());
+    if (!primitive.vertices.empty()) {
+        subMesh.sourceBoundsMin = primitive.vertices.front().position;
+        subMesh.sourceBoundsMax = primitive.vertices.front().position;
+        try {
+            subMesh.sourcePositions.reserve(primitive.vertices.size());
+            for (const ModelVertex& vertex : primitive.vertices) {
+                subMesh.sourcePositions.push_back(vertex.position);
+                subMesh.sourceBoundsMin.x =
+                    (std::min)(subMesh.sourceBoundsMin.x, vertex.position.x);
+                subMesh.sourceBoundsMin.y =
+                    (std::min)(subMesh.sourceBoundsMin.y, vertex.position.y);
+                subMesh.sourceBoundsMin.z =
+                    (std::min)(subMesh.sourceBoundsMin.z, vertex.position.z);
+                subMesh.sourceBoundsMax.x =
+                    (std::max)(subMesh.sourceBoundsMax.x, vertex.position.x);
+                subMesh.sourceBoundsMax.y =
+                    (std::max)(subMesh.sourceBoundsMax.y, vertex.position.y);
+                subMesh.sourceBoundsMax.z =
+                    (std::max)(subMesh.sourceBoundsMax.z, vertex.position.z);
+            }
+        } catch (const std::exception&) {
+            return kInvalidResourceId;
+        }
+    }
     subMesh.meshId = meshManager.CreateMesh(primitive.vertices.data(), sizeof(ModelVertex),
                                             static_cast<uint32_t>(primitive.vertices.size()),
                                             primitive.indices.data(),

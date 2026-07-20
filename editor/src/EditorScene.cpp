@@ -19,6 +19,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -86,6 +87,73 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
         XMStoreFloat3(&result.position, translation);
     }
     return result;
+}
+
+bool TryGetModelBounds(const Model& model, DirectX::XMFLOAT3& boundsMin,
+                       DirectX::XMFLOAT3& boundsMax) {
+    bool found = false;
+    for (const ModelSubMesh& subMesh : model.subMeshes) {
+        if (subMesh.vertexCount == 0u) {
+            continue;
+        }
+        if (!found) {
+            boundsMin = subMesh.sourceBoundsMin;
+            boundsMax = subMesh.sourceBoundsMax;
+            found = true;
+            continue;
+        }
+        boundsMin.x = (std::min)(boundsMin.x, subMesh.sourceBoundsMin.x);
+        boundsMin.y = (std::min)(boundsMin.y, subMesh.sourceBoundsMin.y);
+        boundsMin.z = (std::min)(boundsMin.z, subMesh.sourceBoundsMin.z);
+        boundsMax.x = (std::max)(boundsMax.x, subMesh.sourceBoundsMax.x);
+        boundsMax.y = (std::max)(boundsMax.y, subMesh.sourceBoundsMax.y);
+        boundsMax.z = (std::max)(boundsMax.z, subMesh.sourceBoundsMax.z);
+    }
+    return found;
+}
+
+bool IntersectRayBounds(DirectX::FXMVECTOR rayOrigin, DirectX::FXMVECTOR rayDirection,
+                        const DirectX::XMFLOAT3& boundsMin,
+                        const DirectX::XMFLOAT3& boundsMax, float& distance) {
+    DirectX::XMFLOAT3 origin{};
+    DirectX::XMFLOAT3 direction{};
+    DirectX::XMStoreFloat3(&origin, rayOrigin);
+    DirectX::XMStoreFloat3(&direction, rayDirection);
+
+    const float extent = (std::max)({boundsMax.x - boundsMin.x, boundsMax.y - boundsMin.y,
+                                     boundsMax.z - boundsMin.z});
+    const float padding = (std::max)(0.01f, extent * 0.005f);
+    const float minimum[3] = {boundsMin.x - padding, boundsMin.y - padding,
+                              boundsMin.z - padding};
+    const float maximum[3] = {boundsMax.x + padding, boundsMax.y + padding,
+                              boundsMax.z + padding};
+    const float rayOriginValues[3] = {origin.x, origin.y, origin.z};
+    const float rayDirectionValues[3] = {direction.x, direction.y, direction.z};
+    float entry = 0.0f;
+    float exit = (std::numeric_limits<float>::max)();
+    for (size_t axis = 0; axis < 3; ++axis) {
+        if (std::abs(rayDirectionValues[axis]) < 1.0e-7f) {
+            if (rayOriginValues[axis] < minimum[axis] ||
+                rayOriginValues[axis] > maximum[axis]) {
+                return false;
+            }
+            continue;
+        }
+        float nearDistance =
+            (minimum[axis] - rayOriginValues[axis]) / rayDirectionValues[axis];
+        float farDistance =
+            (maximum[axis] - rayOriginValues[axis]) / rayDirectionValues[axis];
+        if (nearDistance > farDistance) {
+            std::swap(nearDistance, farDistance);
+        }
+        entry = (std::max)(entry, nearDistance);
+        exit = (std::min)(exit, farDistance);
+        if (entry > exit) {
+            return false;
+        }
+    }
+    distance = entry;
+    return exit >= 0.0f;
 }
 }
 
@@ -345,6 +413,7 @@ void EditorScene::DrawPanels() {
         ImGui::Image(static_cast<ImTextureID>(output.ptr),
                      ImVec2(static_cast<float>(requestedSceneWidth_),
                             static_cast<float>(requestedSceneHeight_)));
+        PickSceneEntity(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     } else {
         ImGui::TextDisabled("Scene View RenderSurface is not ready.");
     }
@@ -1043,6 +1112,65 @@ void EditorScene::BuildRenderScene() {
             submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
         }
     }
+}
+
+void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax) {
+    if (!ImGui::IsItemHovered() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+        ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+        return;
+    }
+    const float width = imageMax.x - imageMin.x;
+    const float height = imageMax.y - imageMin.y;
+    if (width <= 0.0f || height <= 0.0f) {
+        return;
+    }
+
+    const ImVec2 mouse = ImGui::GetMousePos();
+    using namespace DirectX;
+    const XMVECTOR nearPoint = XMVector3Unproject(
+        XMVectorSet(mouse.x - imageMin.x, mouse.y - imageMin.y, 0.0f, 1.0f), 0.0f, 0.0f,
+        width, height, 0.0f, 1.0f, sceneViewCamera_.GetProj(), sceneViewCamera_.GetView(),
+        XMMatrixIdentity());
+    const XMVECTOR farPoint = XMVector3Unproject(
+        XMVectorSet(mouse.x - imageMin.x, mouse.y - imageMin.y, 1.0f, 1.0f), 0.0f, 0.0f,
+        width, height, 0.0f, 1.0f, sceneViewCamera_.GetProj(), sceneViewCamera_.GetView(),
+        XMMatrixIdentity());
+    const XMVECTOR rayDirection = XMVector3Normalize(XMVectorSubtract(farPoint, nearPoint));
+
+    EntityId closest{};
+    float closestDistance = (std::numeric_limits<float>::max)();
+    ModelManager* models = ctx_->rendering.model;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.meshRenderer || !entity.meshRenderer->enabled) {
+            continue;
+        }
+        const ModelHandle handle = ResolveModel(*entity.meshRenderer);
+        const Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
+        XMFLOAT3 boundsMin{};
+        XMFLOAT3 boundsMax{};
+        XMFLOAT4X4 worldMatrix{};
+        if (model == nullptr || !TryGetModelBounds(*model, boundsMin, boundsMax) ||
+            !world_.TryGetWorldMatrix(entity.id, worldMatrix)) {
+            continue;
+        }
+        XMVECTOR determinant{};
+        const XMMATRIX inverseWorld = XMMatrixInverse(&determinant, XMLoadFloat4x4(&worldMatrix));
+        const float determinantValue = XMVectorGetX(determinant);
+        if (!std::isfinite(determinantValue) || std::abs(determinantValue) < 1.0e-8f) {
+            continue;
+        }
+        const XMVECTOR localOrigin = XMVector3TransformCoord(nearPoint, inverseWorld);
+        const XMVECTOR localDirection = XMVector3TransformNormal(rayDirection, inverseWorld);
+        float hitDistance = 0.0f;
+        if (IntersectRayBounds(localOrigin, localDirection, boundsMin, boundsMax, hitDistance) &&
+            hitDistance < closestDistance) {
+            closest = entity.id;
+            closestDistance = hitDistance;
+        }
+    }
+    selection_ = closest;
+    status_ = closest.IsValid() ? "Selected entity from Scene View."
+                                : "Scene View selection cleared.";
 }
 
 void EditorScene::RequestSceneAction(PendingSceneAction action,
