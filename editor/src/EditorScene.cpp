@@ -4,7 +4,9 @@
 #include "graphics/DirectXCommon.h"
 #include "graphics/RenderScene.h"
 #include "graphics/SrvManager.h"
+#include "imgui/ImguiManager.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "ImGuizmo.h"
 #include "model/Model.h"
 #include "model/ModelManager.h"
@@ -29,8 +31,7 @@
 #include <utility>
 
 namespace {
-constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                                         ImGuiWindowFlags_NoCollapse;
+constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoCollapse;
 
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
 constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
@@ -246,11 +247,11 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
                          std::filesystem::path sceneRoot,
                          std::filesystem::path startupScene,
                          std::filesystem::path recentScenesPath,
-                         std::filesystem::path layoutSettingsPath,
+                         std::filesystem::path imguiSettingsPath,
                          std::function<void()> requestClose)
     : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
-      layoutStore_(std::move(layoutSettingsPath)), layout_(layoutStore_.Load()),
+      imguiSettingsPath_(std::move(imguiSettingsPath)),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
     recentScenePaths_ = recentScenesStore_.Load();
@@ -267,6 +268,10 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
 
 void EditorScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
+    if (ctx.systems.imgui == nullptr ||
+        !ctx.systems.imgui->ConfigureDocking(imguiSettingsPath_)) {
+        status_ = "Could not configure the Editor docking layout.";
+    }
     if (ctx.rendering.dxCommon == nullptr || ctx.rendering.srv == nullptr ||
         !sceneViewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 960, 540)) {
         status_ = "Scene View RenderSurface initialization failed.";
@@ -331,6 +336,7 @@ void EditorScene::DrawPostProcessOverlay() {
     ImGuizmo::BeginFrame();
     HandleEditorShortcuts();
     DrawMainMenu();
+    DrawDockSpace();
     DrawUnsavedChangesDialog();
     DrawEntityRenameDialog();
     DrawPanels();
@@ -418,12 +424,7 @@ void EditorScene::DrawMainMenu() {
     }
     if (ImGui::BeginMenu("View")) {
         if (ImGui::MenuItem("Reset Panel Layout")) {
-            layout_ = {};
-            if (!layoutStore_.Save(layout_)) {
-                status_ = "Could not save the reset panel layout.";
-            } else {
-                status_ = "Reset the panel layout.";
-            }
+            resetDockLayoutRequested_ = true;
         }
         ImGui::EndMenu();
     }
@@ -525,171 +526,103 @@ void EditorScene::DrawEntityRenameDialog() {
     ImGui::EndPopup();
 }
 
-void EditorScene::BeginFixedPanel(const char* name, float x, float y, float width,
-                                  float height) {
-    ImGui::SetNextWindowPos(ImVec2(x, y));
-    ImGui::SetNextWindowSize(ImVec2(width, height));
-    ImGui::Begin(name, nullptr, kPanelFlags);
-}
-
-void EditorScene::DrawPanelSplitter(const char* id, const ImVec2& position,
-                                    const ImVec2& splitterSize, bool vertical, float direction,
-                                    float minimum, float maximum, float& ratio) {
-    ImGui::SetNextWindowPos(position);
-    ImGui::SetNextWindowSize(splitterSize);
-    ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
-    constexpr ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin(id, nullptr, flags)) {
-        ImGui::InvisibleButton("##Handle", splitterSize);
-        const bool hovered = ImGui::IsItemHovered();
-        const bool active = ImGui::IsItemActive();
-        if (hovered || active) {
-            ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW
-                                           : ImGuiMouseCursor_ResizeNS);
-        }
-        const ImU32 color = ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive
-                                                      : hovered ? ImGuiCol_SeparatorHovered
-                                                                : ImGuiCol_Separator);
-        const float visibleThickness = active || hovered ? 3.0f : 1.0f;
-        const ImVec2 center = {position.x + splitterSize.x * 0.5f,
-                               position.y + splitterSize.y * 0.5f};
-        const ImVec2 lineMin = vertical
-                                   ? ImVec2(center.x - visibleThickness * 0.5f, position.y)
-                                   : ImVec2(position.x, center.y - visibleThickness * 0.5f);
-        const ImVec2 lineMax =
-            vertical ? ImVec2(center.x + visibleThickness * 0.5f,
-                              position.y + splitterSize.y)
-                     : ImVec2(position.x + splitterSize.x,
-                              center.y + visibleThickness * 0.5f);
-        ImGui::GetWindowDrawList()->AddRectFilled(lineMin, lineMax, color);
-        if (active) {
-            const ImVec2 viewportSize = ImGui::GetMainViewport()->WorkSize;
-            const float extent = vertical ? viewportSize.x : viewportSize.y;
-            const float delta = vertical ? ImGui::GetIO().MouseDelta.x
-                                         : ImGui::GetIO().MouseDelta.y;
-            if (extent > 0.0f && delta != 0.0f) {
-                ratio = std::clamp(ratio + direction * delta / extent, minimum, maximum);
-                layoutDirty_ = true;
-            }
-        }
+void EditorScene::DrawDockSpace() {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImGuiID dockspaceId = ImHashStr("LikeEngineEditorDockSpace");
+    if (resetDockLayoutRequested_) {
+        ImGui::DockBuilderRemoveNode(dockspaceId);
+        resetDockLayoutRequested_ = false;
     }
-    ImGui::End();
-    ImGui::PopStyleVar();
+    if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr) {
+        ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodePos(dockspaceId, viewport->WorkPos);
+        ImGui::DockBuilderSetNodeSize(dockspaceId, viewport->WorkSize);
+
+        ImGuiID mainDock = dockspaceId;
+        ImGuiID leftDock{};
+        ImGuiID rightDock{};
+        ImGuiID projectDock{};
+        ImGuiID consoleDock{};
+        ImGui::DockBuilderSplitNode(mainDock, ImGuiDir_Left, 0.22f, &leftDock, &mainDock);
+        ImGui::DockBuilderSplitNode(mainDock, ImGuiDir_Right, 0.31f, &rightDock, &mainDock);
+        ImGui::DockBuilderSplitNode(leftDock, ImGuiDir_Down, 0.28f, &projectDock, &leftDock);
+        ImGui::DockBuilderSplitNode(mainDock, ImGuiDir_Down, 0.28f, &consoleDock, &mainDock);
+        ImGui::DockBuilderDockWindow("Hierarchy", leftDock);
+        ImGui::DockBuilderDockWindow("Project", projectDock);
+        ImGui::DockBuilderDockWindow("Scene", mainDock);
+        ImGui::DockBuilderDockWindow("Console", consoleDock);
+        ImGui::DockBuilderDockWindow("Inspector", rightDock);
+        ImGui::DockBuilderFinish(dockspaceId);
+        status_ = "Initialized the default docking layout.";
+    }
+    ImGui::DockSpaceOverViewport(dockspaceId, viewport);
 }
 
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const ImVec2 origin = viewport->WorkPos;
-    const ImVec2 size = viewport->WorkSize;
-    if (size.x <= 1.0f || size.y <= 1.0f) {
-        return;
-    }
-    layout_ = EditorLayoutStore::Normalize(layout_);
-    const float minimumSideWidth = (std::min)(160.0f, size.x * 0.2f);
-    const float minimumCenterWidth = (std::min)(320.0f, size.x * 0.4f);
-    const float rightWidth = std::clamp(size.x * layout_.rightWidthRatio, minimumSideWidth,
-                                        size.x - minimumSideWidth - minimumCenterWidth);
-    const float leftWidth = std::clamp(size.x * layout_.leftWidthRatio, minimumSideWidth,
-                                       size.x - rightWidth - minimumCenterWidth);
-    const float centerWidth = size.x - leftWidth - rightWidth;
-    const float minimumBottomHeight = (std::min)(120.0f, size.y * 0.2f);
-    const float minimumUpperHeight = (std::min)(240.0f, size.y * 0.4f);
-    const float bottomHeight =
-        std::clamp(size.y * layout_.bottomHeightRatio, minimumBottomHeight,
-                   size.y - minimumUpperHeight);
-    const float upperHeight = size.y - bottomHeight;
-
-    BeginFixedPanel("Hierarchy", origin.x, origin.y, leftWidth, upperHeight);
-    DrawHierarchyPanel();
-    ImGui::End();
-
-    BeginFixedPanel("Project", origin.x, origin.y + upperHeight, leftWidth, bottomHeight);
-    DrawProjectPanel();
-    ImGui::End();
-
-    BeginFixedPanel("Scene", origin.x + leftWidth, origin.y, centerWidth, upperHeight);
-    DrawSceneGizmoToolbar();
-    ImGui::Separator();
-    const ImVec2 available = ImGui::GetContentRegionAvail();
-    requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
-    requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
-    if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
-        ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
-        BuildRenderScene();
-        sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
-                              {0.025f, 0.035f, 0.055f, 1.0f});
-        sceneViewSurface_.TransitionDepthToShaderResource();
-        sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
-        const PostProcessOutputTarget target{
-            sceneViewSurface_.GetOutputRtvHandle(),
-            static_cast<uint32_t>(sceneViewSurface_.GetWidth()),
-            static_cast<uint32_t>(sceneViewSurface_.GetHeight()),
-            DirectXCommon::kBackBufferFormat,
-        };
-        sceneViewPostProcess_.DrawToTarget(sceneViewSurface_.GetSceneColorGpuHandle(),
-                                           sceneViewSurface_.GetDepthGpuHandle(), target);
-        sceneViewSurface_.EndOutputPass();
-        sceneViewSurface_.TransitionDepthToWrite();
-        ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
-        const D3D12_GPU_DESCRIPTOR_HANDLE output = sceneViewSurface_.GetOutputGpuHandle();
-        ImGui::Image(static_cast<ImTextureID>(output.ptr),
-                     ImVec2(static_cast<float>(requestedSceneWidth_),
-                            static_cast<float>(requestedSceneHeight_)));
-        const ImVec2 imageMin = ImGui::GetItemRectMin();
-        const ImVec2 imageMax = ImGui::GetItemRectMax();
-        const bool imageHovered = ImGui::IsItemHovered();
-        HandleSceneAssetDrop(imageMin, imageMax);
-        HandleSceneContextMenu(imageMin, imageMax, imageHovered);
-        DrawSceneGrid(imageMin, imageMax);
-        DrawSceneSelectionOutline(imageMin, imageMax);
-        if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
-            PickSceneEntity(imageMin, imageMax, imageHovered);
-        }
-    } else {
-        ImGui::TextDisabled("Scene View RenderSurface is not ready.");
+    if (ImGui::Begin("Hierarchy", nullptr, kPanelFlags)) {
+        DrawHierarchyPanel();
     }
     ImGui::End();
 
-    BeginFixedPanel("Console", origin.x + leftWidth, origin.y + upperHeight, centerWidth,
-                    bottomHeight);
-    ImGui::TextWrapped("%s", status_.c_str());
+    if (ImGui::Begin("Project", nullptr, kPanelFlags)) {
+        DrawProjectPanel();
+    }
     ImGui::End();
 
-    BeginFixedPanel("Inspector", origin.x + leftWidth + centerWidth, origin.y, rightWidth,
-                    size.y);
-    DrawInspectorPanel();
-    ImGui::End();
-
-    constexpr float splitterThickness = 6.0f;
-    const float halfSplitter = splitterThickness * 0.5f;
-    DrawPanelSplitter("##LeftPanelSplitter",
-                      {origin.x + leftWidth - halfSplitter, origin.y},
-                      {splitterThickness, size.y}, true, 1.0f,
-                      minimumSideWidth / size.x,
-                      (size.x - rightWidth - minimumCenterWidth) / size.x,
-                      layout_.leftWidthRatio);
-    DrawPanelSplitter("##RightPanelSplitter",
-                      {origin.x + size.x - rightWidth - halfSplitter, origin.y},
-                      {splitterThickness, size.y}, true, -1.0f,
-                      minimumSideWidth / size.x,
-                      (size.x - leftWidth - minimumCenterWidth) / size.x,
-                      layout_.rightWidthRatio);
-    DrawPanelSplitter("##BottomPanelSplitter",
-                      {origin.x, origin.y + upperHeight - halfSplitter},
-                      {size.x - rightWidth, splitterThickness}, false, -1.0f,
-                      minimumBottomHeight / size.y,
-                      (size.y - minimumUpperHeight) / size.y,
-                      layout_.bottomHeightRatio);
-    if (layoutDirty_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        layoutDirty_ = false;
-        if (!layoutStore_.Save(layout_)) {
-            status_ = "Could not save the panel layout.";
+    if (ImGui::Begin("Scene", nullptr, kPanelFlags)) {
+        DrawSceneGizmoToolbar();
+        ImGui::Separator();
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
+        requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
+        if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
+            ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
+            BuildRenderScene();
+            sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
+                                  {0.025f, 0.035f, 0.055f, 1.0f});
+            sceneViewSurface_.TransitionDepthToShaderResource();
+            sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+            const PostProcessOutputTarget target{
+                sceneViewSurface_.GetOutputRtvHandle(),
+                static_cast<uint32_t>(sceneViewSurface_.GetWidth()),
+                static_cast<uint32_t>(sceneViewSurface_.GetHeight()),
+                DirectXCommon::kBackBufferFormat,
+            };
+            sceneViewPostProcess_.DrawToTarget(sceneViewSurface_.GetSceneColorGpuHandle(),
+                                               sceneViewSurface_.GetDepthGpuHandle(), target);
+            sceneViewSurface_.EndOutputPass();
+            sceneViewSurface_.TransitionDepthToWrite();
+            ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+            const D3D12_GPU_DESCRIPTOR_HANDLE output = sceneViewSurface_.GetOutputGpuHandle();
+            ImGui::Image(static_cast<ImTextureID>(output.ptr),
+                         ImVec2(static_cast<float>(requestedSceneWidth_),
+                                static_cast<float>(requestedSceneHeight_)));
+            const ImVec2 imageMin = ImGui::GetItemRectMin();
+            const ImVec2 imageMax = ImGui::GetItemRectMax();
+            const bool imageHovered = ImGui::IsItemHovered();
+            HandleSceneAssetDrop(imageMin, imageMax);
+            HandleSceneContextMenu(imageMin, imageMax, imageHovered);
+            DrawSceneGrid(imageMin, imageMax);
+            DrawSceneSelectionOutline(imageMin, imageMax);
+            if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
+                PickSceneEntity(imageMin, imageMax, imageHovered);
+            }
+        } else {
+            ImGui::TextDisabled("Scene View RenderSurface is not ready.");
         }
     }
+    ImGui::End();
+
+    if (ImGui::Begin("Console", nullptr, kPanelFlags)) {
+        ImGui::TextWrapped("%s", status_.c_str());
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Inspector", nullptr, kPanelFlags)) {
+        DrawInspectorPanel();
+    }
+    ImGui::End();
 }
 
 void EditorScene::DrawProjectPanel() {

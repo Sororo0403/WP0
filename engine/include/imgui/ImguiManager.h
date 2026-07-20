@@ -1,6 +1,8 @@
 #pragma once
 #ifdef ENGINE_WITH_IMGUI
 #include <d3d12.h>
+#include <filesystem>
+#include <string>
 #include <unordered_map>
 
 class DirectXCommon;
@@ -22,6 +24,7 @@ public:
     /// <param name="dxCommon">DirectXCommonインスタンス</param>
     /// <param name="srvManager">SrvManagerインスタンス</param>
     void Initialize(const WinApp* winApp, DirectXCommon* dxCommon, SrvManager* srvManager);
+    bool ConfigureDocking(const std::filesystem::path& iniFilename);
 
     /// <summary>
     /// ImGuiバックエンドとSRV割り当てを解放する
@@ -54,6 +57,7 @@ private:
     DirectXCommon* dxCommon_ = nullptr;
     SrvManager* srvManager_ = nullptr;
     std::unordered_map<SIZE_T, UINT> allocatedSrvIndices_;
+    std::string iniFilename_;
     bool contextCreated_ = false;
     bool win32Initialized_ = false;
     bool dx12Initialized_ = false;

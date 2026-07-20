@@ -23,6 +23,36 @@
       "id": "42c90dee-c8f8-60a6-a092-2a07c76eb188",
       "name": "Main Camera",
       "parent": null
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 2,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.05000000074505806,
+            0.44999998807907104,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "43fcd97e-a2f5-1474-0d8e-b089ae4b988b",
+      "name": "Box",
+      "parent": null
     }
   ],
   "version": 1

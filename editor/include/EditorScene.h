@@ -1,6 +1,5 @@
 #pragma once
 
-#include "EditorLayoutStore.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
 #include "graphics/PostProcessSystem.h"
@@ -25,7 +24,7 @@ class EditorScene final : public BaseScene {
 public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
                 std::filesystem::path sceneRoot, std::filesystem::path startupScene,
-                std::filesystem::path recentScenesPath, std::filesystem::path layoutSettingsPath,
+                std::filesystem::path recentScenesPath, std::filesystem::path imguiSettingsPath,
                 std::function<void()> requestClose);
 
     void Initialize(const SceneContext& ctx) override;
@@ -38,10 +37,8 @@ private:
     void DrawMainMenu();
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
+    void DrawDockSpace();
     void DrawPanels();
-    void DrawPanelSplitter(const char* id, const ImVec2& position, const ImVec2& size,
-                           bool vertical, float direction, float minimum, float maximum,
-                           float& ratio);
     void DrawProjectPanel();
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
@@ -116,7 +113,6 @@ private:
     void AddRecentScene(const std::filesystem::path& path);
     [[nodiscard]] std::optional<std::filesystem::path> ShowOpenSceneDialog() const;
     [[nodiscard]] std::optional<std::filesystem::path> ShowSaveSceneDialog() const;
-    static void BeginFixedPanel(const char* name, float x, float y, float width, float height);
 
     struct HistoryState {
         std::string world;
@@ -141,9 +137,8 @@ private:
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
     std::filesystem::path sceneRoot_;
-    EditorLayoutStore layoutStore_;
-    EditorLayoutSettings layout_{};
-    bool layoutDirty_ = false;
+    std::filesystem::path imguiSettingsPath_;
+    bool resetDockLayoutRequested_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};

@@ -1,4 +1,3 @@
-#include "EditorLayoutStore.h"
 #include "ProjectDescriptor.h"
 #include "RecentScenesStore.h"
 #include "core/AssetManager.h"
@@ -8,7 +7,6 @@
 #include <filesystem>
 #include <cmath>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -201,28 +199,6 @@ int main() {
                "Recent scenes were not safely restored.")) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 23;
-    }
-    const EditorLayoutStore layoutStore(projectDirectory / L"settings" / L"layout.json");
-    const EditorLayoutSettings savedLayout{0.31f, 0.27f, 0.42f};
-    const EditorLayoutSettings restoredLayout =
-        layoutStore.Save(savedLayout) ? layoutStore.Load() : EditorLayoutSettings{};
-    if (!Check(std::abs(restoredLayout.leftWidthRatio - savedLayout.leftWidthRatio) < 0.0001f &&
-                   std::abs(restoredLayout.rightWidthRatio - savedLayout.rightWidthRatio) <
-                       0.0001f &&
-                   std::abs(restoredLayout.bottomHeightRatio - savedLayout.bottomHeightRatio) <
-                       0.0001f,
-               "Editor layout settings could not be saved and restored.")) {
-        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
-        return 31;
-    }
-    const EditorLayoutSettings normalizedLayout = EditorLayoutStore::Normalize(
-        {std::numeric_limits<float>::infinity(), -1.0f, 2.0f});
-    if (!Check(std::abs(normalizedLayout.leftWidthRatio - 0.22f) < 0.0001f &&
-                   std::abs(normalizedLayout.rightWidthRatio - 0.14f) < 0.0001f &&
-                   std::abs(normalizedLayout.bottomHeightRatio - 0.55f) < 0.0001f,
-               "Editor layout settings did not normalize invalid values.")) {
-        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
-        return 32;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {

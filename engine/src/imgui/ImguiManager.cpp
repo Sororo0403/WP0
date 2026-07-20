@@ -173,6 +173,23 @@ void ImguiManager::Initialize(const WinApp* winApp, DirectXCommon* dxCommon,
     initializeGuard.Commit();
 }
 
+bool ImguiManager::ConfigureDocking(const std::filesystem::path& iniFilename) {
+    if (!contextCreated_ || iniFilename.empty()) {
+        return false;
+    }
+    std::error_code error;
+    std::filesystem::create_directories(iniFilename.parent_path(), error);
+    if (error) {
+        return false;
+    }
+    const std::u8string utf8 = iniFilename.u8string();
+    iniFilename_.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.IniFilename = iniFilename_.c_str();
+    return true;
+}
+
 bool ImguiManager::TryInitializeImguiContext(const WinApp* winApp) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -279,6 +296,7 @@ bool ImguiManager::Finalize(bool allowFrameAbort) {
         ImGui::DestroyContext();
         contextCreated_ = false;
     }
+    iniFilename_.clear();
 
     if (srvManager_ != nullptr) {
         for (const auto& [handlePtr, index] : allocatedSrvIndices_) {

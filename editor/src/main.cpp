@@ -102,7 +102,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
             project.root, project.assetRoot, project.sceneRoot, project.startupScene,
             paths.userData / L"settings" / L"recent_scenes" /
                 (Utf8ToWide(project.projectId) + L".json"),
-            paths.userData / L"settings" / L"editor_layout.json",
+            paths.userData / L"settings" / L"imgui_layout.ini",
             [&runtime]() { runtime.RequestClose(); }))) {
         return -1;
     }
