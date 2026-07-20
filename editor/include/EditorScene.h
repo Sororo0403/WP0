@@ -59,8 +59,10 @@ private:
     void ClearHistory(bool markClean);
     void RefreshDirty();
     void BuildRenderScene();
-    void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax);
+    void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
+    void DrawSceneGizmoToolbar();
+    bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
     enum class PendingSceneAction {
@@ -140,5 +142,18 @@ private:
     std::array<char, 128> assetSearch_{};
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
+    enum class GizmoOperation : uint8_t {
+        Translate,
+        Rotate,
+        Scale,
+    };
+    enum class GizmoSpace : uint8_t {
+        Local,
+        World,
+    };
+    GizmoOperation gizmoOperation_ = GizmoOperation::Translate;
+    GizmoSpace gizmoSpace_ = GizmoSpace::World;
+    EntityId activeGizmoEntity_{};
+    bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
 };

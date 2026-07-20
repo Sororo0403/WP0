@@ -5,6 +5,7 @@
 #include "graphics/RenderScene.h"
 #include "graphics/SrvManager.h"
 #include "imgui.h"
+#include "ImGuizmo.h"
 #include "model/Model.h"
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
@@ -241,6 +242,7 @@ void EditorScene::Update() {
 void EditorScene::Draw() {}
 
 void EditorScene::DrawPostProcessOverlay() {
+    ImGuizmo::BeginFrame();
     HandleEditorShortcuts();
     DrawMainMenu();
     DrawUnsavedChangesDialog();
@@ -388,6 +390,8 @@ void EditorScene::DrawPanels() {
     ImGui::End();
 
     BeginFixedPanel("Scene", origin.x + leftWidth, origin.y, centerWidth, upperHeight);
+    DrawSceneGizmoToolbar();
+    ImGui::Separator();
     const ImVec2 available = ImGui::GetContentRegionAvail();
     requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
     requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
@@ -415,8 +419,11 @@ void EditorScene::DrawPanels() {
                             static_cast<float>(requestedSceneHeight_)));
         const ImVec2 imageMin = ImGui::GetItemRectMin();
         const ImVec2 imageMax = ImGui::GetItemRectMax();
-        PickSceneEntity(imageMin, imageMax);
+        const bool imageHovered = ImGui::IsItemHovered();
         DrawSceneSelectionOutline(imageMin, imageMax);
+        if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
+            PickSceneEntity(imageMin, imageMax, imageHovered);
+        }
     } else {
         ImGui::TextDisabled("Scene View RenderSurface is not ready.");
     }
@@ -754,7 +761,17 @@ void EditorScene::DrawInspectorPanel() {
 
 void EditorScene::HandleEditorShortcuts() {
     const ImGuiIO& io = ImGui::GetIO();
-    if (!io.KeyCtrl || io.WantTextInput || pendingSceneAction_ != PendingSceneAction::None) {
+    if (io.WantTextInput || pendingSceneAction_ != PendingSceneAction::None) {
+        return;
+    }
+    if (!io.KeyCtrl) {
+        if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+            gizmoOperation_ = GizmoOperation::Translate;
+        } else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+            gizmoOperation_ = GizmoOperation::Rotate;
+        } else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+            gizmoOperation_ = GizmoOperation::Scale;
+        }
         return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
@@ -1117,8 +1134,9 @@ void EditorScene::BuildRenderScene() {
     }
 }
 
-void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax) {
-    if (!ImGui::IsItemHovered() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax,
+                                  bool imageHovered) {
+    if (!imageHovered || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
         ctx_ == nullptr || ctx_->rendering.model == nullptr) {
         return;
     }
@@ -1255,6 +1273,125 @@ void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,
     drawList->AddText({labelPosition.x + 3.0f, labelPosition.y + 2.0f}, outlineColor,
                       entity->name.c_str());
     drawList->PopClipRect();
+}
+
+void EditorScene::DrawSceneGizmoToolbar() {
+    auto operationButton = [&](const char* label, GizmoOperation operation) {
+        const bool selected = gizmoOperation_ == operation;
+        if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        if (ImGui::Button(label)) {
+            gizmoOperation_ = operation;
+        }
+        if (selected) {
+            ImGui::PopStyleColor();
+        }
+    };
+    operationButton("Move (W)", GizmoOperation::Translate);
+    ImGui::SameLine();
+    operationButton("Rotate (E)", GizmoOperation::Rotate);
+    ImGui::SameLine();
+    operationButton("Scale (R)", GizmoOperation::Scale);
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Local", gizmoSpace_ == GizmoSpace::Local)) {
+        gizmoSpace_ = GizmoSpace::Local;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("World", gizmoSpace_ == GizmoSpace::World)) {
+        gizmoSpace_ = GizmoSpace::World;
+    }
+}
+
+bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax) {
+    WorldEntity* entity = world_.Find(selection_);
+    DirectX::XMFLOAT4X4 worldMatrix{};
+    if (entity == nullptr || !world_.TryGetWorldMatrix(selection_, worldMatrix)) {
+        if (gizmoWasUsing_) {
+            CommitHistoryEdit();
+            gizmoWasUsing_ = false;
+            activeGizmoEntity_ = {};
+        }
+        return false;
+    }
+
+    DirectX::XMFLOAT4X4 view{};
+    DirectX::XMFLOAT4X4 projection{};
+    DirectX::XMStoreFloat4x4(&view, sceneViewCamera_.GetView());
+    DirectX::XMStoreFloat4x4(&projection, sceneViewCamera_.GetProj());
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x,
+                      imageMax.y - imageMin.y);
+    ImGuizmo::SetOrthographic(false);
+
+    ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
+    if (gizmoOperation_ == GizmoOperation::Rotate) {
+        operation = ImGuizmo::ROTATE;
+    } else if (gizmoOperation_ == GizmoOperation::Scale) {
+        operation = ImGuizmo::SCALE;
+    }
+    const ImGuizmo::MODE mode =
+        gizmoSpace_ == GizmoSpace::Local ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+    const bool manipulated = ImGuizmo::Manipulate(
+        &view._11, &projection._11, operation, mode, &worldMatrix._11);
+    const bool usingNow = ImGuizmo::IsUsing();
+    if (usingNow && !gizmoWasUsing_) {
+        BeginHistoryEdit("Transform Entity");
+        activeGizmoEntity_ = selection_;
+    }
+
+    if (manipulated && activeGizmoEntity_ == selection_) {
+        using namespace DirectX;
+        XMMATRIX localMatrix = XMLoadFloat4x4(&worldMatrix);
+        bool canApply = true;
+        if (entity->parent.IsValid()) {
+            XMFLOAT4X4 parentWorld{};
+            if (!world_.TryGetWorldMatrix(entity->parent, parentWorld)) {
+                canApply = false;
+            } else {
+                XMVECTOR determinant{};
+                const XMMATRIX inverseParent =
+                    XMMatrixInverse(&determinant, XMLoadFloat4x4(&parentWorld));
+                const float determinantValue = XMVectorGetX(determinant);
+                if (std::isfinite(determinantValue) && std::abs(determinantValue) > 1.0e-8f) {
+                    localMatrix *= inverseParent;
+                } else {
+                    canApply = false;
+                }
+            }
+        }
+        XMFLOAT4X4 local{};
+        XMStoreFloat4x4(&local, localMatrix);
+        float translation[3]{};
+        float rotation[3]{};
+        float scale[3]{};
+        ImGuizmo::DecomposeMatrixToComponents(&local._11, translation, rotation, scale);
+        const bool finite = std::ranges::all_of(translation, [](float value) {
+                                return std::isfinite(value);
+                            }) &&
+                            std::ranges::all_of(rotation, [](float value) {
+                                return std::isfinite(value);
+                            }) &&
+                            std::ranges::all_of(scale, [](float value) {
+                                return std::isfinite(value);
+                            });
+        if (canApply && finite) {
+            entity->transform.position = {translation[0], translation[1], translation[2]};
+            entity->transform.rotationDegrees = {rotation[0], rotation[1], rotation[2]};
+            entity->transform.scale = {scale[0], scale[1], scale[2]};
+            RefreshDirty();
+        }
+    }
+
+    if (!usingNow && gizmoWasUsing_) {
+        CommitHistoryEdit();
+        activeGizmoEntity_ = {};
+        status_ = "Transformed entity from Scene View.";
+    }
+    gizmoWasUsing_ = usingNow;
+    return ImGuizmo::IsOver() || usingNow;
 }
 
 void EditorScene::RequestSceneAction(PendingSceneAction action,
