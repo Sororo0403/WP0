@@ -99,7 +99,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
         return -1;
     }
     if (!runtime.SetScene(std::make_unique<EditorScene>(
-            project.root, project.assetRoot, project.startupScene,
+            project.root, project.assetRoot, project.sceneRoot, project.startupScene,
             [&runtime]() { runtime.RequestClose(); }))) {
         return -1;
     }

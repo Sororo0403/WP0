@@ -18,7 +18,8 @@
 class EditorScene final : public BaseScene {
 public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
-                std::filesystem::path startupScene, std::function<void()> requestClose);
+                std::filesystem::path sceneRoot, std::filesystem::path startupScene,
+                std::function<void()> requestClose);
 
     void Initialize(const SceneContext& ctx) override;
     void Update() override;
@@ -27,6 +28,7 @@ public:
 
 private:
     void DrawMainMenu();
+    void DrawUnsavedChangesDialog();
     void DrawPanels();
     void DrawProjectPanel();
     void DrawHierarchyPanel();
@@ -49,9 +51,25 @@ private:
     void BuildRenderScene();
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
-    void NewScene();
-    void SaveScene();
-    void LoadScene();
+    enum class PendingSceneAction {
+        None,
+        NewScene,
+        OpenScene,
+        ReloadScene,
+        Exit,
+    };
+
+    void RequestSceneAction(PendingSceneAction action,
+                            std::filesystem::path path = {});
+    void ExecuteSceneAction(PendingSceneAction action,
+                            const std::filesystem::path& path = {});
+    void NewScene(bool clearPath);
+    bool SaveScene();
+    bool SaveSceneAs();
+    bool LoadScene(const std::filesystem::path& path);
+    void AddRecentScene(const std::filesystem::path& path);
+    [[nodiscard]] std::optional<std::filesystem::path> ShowOpenSceneDialog() const;
+    [[nodiscard]] std::optional<std::filesystem::path> ShowSaveSceneDialog() const;
     static void BeginFixedPanel(const char* name, float x, float y, float width, float height);
 
     struct HistoryState {
@@ -76,15 +94,20 @@ private:
     std::function<void()> requestClose_;
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
+    std::filesystem::path sceneRoot_;
     World world_;
     EntityId selection_{};
     std::filesystem::path scenePath_;
+    std::vector<std::filesystem::path> recentScenePaths_;
+    PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;
+    std::filesystem::path pendingScenePath_;
     std::string status_ = "Editor session started.";
     std::string savedWorldSnapshot_;
     std::vector<HistoryEntry> undoHistory_;
     std::vector<HistoryEntry> redoHistory_;
     std::optional<PendingHistoryEdit> pendingHistoryEdit_;
     bool dirty_ = false;
+    bool showUnsavedChangesDialog_ = false;
     RenderSurface sceneViewSurface_{};
     PostProcessSystem sceneViewPostProcess_{};
     SceneRenderer sceneRenderer_{};

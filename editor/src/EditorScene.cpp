@@ -11,6 +11,9 @@
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 
+#include <Windows.h>
+#include <commdlg.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -28,6 +31,7 @@ constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"}
 constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
+constexpr size_t kMaxRecentScenes = 10;
 
 bool IsModelAsset(const std::filesystem::path& path) {
     std::string extension = path.extension().string();
@@ -36,6 +40,28 @@ bool IsModelAsset(const std::filesystem::path& path) {
     constexpr std::string_view extensions[] = {".fbx", ".obj", ".gltf", ".glb",
                                                 ".dae", ".3ds", ".ply"};
     return std::ranges::find(extensions, extension) != std::end(extensions);
+}
+
+bool HasParentTraversal(const std::filesystem::path& path) {
+    return std::ranges::any_of(path, [](const std::filesystem::path& part) {
+        return part == L"..";
+    });
+}
+
+bool IsPathWithinRoot(const std::filesystem::path& root, const std::filesystem::path& path) {
+    std::error_code error;
+    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, error);
+    if (error) {
+        return false;
+    }
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, error);
+    if (error) {
+        return false;
+    }
+    const std::filesystem::path relative =
+        std::filesystem::relative(canonicalPath, canonicalRoot, error);
+    return !error && !relative.empty() && !relative.is_absolute() &&
+           !HasParentTraversal(relative);
 }
 
 Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
@@ -54,10 +80,19 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
+                         std::filesystem::path sceneRoot,
                          std::filesystem::path startupScene, std::function<void()> requestClose)
     : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
-      assetRoot_(std::move(assetRoot)), scenePath_(std::move(startupScene)) {
-    NewScene();
+      assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
+      scenePath_(std::move(startupScene)) {
+    std::error_code error;
+    if (std::filesystem::is_regular_file(scenePath_, error) && !error) {
+        if (!LoadScene(scenePath_)) {
+            NewScene(false);
+        }
+    } else {
+        NewScene(false);
+    }
     ClearHistory(true);
 }
 
@@ -126,6 +161,7 @@ void EditorScene::Draw() {}
 void EditorScene::DrawPostProcessOverlay() {
     HandleEditorShortcuts();
     DrawMainMenu();
+    DrawUnsavedChangesDialog();
     DrawPanels();
 }
 
@@ -135,17 +171,38 @@ void EditorScene::DrawMainMenu() {
     }
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
-            NewScene();
+            RequestSceneAction(PendingSceneAction::NewScene);
+        }
+        if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
+            RequestSceneAction(PendingSceneAction::OpenScene);
         }
         if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
             SaveScene();
         }
+        if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) {
+            SaveSceneAs();
+        }
+        if (ImGui::BeginMenu("Recent Scenes", !recentScenePaths_.empty())) {
+            for (const std::filesystem::path& path : recentScenePaths_) {
+                std::error_code error;
+                std::filesystem::path label =
+                    std::filesystem::relative(path, sceneRoot_, error);
+                if (error) {
+                    label = path.filename();
+                }
+                const std::string text = label.generic_string();
+                if (ImGui::MenuItem(text.c_str())) {
+                    RequestSceneAction(PendingSceneAction::OpenScene, path);
+                }
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::MenuItem("Reload Scene")) {
-            LoadScene();
+            RequestSceneAction(PendingSceneAction::ReloadScene);
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Exit") && requestClose_) {
-            requestClose_();
+        if (ImGui::MenuItem("Exit")) {
+            RequestSceneAction(PendingSceneAction::Exit);
         }
         ImGui::EndMenu();
     }
@@ -167,6 +224,46 @@ void EditorScene::DrawMainMenu() {
     }
     ImGui::TextUnformatted(dirty_ ? "LikeEngine Editor *" : "LikeEngine Editor");
     ImGui::EndMainMenuBar();
+}
+
+void EditorScene::DrawUnsavedChangesDialog() {
+    if (showUnsavedChangesDialog_) {
+        ImGui::OpenPopup("Unsaved Changes");
+        showUnsavedChangesDialog_ = false;
+    }
+    if (!ImGui::BeginPopupModal("Unsaved Changes", nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    ImGui::TextUnformatted("The current scene has unsaved changes.");
+    ImGui::TextUnformatted("Save before continuing?");
+    ImGui::Separator();
+    if (ImGui::Button("Save", ImVec2(100.0f, 0.0f))) {
+        if (SaveScene()) {
+            const PendingSceneAction action = pendingSceneAction_;
+            const std::filesystem::path path = pendingScenePath_;
+            pendingSceneAction_ = PendingSceneAction::None;
+            pendingScenePath_.clear();
+            ImGui::CloseCurrentPopup();
+            ExecuteSceneAction(action, path);
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Don't Save", ImVec2(100.0f, 0.0f))) {
+        const PendingSceneAction action = pendingSceneAction_;
+        const std::filesystem::path path = pendingScenePath_;
+        pendingSceneAction_ = PendingSceneAction::None;
+        pendingScenePath_.clear();
+        ImGui::CloseCurrentPopup();
+        ExecuteSceneAction(action, path);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+        pendingSceneAction_ = PendingSceneAction::None;
+        pendingScenePath_.clear();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 void EditorScene::BeginFixedPanel(const char* name, float x, float y, float width,
@@ -245,7 +342,8 @@ void EditorScene::DrawProjectPanel() {
     ImGui::TextDisabled("%zu model(s)", modelAssets_.size());
     ImGui::Separator();
     ImGui::TextDisabled("Project: %s", projectRoot_.string().c_str());
-    ImGui::TextDisabled("Scene: %s", scenePath_.string().c_str());
+    const std::string sceneLabel = scenePath_.empty() ? "Untitled" : scenePath_.string();
+    ImGui::TextDisabled("Scene: %s", sceneLabel.c_str());
     if (modelAssets_.empty()) {
         ImGui::TextWrapped("No model assets found under assets.");
         return;
@@ -467,10 +565,20 @@ void EditorScene::DrawInspectorPanel() {
 
 void EditorScene::HandleEditorShortcuts() {
     const ImGuiIO& io = ImGui::GetIO();
-    if (!io.KeyCtrl || io.WantTextInput) {
+    if (!io.KeyCtrl || io.WantTextInput || pendingSceneAction_ != PendingSceneAction::None) {
         return;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_D, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+        RequestSceneAction(PendingSceneAction::NewScene);
+    } else if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+        RequestSceneAction(PendingSceneAction::OpenScene);
+    } else if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+        if (io.KeyShift) {
+            SaveSceneAs();
+        } else {
+            SaveScene();
+        }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_D, false)) {
         DuplicateSelection();
     } else if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
         if (io.KeyShift) {
@@ -755,7 +863,49 @@ void EditorScene::BuildRenderScene() {
     }
 }
 
-void EditorScene::NewScene() {
+void EditorScene::RequestSceneAction(PendingSceneAction action,
+                                     std::filesystem::path path) {
+    if (action == PendingSceneAction::None) {
+        return;
+    }
+    if (!dirty_) {
+        ExecuteSceneAction(action, path);
+        return;
+    }
+    pendingSceneAction_ = action;
+    pendingScenePath_ = std::move(path);
+    showUnsavedChangesDialog_ = true;
+}
+
+void EditorScene::ExecuteSceneAction(PendingSceneAction action,
+                                     const std::filesystem::path& path) {
+    switch (action) {
+    case PendingSceneAction::NewScene:
+        NewScene(true);
+        break;
+    case PendingSceneAction::OpenScene:
+        if (!path.empty()) {
+            LoadScene(path);
+        } else if (const std::optional<std::filesystem::path> selected = ShowOpenSceneDialog()) {
+            LoadScene(*selected);
+        }
+        break;
+    case PendingSceneAction::ReloadScene:
+        if (!scenePath_.empty()) {
+            LoadScene(scenePath_);
+        }
+        break;
+    case PendingSceneAction::Exit:
+        if (requestClose_) {
+            requestClose_();
+        }
+        break;
+    case PendingSceneAction::None:
+        break;
+    }
+}
+
+void EditorScene::NewScene(bool clearPath) {
     world_.Clear();
     const EntityId camera = world_.CreateEntity("Main Camera");
     if (WorldEntity* cameraEntity = world_.Find(camera)) {
@@ -765,31 +915,127 @@ void EditorScene::NewScene() {
     if (WorldEntity* cube = world_.Find(selection_)) {
         cube->meshRenderer = MeshRendererComponent{};
     }
+    if (clearPath) {
+        scenePath_.clear();
+    }
     ClearHistory(false);
     status_ = "Created a new scene.";
 }
 
-void EditorScene::SaveScene() {
+bool EditorScene::SaveScene() {
+    if (scenePath_.empty()) {
+        return SaveSceneAs();
+    }
     std::string error;
     if (!WorldSerializer::Save(world_, scenePath_, &error)) {
         status_ = "Save failed: " + error;
-        return;
+        return false;
     }
     dirty_ = false;
     savedWorldSnapshot_ = WorldSerializer::Serialize(world_);
+    AddRecentScene(scenePath_);
     status_ = "Saved scene: " + scenePath_.string();
+    return true;
 }
 
-void EditorScene::LoadScene() {
+bool EditorScene::SaveSceneAs() {
+    const std::optional<std::filesystem::path> selected = ShowSaveSceneDialog();
+    if (!selected) {
+        status_ = "Save cancelled.";
+        return false;
+    }
+    const std::filesystem::path previousPath = scenePath_;
+    scenePath_ = *selected;
+    if (SaveScene()) {
+        return true;
+    }
+    scenePath_ = previousPath;
+    return false;
+}
+
+bool EditorScene::LoadScene(const std::filesystem::path& path) {
+    if (path.extension() != L".likescene" || !IsPathWithinRoot(sceneRoot_, path)) {
+        status_ = "Load failed: scene must be inside the project scenes directory.";
+        return false;
+    }
     World loaded;
     std::string error;
-    if (!WorldSerializer::Load(scenePath_, loaded, &error)) {
+    if (!WorldSerializer::Load(path, loaded, &error)) {
         status_ = "Load failed: " + error;
-        return;
+        return false;
     }
     world_ = std::move(loaded);
+    scenePath_ = path;
     selection_ = world_.Empty() ? EntityId{} : world_.Entities().front().id;
     dirty_ = false;
     ClearHistory(true);
+    AddRecentScene(scenePath_);
     status_ = "Loaded scene: " + scenePath_.string();
+    return true;
+}
+
+void EditorScene::AddRecentScene(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return;
+    }
+    std::error_code error;
+    const std::filesystem::path normalized = std::filesystem::weakly_canonical(path, error);
+    if (error) {
+        return;
+    }
+    std::erase_if(recentScenePaths_, [&normalized](const std::filesystem::path& item) {
+        return _wcsicmp(item.c_str(), normalized.c_str()) == 0;
+    });
+    recentScenePaths_.insert(recentScenePaths_.begin(), normalized);
+    if (recentScenePaths_.size() > kMaxRecentScenes) {
+        recentScenePaths_.resize(kMaxRecentScenes);
+    }
+}
+
+std::optional<std::filesystem::path> EditorScene::ShowOpenSceneDialog() const {
+    std::array<wchar_t, 32768> buffer{};
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = L"LikeEngine Scene (*.likescene)\0*.likescene\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    const std::wstring initialDirectory = sceneRoot_.wstring();
+    dialog.lpstrInitialDir = initialDirectory.c_str();
+    dialog.lpstrDefExt = L"likescene";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                   OFN_DONTADDTORECENT;
+    if (!GetOpenFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+    const std::filesystem::path selected(buffer.data());
+    return selected.extension() == L".likescene" && IsPathWithinRoot(sceneRoot_, selected)
+               ? std::optional<std::filesystem::path>(selected)
+               : std::nullopt;
+}
+
+std::optional<std::filesystem::path> EditorScene::ShowSaveSceneDialog() const {
+    std::array<wchar_t, 32768> buffer{};
+    if (!scenePath_.empty()) {
+        const std::wstring filename = scenePath_.filename().wstring();
+        wcsncpy_s(buffer.data(), buffer.size(), filename.c_str(), _TRUNCATE);
+    } else {
+        wcsncpy_s(buffer.data(), buffer.size(), L"untitled.likescene", _TRUNCATE);
+    }
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = L"LikeEngine Scene (*.likescene)\0*.likescene\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    const std::wstring initialDirectory = sceneRoot_.wstring();
+    dialog.lpstrInitialDir = initialDirectory.c_str();
+    dialog.lpstrDefExt = L"likescene";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                   OFN_DONTADDTORECENT;
+    if (!GetSaveFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+    const std::filesystem::path selected(buffer.data());
+    return selected.extension() == L".likescene" && IsPathWithinRoot(sceneRoot_, selected)
+               ? std::optional<std::filesystem::path>(selected)
+               : std::nullopt;
 }
