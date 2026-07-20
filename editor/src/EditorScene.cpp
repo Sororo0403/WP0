@@ -23,6 +23,8 @@
 #include <limits>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace {
@@ -364,8 +366,20 @@ void EditorScene::DrawMainMenu() {
             Redo();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem("Copy", "Ctrl+C", false, canDuplicate)) {
+            CopySelection();
+        }
+        if (ImGui::MenuItem("Cut", "Ctrl+X", false, canDuplicate)) {
+            CutSelection();
+        }
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !entityClipboard_.empty())) {
+            PasteEntityClipboard();
+        }
         if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, canDuplicate)) {
             DuplicateSelection();
+        }
+        if (ImGui::MenuItem("Delete", "Delete", false, canDuplicate)) {
+            DeleteEntity(selection_);
         }
         ImGui::EndMenu();
     }
@@ -779,6 +793,16 @@ void EditorScene::DrawEntityNode(EntityId id) {
             DuplicateSelection();
             hierarchyChanged = true;
         }
+        if (ImGui::MenuItem("Copy", "Ctrl+C")) {
+            CopySelection();
+        }
+        if (ImGui::MenuItem("Cut", "Ctrl+X")) {
+            CutSelection();
+            hierarchyChanged = true;
+        }
+        if (ImGui::MenuItem("Paste as Child", nullptr, false, !entityClipboard_.empty())) {
+            hierarchyChanged = PasteEntityClipboard(id);
+        }
         if (ImGui::MenuItem("Delete", "Delete")) {
             deleteRequested = true;
         }
@@ -957,6 +981,12 @@ void EditorScene::HandleEditorShortcuts() {
         } else {
             SaveScene();
         }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+        CopySelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+        CutSelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+        PasteEntityClipboard();
     } else if (ImGui::IsKeyPressed(ImGuiKey_D, false)) {
         DuplicateSelection();
     } else if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
@@ -968,6 +998,117 @@ void EditorScene::HandleEditorShortcuts() {
     } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
         Redo();
     }
+}
+
+bool EditorScene::CopySelection() {
+    if (!world_.Contains(selection_)) {
+        return false;
+    }
+    std::unordered_set<EntityId, EntityIdHash> copiedIds;
+    std::vector<EntityId> pending{selection_};
+    while (!pending.empty()) {
+        const EntityId current = pending.back();
+        pending.pop_back();
+        if (!copiedIds.insert(current).second) {
+            continue;
+        }
+        const std::vector<EntityId> children = world_.GetChildren(current);
+        pending.insert(pending.end(), children.begin(), children.end());
+    }
+
+    std::vector<WorldEntity> copiedEntities;
+    copiedEntities.reserve(copiedIds.size());
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!copiedIds.contains(entity.id)) {
+            continue;
+        }
+        copiedEntities.push_back(entity);
+        if (entity.id == selection_) {
+            copiedEntities.back().parent = {};
+        }
+    }
+    World clipboardWorld;
+    std::string error;
+    if (!clipboardWorld.ReplaceEntities(std::move(copiedEntities), &error)) {
+        status_ = "Copy failed: " + error;
+        return false;
+    }
+    entityClipboard_ = WorldSerializer::Serialize(clipboardWorld);
+    status_ = "Copied the selected entity hierarchy.";
+    return true;
+}
+
+void EditorScene::CutSelection() {
+    const EntityId cutEntity = selection_;
+    if (!CopySelection()) {
+        return;
+    }
+    DeleteEntity(cutEntity);
+    status_ = "Cut the selected entity hierarchy.";
+}
+
+bool EditorScene::PasteEntityClipboard(EntityId parent) {
+    if (entityClipboard_.empty() || (parent.IsValid() && !world_.Contains(parent))) {
+        return false;
+    }
+    World clipboardWorld;
+    std::string error;
+    if (!WorldSerializer::Deserialize(entityClipboard_, clipboardWorld, &error) ||
+        clipboardWorld.Empty()) {
+        status_ = "Paste failed: " + (error.empty() ? std::string("clipboard is empty.") : error);
+        return false;
+    }
+    const size_t rootCount = static_cast<size_t>(std::ranges::count_if(
+        clipboardWorld.Entities(), [](const WorldEntity& entity) {
+            return !entity.parent.IsValid();
+        }));
+    if (rootCount != 1u) {
+        status_ = "Paste failed: clipboard must contain one entity hierarchy.";
+        return false;
+    }
+
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    std::unordered_map<EntityId, EntityId, EntityIdHash> pastedIds;
+    pastedIds.reserve(clipboardWorld.Entities().size());
+    EntityId pastedRoot{};
+    for (const WorldEntity& source : clipboardWorld.Entities()) {
+        const EntityId pasted = world_.CreateEntity(source.name);
+        pastedIds.emplace(source.id, pasted);
+        WorldEntity* destination = world_.Find(pasted);
+        if (destination == nullptr) {
+            continue;
+        }
+        destination->transform = source.transform;
+        destination->meshRenderer = source.meshRenderer;
+        if (!source.parent.IsValid()) {
+            pastedRoot = pasted;
+            destination->name += " Copy";
+        }
+    }
+    bool valid = pastedRoot.IsValid();
+    for (const WorldEntity& source : clipboardWorld.Entities()) {
+        const EntityId pasted = pastedIds.at(source.id);
+        const EntityId pastedParent = source.parent.IsValid() ? pastedIds.at(source.parent) : parent;
+        if (pastedParent.IsValid() && !world_.SetParent(pasted, pastedParent)) {
+            valid = false;
+            break;
+        }
+    }
+    if (!valid) {
+        World restored;
+        if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+            world_ = std::move(restored);
+        }
+        selection_ = selectionBefore;
+        status_ = "Paste failed while rebuilding the entity hierarchy.";
+        return false;
+    }
+    selection_ = pastedRoot;
+    RecordImmediateEdit("Paste Entity Hierarchy", before, selectionBefore);
+    status_ = parent.IsValid() ? "Pasted the entity hierarchy as a child."
+                               : "Pasted the entity hierarchy.";
+    return true;
 }
 
 void EditorScene::DuplicateSelection() {

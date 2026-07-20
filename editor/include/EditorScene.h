@@ -42,6 +42,9 @@ private:
     void DrawInspectorPanel();
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
+    bool CopySelection();
+    void CutSelection();
+    bool PasteEntityClipboard(EntityId parent = {});
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
@@ -134,6 +137,7 @@ private:
     std::vector<HistoryEntry> undoHistory_;
     std::vector<HistoryEntry> redoHistory_;
     std::optional<PendingHistoryEdit> pendingHistoryEdit_;
+    std::string entityClipboard_;
     bool dirty_ = false;
     bool showUnsavedChangesDialog_ = false;
     RenderSurface sceneViewSurface_{};
