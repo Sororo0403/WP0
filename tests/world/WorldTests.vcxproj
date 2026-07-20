@@ -83,6 +83,7 @@
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)WorldTests.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectDescriptor.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\engine\Engine.vcxproj">

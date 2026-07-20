@@ -129,6 +129,11 @@ public:
     /// </summary>
     void DrawPostProcessOverlay();
 
+    /// <summary>
+    /// 現在のシーンへOS終了要求を通知し、終了可能かを返す。
+    /// </summary>
+    bool OnCloseRequested();
+
 private:
     /// <summary>
     /// 保留中のシーン切り替えを適用する

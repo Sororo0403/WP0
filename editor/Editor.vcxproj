@@ -110,6 +110,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectLauncher.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentProjectsStore.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentScenesStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h" />
@@ -117,6 +118,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectLauncher.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentProjectsStore.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentScenesStore.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\engine\Engine.vcxproj">

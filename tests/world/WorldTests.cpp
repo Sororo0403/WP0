@@ -1,4 +1,5 @@
 #include "ProjectDescriptor.h"
+#include "RecentScenesStore.h"
 #include "core/AssetManager.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
@@ -179,9 +180,29 @@ int main() {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 20;
     }
+    if (!Check(WorldSerializer::Save(source, createdProject.startupScene, &error), error.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 21;
+    }
+    const std::filesystem::path recentSettings = projectDirectory / L"settings" / L"recent.json";
+    RecentScenesStore recentScenes(recentSettings, createdProject.sceneRoot);
+    if (!Check(recentScenes.Save({createdProject.startupScene,
+                                  projectDirectory.parent_path() / L"outside.likescene"}),
+               "Recent scene settings could not be saved.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 22;
+    }
+    const std::vector<std::filesystem::path> restoredScenes = recentScenes.Load();
+    if (!Check(restoredScenes.size() == 1u &&
+                   restoredScenes.front() ==
+                       std::filesystem::weakly_canonical(createdProject.startupScene),
+               "Recent scenes were not safely restored.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 23;
+    }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {
-        return 21;
+        return 24;
     }
     return 0;
 }

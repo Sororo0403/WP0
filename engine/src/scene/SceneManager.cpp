@@ -314,6 +314,12 @@ void SceneManager::DrawPostProcessOverlay() {
     }
 }
 
+bool SceneManager::OnCloseRequested() {
+    return !currentScene_ || QuerySceneFlag("Request scene close", [this]() {
+               return currentScene_->OnCloseRequested();
+           });
+}
+
 void SceneManager::DrawShadow() {
     if (currentScene_) {
         BoolFlagScope drawing(isDrawing_);

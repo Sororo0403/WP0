@@ -124,6 +124,20 @@ WinApp::~WinApp() {
 }
 
 LRESULT CALLBACK WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_NCCREATE) {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA,
+                          reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+    }
+    auto* app = reinterpret_cast<WinApp*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (msg == WM_CLOSE && app != nullptr) {
+        if (app->allowClose_) {
+            DestroyWindow(hwnd);
+        } else {
+            app->closeRequested_ = true;
+        }
+        return 0;
+    }
 #ifdef ENGINE_WITH_IMGUI
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) {
         return true;
@@ -145,6 +159,8 @@ void WinApp::Initialize(HINSTANCE hInstance, int nCmdShow, int width, int height
     width_ = 0;
     height_ = 0;
     fullscreen_ = false;
+    closeRequested_ = false;
+    allowClose_ = false;
 
     WNDCLASS wc{};
     wc.lpfnWndProc = WindowProc;
@@ -217,7 +233,7 @@ void WinApp::Initialize(HINSTANCE hInstance, int nCmdShow, int width, int height
     windowedStyle_ = WS_OVERLAPPEDWINDOW;
 
     hwnd_ = CreateWindowEx(exStyle, kClassName, title.c_str(), style, windowX, windowY, windowWidth,
-                           windowHeight, nullptr, nullptr, hInstance, nullptr);
+                           windowHeight, nullptr, nullptr, hInstance, this);
 
     if (!hwnd_) {
         OutputDebugStringA("WinApp: CreateWindowEx failed\n");
@@ -249,8 +265,15 @@ bool WinApp::ProcessMessage() const {
     return true;
 }
 
+bool WinApp::ConsumeCloseRequest() {
+    const bool requested = closeRequested_;
+    closeRequested_ = false;
+    return requested;
+}
+
 void WinApp::RequestClose() {
     if (hwnd_) {
+        allowClose_ = true;
         PostMessage(hwnd_, WM_CLOSE, 0, 0);
     } else {
         PostQuitMessage(0);

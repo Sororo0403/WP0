@@ -81,10 +81,14 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
                          std::filesystem::path sceneRoot,
-                         std::filesystem::path startupScene, std::function<void()> requestClose)
+                         std::filesystem::path startupScene,
+                         std::filesystem::path recentScenesPath,
+                         std::function<void()> requestClose)
     : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
+      recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
+    recentScenePaths_ = recentScenesStore_.Load();
     std::error_code error;
     if (std::filesystem::is_regular_file(scenePath_, error) && !error) {
         if (!LoadScene(scenePath_)) {
@@ -163,6 +167,14 @@ void EditorScene::DrawPostProcessOverlay() {
     DrawMainMenu();
     DrawUnsavedChangesDialog();
     DrawPanels();
+}
+
+bool EditorScene::OnCloseRequested() {
+    if (!dirty_) {
+        return true;
+    }
+    RequestSceneAction(PendingSceneAction::Exit);
+    return false;
 }
 
 void EditorScene::DrawMainMenu() {
@@ -990,6 +1002,7 @@ void EditorScene::AddRecentScene(const std::filesystem::path& path) {
     if (recentScenePaths_.size() > kMaxRecentScenes) {
         recentScenePaths_.resize(kMaxRecentScenes);
     }
+    recentScenesStore_.Save(recentScenePaths_);
 }
 
 std::optional<std::filesystem::path> EditorScene::ShowOpenSceneDialog() const {

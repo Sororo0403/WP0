@@ -201,6 +201,9 @@ EngineFrameResult EngineRuntime::Tick() {
     if (!systems_->winApp.ProcessMessage()) {
         return EngineFrameResult::ExitRequested;
     }
+    if (systems_->winApp.ConsumeCloseRequest() && systems_->sceneManager.OnCloseRequested()) {
+        systems_->winApp.RequestClose();
+    }
 
     systems_->frameTimer.Tick();
     const ResizeResult resizeResult = ResizeIfNeeded();

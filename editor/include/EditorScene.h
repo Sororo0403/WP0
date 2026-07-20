@@ -1,5 +1,6 @@
 #pragma once
 
+#include "RecentScenesStore.h"
 #include "camera/Camera.h"
 #include "graphics/PostProcessSystem.h"
 #include "graphics/RenderSurface.h"
@@ -19,12 +20,14 @@ class EditorScene final : public BaseScene {
 public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
                 std::filesystem::path sceneRoot, std::filesystem::path startupScene,
+                std::filesystem::path recentScenesPath,
                 std::function<void()> requestClose);
 
     void Initialize(const SceneContext& ctx) override;
     void Update() override;
     void Draw() override;
     void DrawPostProcessOverlay() override;
+    bool OnCloseRequested() override;
 
 private:
     void DrawMainMenu();
@@ -95,6 +98,7 @@ private:
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
     std::filesystem::path sceneRoot_;
+    RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
     std::filesystem::path scenePath_;

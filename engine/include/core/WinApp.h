@@ -31,6 +31,11 @@ public:
     bool ProcessMessage() const;
 
     /// <summary>
+    /// OSから届いた未確認の終了要求を取得してクリアする。
+    /// </summary>
+    bool ConsumeCloseRequest();
+
+    /// <summary>
     /// 次のメッセージ処理でアプリケーションを終了するよう要求する。
     /// </summary>
     void RequestClose();
@@ -119,4 +124,6 @@ private:
     DWORD windowedStyle_ = WS_OVERLAPPEDWINDOW;
 
     HWND hwnd_ = nullptr;
+    bool closeRequested_ = false;
+    bool allowClose_ = false;
 };

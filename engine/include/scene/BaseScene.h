@@ -132,6 +132,13 @@ public:
     virtual void DrawPostProcessOverlay() {}
 
     /// <summary>
+    /// OSから終了が要求されたときに呼ばれる。終了を許可する場合はtrue。
+    /// </summary>
+    virtual bool OnCloseRequested() {
+        return true;
+    }
+
+    /// <summary>
     /// シーンマネージャーを設定する
     /// </summary>
     /// <param name="sceneManager">関連付けるシーンマネージャー</param>

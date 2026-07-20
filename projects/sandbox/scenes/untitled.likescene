@@ -4,7 +4,7 @@
       "components": {
         "Transform": {
           "position": [
-            0.0,
+            -2.700000047683716,
             2.0,
             -5.0
           ],
@@ -22,66 +22,6 @@
       },
       "id": "42c90dee-c8f8-60a6-a092-2a07c76eb188",
       "name": "Main Camera",
-      "parent": null
-    },
-    {
-      "components": {
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "asset://models/brain_stem/BrainStem.glb",
-          "primitive": 0,
-          "source": "Model"
-        },
-        "Transform": {
-          "position": [
-            -0.6000000238418579,
-            -0.75,
-            -1.100000023841858
-          ],
-          "rotation": [
-            -88.25,
-            -181.25,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "id": "4d498393-91b5-3921-7e97-c9baecfd2aac",
-      "name": "Caaaa",
-      "parent": null
-    },
-    {
-      "components": {
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "",
-          "primitive": 1,
-          "source": "Primitive"
-        },
-        "Transform": {
-          "position": [
-            1.25,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "id": "49085257-ae8c-74fb-c7fe-2fb54c6527a6",
-      "name": "Test",
       "parent": null
     }
   ],

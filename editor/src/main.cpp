@@ -100,6 +100,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     }
     if (!runtime.SetScene(std::make_unique<EditorScene>(
             project.root, project.assetRoot, project.sceneRoot, project.startupScene,
+            paths.userData / L"settings" / L"recent_scenes" /
+                (Utf8ToWide(project.projectId) + L".json"),
             [&runtime]() { runtime.RequestClose(); }))) {
         return -1;
     }
