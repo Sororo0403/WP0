@@ -44,6 +44,11 @@ private:
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
+    void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
+    void CreateModelEntityFromAsset(const std::filesystem::path& path,
+                                    const DirectX::XMFLOAT3& position);
+    bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
+                                         std::string& assetPath);
     void RefreshAssetBrowser();
     void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
     void DrawAssetBrowserBreadcrumbs();

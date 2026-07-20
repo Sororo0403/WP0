@@ -156,6 +156,33 @@ bool IntersectRayBounds(DirectX::FXMVECTOR rayOrigin, DirectX::FXMVECTOR rayDire
     distance = entry;
     return exit >= 0.0f;
 }
+
+bool BuildSceneRay(const Camera& camera, const ImVec2& imageMin, const ImVec2& imageMax,
+                   const ImVec2& screenPosition, DirectX::XMVECTOR& rayOrigin,
+                   DirectX::XMVECTOR& rayDirection) {
+    const float width = imageMax.x - imageMin.x;
+    const float height = imageMax.y - imageMin.y;
+    if (width <= 0.0f || height <= 0.0f) {
+        return false;
+    }
+    using namespace DirectX;
+    rayOrigin = XMVector3Unproject(
+        XMVectorSet(screenPosition.x - imageMin.x, screenPosition.y - imageMin.y, 0.0f, 1.0f),
+        0.0f, 0.0f, width, height, 0.0f, 1.0f, camera.GetProj(), camera.GetView(),
+        XMMatrixIdentity());
+    const XMVECTOR farPoint = XMVector3Unproject(
+        XMVectorSet(screenPosition.x - imageMin.x, screenPosition.y - imageMin.y, 1.0f, 1.0f),
+        0.0f, 0.0f, width, height, 0.0f, 1.0f, camera.GetProj(), camera.GetView(),
+        XMMatrixIdentity());
+    rayDirection = XMVector3Normalize(XMVectorSubtract(farPoint, rayOrigin));
+    DirectX::XMFLOAT3 origin{};
+    DirectX::XMFLOAT3 direction{};
+    XMStoreFloat3(&origin, rayOrigin);
+    XMStoreFloat3(&direction, rayDirection);
+    return std::isfinite(origin.x) && std::isfinite(origin.y) && std::isfinite(origin.z) &&
+           std::isfinite(direction.x) && std::isfinite(direction.y) &&
+           std::isfinite(direction.z);
+}
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -420,6 +447,7 @@ void EditorScene::DrawPanels() {
         const ImVec2 imageMin = ImGui::GetItemRectMin();
         const ImVec2 imageMax = ImGui::GetItemRectMax();
         const bool imageHovered = ImGui::IsItemHovered();
+        HandleSceneAssetDrop(imageMin, imageMax);
         DrawSceneSelectionOutline(imageMin, imageMax);
         if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
             PickSceneEntity(imageMin, imageMax, imageHovered);
@@ -831,23 +859,12 @@ void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
 
 void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::path& path) {
     WorldEntity* entity = world_.Find(entityId);
-    if (entity == nullptr || !IsModelAsset(path)) {
-        status_ = "The dropped model asset is invalid.";
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
         return;
     }
-    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
-    std::error_code error;
-    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
-        status_ = "The dropped model asset no longer exists.";
-        return;
-    }
-    const std::filesystem::path normalized = path.lexically_normal();
-    std::string assetPath = normalized.generic_string();
-    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
-        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
-    }
-    if (assetPath.size() > 1024u) {
-        status_ = "The dropped model asset path is too long.";
+    std::string assetPath;
+    if (!TryNormalizeModelAssetReference(path, assetPath)) {
         return;
     }
     const std::string before = WorldSerializer::Serialize(world_);
@@ -864,6 +881,91 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     selection_ = entityId;
     RecordImmediateEdit("Assign Model Asset", before, selectionBefore);
     status_ = "Assigned model asset: " + assetPath;
+}
+
+bool EditorScene::TryNormalizeModelAssetReference(const std::filesystem::path& path,
+                                                  std::string& assetPath) {
+    if (!IsModelAsset(path)) {
+        status_ = "The dropped model asset is invalid.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped model asset no longer exists.";
+        return false;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
+        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped model asset path is too long.";
+        return false;
+    }
+    return true;
+}
+
+void EditorScene::HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax) {
+    if (!ImGui::BeginDragDropTarget()) {
+        return;
+    }
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
+        payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+        static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+        DirectX::XMVECTOR rayOrigin{};
+        DirectX::XMVECTOR rayDirection{};
+        DirectX::XMFLOAT3 position{};
+        if (BuildSceneRay(sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos(), rayOrigin,
+                          rayDirection)) {
+            DirectX::XMFLOAT3 origin{};
+            DirectX::XMFLOAT3 direction{};
+            DirectX::XMStoreFloat3(&origin, rayOrigin);
+            DirectX::XMStoreFloat3(&direction, rayDirection);
+            float distance = 5.0f;
+            if (std::abs(direction.y) > 1.0e-5f) {
+                const float groundDistance = -origin.y / direction.y;
+                if (groundDistance >= 0.0f) {
+                    distance = groundDistance;
+                }
+            }
+            const DirectX::XMVECTOR droppedPosition =
+                DirectX::XMVectorAdd(rayOrigin, DirectX::XMVectorScale(rayDirection, distance));
+            DirectX::XMStoreFloat3(&position, droppedPosition);
+            position.y = 0.0f;
+        }
+        CreateModelEntityFromAsset(static_cast<const char*>(payload->Data), position);
+    }
+    ImGui::EndDragDropTarget();
+}
+
+void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
+                                             const DirectX::XMFLOAT3& position) {
+    std::string assetPath;
+    if (!TryNormalizeModelAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    std::string entityName = path.stem().string();
+    if (entityName.empty()) {
+        entityName = "Model";
+    }
+    const EntityId entityId = world_.CreateEntity(std::move(entityName));
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "Could not create an entity for the model asset.";
+        return;
+    }
+    entity->transform.position = position;
+    entity->meshRenderer = MeshRendererComponent{};
+    entity->meshRenderer->sourceType = MeshSourceType::Model;
+    entity->meshRenderer->modelPath = assetPath;
+    loadedModels_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Create Model Entity", before, selectionBefore);
+    status_ = "Created model entity: " + assetPath;
 }
 
 void EditorScene::RefreshAssetBrowser() {
@@ -1140,23 +1242,13 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
         ctx_ == nullptr || ctx_->rendering.model == nullptr) {
         return;
     }
-    const float width = imageMax.x - imageMin.x;
-    const float height = imageMax.y - imageMin.y;
-    if (width <= 0.0f || height <= 0.0f) {
+    using namespace DirectX;
+    XMVECTOR nearPoint{};
+    XMVECTOR rayDirection{};
+    if (!BuildSceneRay(sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos(), nearPoint,
+                       rayDirection)) {
         return;
     }
-
-    const ImVec2 mouse = ImGui::GetMousePos();
-    using namespace DirectX;
-    const XMVECTOR nearPoint = XMVector3Unproject(
-        XMVectorSet(mouse.x - imageMin.x, mouse.y - imageMin.y, 0.0f, 1.0f), 0.0f, 0.0f,
-        width, height, 0.0f, 1.0f, sceneViewCamera_.GetProj(), sceneViewCamera_.GetView(),
-        XMMatrixIdentity());
-    const XMVECTOR farPoint = XMVector3Unproject(
-        XMVectorSet(mouse.x - imageMin.x, mouse.y - imageMin.y, 1.0f, 1.0f), 0.0f, 0.0f,
-        width, height, 0.0f, 1.0f, sceneViewCamera_.GetProj(), sceneViewCamera_.GetView(),
-        XMMatrixIdentity());
-    const XMVECTOR rayDirection = XMVector3Normalize(XMVectorSubtract(farPoint, nearPoint));
 
     EntityId closest{};
     float closestDistance = (std::numeric_limits<float>::max)();
