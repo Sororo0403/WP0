@@ -87,7 +87,7 @@ private:
     bool DeletePendingAsset();
     bool DuplicateAsset(const std::filesystem::path& relativePath);
     bool CreatePendingAssetFolder();
-    bool ImportModelAsset();
+    bool ImportAssetFiles();
     [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
                                          bool directory) const;
     size_t UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
@@ -128,7 +128,7 @@ private:
     void AddRecentScene(const std::filesystem::path& path);
     [[nodiscard]] std::optional<std::filesystem::path> ShowOpenSceneDialog() const;
     [[nodiscard]] std::optional<std::filesystem::path> ShowSaveSceneDialog() const;
-    [[nodiscard]] std::optional<std::filesystem::path> ShowImportModelDialog() const;
+    [[nodiscard]] std::vector<std::filesystem::path> ShowImportAssetDialog() const;
 
     struct HistoryState {
         std::string world;

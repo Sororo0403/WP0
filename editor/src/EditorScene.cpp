@@ -48,6 +48,20 @@ bool IsModelAsset(const std::filesystem::path& path) {
     return std::ranges::find(extensions, extension) != std::end(extensions);
 }
 
+bool IsImportableAssetFile(const std::filesystem::path& path) {
+    if (IsModelAsset(path)) {
+        return true;
+    }
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    constexpr std::string_view dependencyExtensions[] = {
+        ".bin", ".mtl", ".png", ".jpg", ".jpeg", ".tga",
+        ".bmp", ".dds", ".hdr", ".exr"};
+    return std::ranges::find(dependencyExtensions, extension) !=
+           std::end(dependencyExtensions);
+}
+
 bool ContainsCaseInsensitive(std::string value, std::string query) {
     std::ranges::transform(value, value.begin(), [](unsigned char character) {
         return static_cast<char>(std::tolower(character));
@@ -851,8 +865,8 @@ void EditorScene::DrawProjectPanel() {
         if (ImGui::MenuItem("Folder")) {
             RequestCreateAssetFolder();
         }
-        if (ImGui::MenuItem("Import Model...")) {
-            ImportModelAsset();
+        if (ImGui::MenuItem("Import Model Files...")) {
+            ImportAssetFiles();
         }
         ImGui::EndPopup();
     }
@@ -1256,40 +1270,71 @@ bool EditorScene::CreatePendingAssetFolder() {
     return true;
 }
 
-bool EditorScene::ImportModelAsset() {
-    const std::optional<std::filesystem::path> selected = ShowImportModelDialog();
-    if (!selected) {
+bool EditorScene::ImportAssetFiles() {
+    const std::vector<std::filesystem::path> selectedFiles = ShowImportAssetDialog();
+    if (selectedFiles.empty()) {
         return false;
     }
-    std::error_code error;
-    if (!std::filesystem::is_regular_file(*selected, error) || error ||
-        !IsModelAsset(*selected)) {
-        status_ = "Model import rejected an invalid or unsupported file.";
+    const bool containsModel =
+        std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
+            return IsModelAsset(path);
+        });
+    if (!containsModel) {
+        status_ = "Asset import requires at least one supported model file.";
         return false;
     }
     const std::filesystem::path destinationDirectory =
         assetRoot_ / currentAssetDirectory_;
-    const std::filesystem::path destination = destinationDirectory / selected->filename();
     if (!IsPathAtOrWithinRoot(assetRoot_, destinationDirectory)) {
-        status_ = "Model import rejected an invalid destination.";
+        status_ = "Asset import rejected an invalid destination.";
         return false;
     }
-    error.clear();
-    if (std::filesystem::exists(destination, error) || error) {
-        status_ = "Model import stopped because assets/" +
-                  (currentAssetDirectory_ / selected->filename()).generic_string() +
-                  " already exists.";
-        return false;
+
+    std::error_code error;
+    for (const std::filesystem::path& source : selectedFiles) {
+        if (!std::filesystem::is_regular_file(source, error) || error ||
+            !IsImportableAssetFile(source) || !IsValidAssetFilename(source.filename().string())) {
+            status_ = "Asset import rejected an invalid or unsupported file.";
+            return false;
+        }
+        const std::filesystem::path destination = destinationDirectory / source.filename();
+        error.clear();
+        if (std::filesystem::exists(destination, error) || error) {
+            status_ = "Asset import stopped because assets/" +
+                      (currentAssetDirectory_ / source.filename()).generic_string() +
+                      " already exists.";
+            return false;
+        }
     }
-    std::filesystem::copy_file(*selected, destination, std::filesystem::copy_options::none,
-                               error);
-    if (error) {
-        status_ = "Model import failed: " + error.message();
-        return false;
+
+    std::vector<std::filesystem::path> copiedFiles;
+    copiedFiles.reserve(selectedFiles.size());
+    for (const std::filesystem::path& source : selectedFiles) {
+        const std::filesystem::path destination = destinationDirectory / source.filename();
+        error.clear();
+        std::filesystem::copy_file(source, destination, std::filesystem::copy_options::none,
+                                   error);
+        if (error) {
+            for (const std::filesystem::path& copied : copiedFiles) {
+                std::error_code rollbackError;
+                std::filesystem::remove(copied, rollbackError);
+            }
+            status_ = "Asset import failed and was rolled back: " + error.message();
+            RefreshAssetBrowser();
+            return false;
+        }
+        copiedFiles.push_back(destination);
     }
-    selectedAsset_ = (currentAssetDirectory_ / selected->filename()).lexically_normal();
+
+    const auto firstModel =
+        std::ranges::find_if(selectedFiles, [](const std::filesystem::path& path) {
+            return IsModelAsset(path);
+        });
+    selectedAsset_ =
+        (currentAssetDirectory_ / firstModel->filename()).lexically_normal();
     RefreshAssetBrowser();
-    status_ = "Imported model: assets/" + selectedAsset_.generic_string();
+    status_ = "Imported " + std::to_string(selectedFiles.size()) +
+              " asset file(s) into assets/" + currentAssetDirectory_.generic_string();
     return true;
 }
 
@@ -3251,21 +3296,38 @@ std::optional<std::filesystem::path> EditorScene::ShowSaveSceneDialog() const {
                : std::nullopt;
 }
 
-std::optional<std::filesystem::path> EditorScene::ShowImportModelDialog() const {
+std::vector<std::filesystem::path> EditorScene::ShowImportAssetDialog() const {
     std::array<wchar_t, 32768> buffer{};
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFilter =
-        L"Model Files (*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply)\0"
-        L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply\0";
+        L"Model and Dependency Files\0"
+        L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply;*.bin;*.mtl;*.png;*.jpg;*.jpeg;"
+        L"*.tga;*.bmp;*.dds;*.hdr;*.exr\0";
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
-                   OFN_DONTADDTORECENT;
+                   OFN_DONTADDTORECENT | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
     if (!GetOpenFileNameW(&dialog)) {
-        return std::nullopt;
+        return {};
     }
-    const std::filesystem::path selected(buffer.data());
-    return IsModelAsset(selected) ? std::optional<std::filesystem::path>(selected)
-                                  : std::nullopt;
+
+    const std::filesystem::path first(buffer.data());
+    const wchar_t* next = buffer.data() + first.native().size() + 1u;
+    if (*next == L'\0') {
+        return IsImportableAssetFile(first) ? std::vector<std::filesystem::path>{first}
+                                            : std::vector<std::filesystem::path>{};
+    }
+
+    std::vector<std::filesystem::path> selectedFiles;
+    while (*next != L'\0') {
+        const std::filesystem::path filename(next);
+        const std::filesystem::path selected = first / filename;
+        if (!IsImportableAssetFile(selected)) {
+            return {};
+        }
+        selectedFiles.push_back(selected);
+        next += filename.native().size() + 1u;
+    }
+    return selectedFiles;
 }
