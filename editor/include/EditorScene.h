@@ -141,6 +141,7 @@ private:
     std::vector<HistoryEntry> redoHistory_;
     std::optional<PendingHistoryEdit> pendingHistoryEdit_;
     std::string entityClipboard_;
+    std::optional<TransformComponent> transformClipboard_;
     std::array<char, 128> hierarchySearch_{};
     std::unordered_set<EntityId, EntityIdHash> visibleHierarchyEntities_;
     EntityId renameEntity_{};

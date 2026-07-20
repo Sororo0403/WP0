@@ -977,6 +977,36 @@ void EditorScene::DrawInspectorPanel() {
     ImGui::TextDisabled("ID: %s", entity->id.ToString().c_str());
     ImGui::Separator();
     ImGui::TextUnformatted("Transform");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Reset##Transform")) {
+        CommitHistoryEdit();
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
+        entity->transform = TransformComponent{};
+        RecordImmediateEdit("Reset Transform", before, selectionBefore);
+        status_ = "Reset Transform.";
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Copy##Transform")) {
+        CommitHistoryEdit();
+        transformClipboard_ = entity->transform;
+        status_ = "Copied Transform.";
+    }
+    ImGui::SameLine();
+    if (!transformClipboard_) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::SmallButton("Paste##Transform")) {
+        CommitHistoryEdit();
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
+        entity->transform = *transformClipboard_;
+        RecordImmediateEdit("Paste Transform", before, selectionBefore);
+        status_ = "Pasted Transform.";
+    }
+    if (!transformClipboard_) {
+        ImGui::EndDisabled();
+    }
     auto drawTransform = [&](const char* label, DirectX::XMFLOAT3& value, float speed) {
         const bool changed = ImGui::DragFloat3(label, &value.x, speed);
         if (ImGui::IsItemActivated()) {
