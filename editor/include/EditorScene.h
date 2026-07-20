@@ -82,9 +82,12 @@ private:
     void DrawAssetOperationDialogs();
     void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);
     void RequestAssetDelete(const std::filesystem::path& relativePath, bool directory);
+    void RequestCreateAssetFolder();
     bool RenamePendingAsset();
     bool DeletePendingAsset();
     bool DuplicateAsset(const std::filesystem::path& relativePath);
+    bool CreatePendingAssetFolder();
+    bool ImportModelAsset();
     [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
                                          bool directory) const;
     size_t UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
@@ -125,6 +128,7 @@ private:
     void AddRecentScene(const std::filesystem::path& path);
     [[nodiscard]] std::optional<std::filesystem::path> ShowOpenSceneDialog() const;
     [[nodiscard]] std::optional<std::filesystem::path> ShowSaveSceneDialog() const;
+    [[nodiscard]] std::optional<std::filesystem::path> ShowImportModelDialog() const;
 
     struct HistoryState {
         std::string world;
@@ -216,10 +220,13 @@ private:
     std::array<char, 128> assetSearch_{};
     std::filesystem::path pendingAssetOperationPath_;
     std::array<char, 256> assetRenameBuffer_{};
+    std::array<char, 256> assetFolderNameBuffer_{};
     bool pendingAssetOperationIsDirectory_ = false;
     bool showAssetRenameDialog_ = false;
     bool showAssetDeleteDialog_ = false;
+    bool showCreateAssetFolderDialog_ = false;
     bool focusAssetRenameInput_ = false;
+    bool focusAssetFolderNameInput_ = false;
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
     enum class GizmoOperation : uint8_t {

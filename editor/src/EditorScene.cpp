@@ -844,6 +844,19 @@ void EditorScene::DrawProjectPanel() {
         selectedAsset_.clear();
         RefreshAssetBrowser();
     }
+    if (ImGui::Button("New")) {
+        ImGui::OpenPopup("AssetCreateMenu");
+    }
+    if (ImGui::BeginPopup("AssetCreateMenu")) {
+        if (ImGui::MenuItem("Folder")) {
+            RequestCreateAssetFolder();
+        }
+        if (ImGui::MenuItem("Import Model...")) {
+            ImportModelAsset();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
     if (ImGui::Button("Refresh")) {
         RefreshAssetBrowser();
     }
@@ -985,6 +998,14 @@ void EditorScene::RequestAssetDelete(const std::filesystem::path& relativePath,
     showAssetDeleteDialog_ = true;
 }
 
+void EditorScene::RequestCreateAssetFolder() {
+    assetFolderNameBuffer_.fill('\0');
+    strncpy_s(assetFolderNameBuffer_.data(), assetFolderNameBuffer_.size(), "New Folder",
+              _TRUNCATE);
+    showCreateAssetFolderDialog_ = true;
+    focusAssetFolderNameInput_ = true;
+}
+
 void EditorScene::DrawAssetOperationDialogs() {
     if (showAssetRenameDialog_) {
         ImGui::OpenPopup("Rename Asset");
@@ -1044,6 +1065,38 @@ void EditorScene::DrawAssetOperationDialogs() {
             ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             pendingAssetOperationPath_.clear();
             ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showCreateAssetFolderDialog_) {
+        ImGui::OpenPopup("Create Asset Folder");
+        showCreateAssetFolderDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Create Asset Folder", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        const std::filesystem::path parent =
+            (std::filesystem::path("assets") / currentAssetDirectory_).lexically_normal();
+        ImGui::TextDisabled("In %s", parent.generic_string().c_str());
+        if (focusAssetFolderNameInput_) {
+            ImGui::SetKeyboardFocusHere();
+            focusAssetFolderNameInput_ = false;
+        }
+        ImGui::SetNextItemWidth(360.0f);
+        const bool submitted = ImGui::InputText(
+            "##AssetFolderName", assetFolderNameBuffer_.data(),
+            assetFolderNameBuffer_.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        if (submitted || ImGui::Button("Create", {100.0f, 0.0f})) {
+            if (CreatePendingAssetFolder()) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            ImGui::SameLine();
+            if (cancel || ImGui::Button("Cancel", {100.0f, 0.0f})) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndPopup();
     }
@@ -1172,6 +1225,71 @@ bool EditorScene::DuplicateAsset(const std::filesystem::path& relativePath) {
     selectedAsset_ = duplicateRelative;
     RefreshAssetBrowser();
     status_ = "Duplicated asset: assets/" + duplicateRelative.generic_string();
+    return true;
+}
+
+bool EditorScene::CreatePendingAssetFolder() {
+    const std::string folderName(assetFolderNameBuffer_.data());
+    if (!IsValidAssetFilename(folderName)) {
+        status_ = "Asset folder creation rejected an invalid name.";
+        return false;
+    }
+    const std::filesystem::path parent = assetRoot_ / currentAssetDirectory_;
+    const std::filesystem::path destination = parent / std::filesystem::path(folderName);
+    if (!IsPathAtOrWithinRoot(assetRoot_, parent)) {
+        status_ = "Asset folder creation rejected a path outside the assets directory.";
+        return false;
+    }
+    std::error_code error;
+    if (std::filesystem::exists(destination, error) || error) {
+        status_ = "Asset folder creation failed because that name already exists.";
+        return false;
+    }
+    if (!std::filesystem::create_directory(destination, error) || error) {
+        status_ = "Asset folder creation failed" +
+                  (error ? std::string(": ") + error.message() : std::string("."));
+        return false;
+    }
+    selectedAsset_ = (currentAssetDirectory_ / folderName).lexically_normal();
+    RefreshAssetBrowser();
+    status_ = "Created asset folder: assets/" + selectedAsset_.generic_string();
+    return true;
+}
+
+bool EditorScene::ImportModelAsset() {
+    const std::optional<std::filesystem::path> selected = ShowImportModelDialog();
+    if (!selected) {
+        return false;
+    }
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(*selected, error) || error ||
+        !IsModelAsset(*selected)) {
+        status_ = "Model import rejected an invalid or unsupported file.";
+        return false;
+    }
+    const std::filesystem::path destinationDirectory =
+        assetRoot_ / currentAssetDirectory_;
+    const std::filesystem::path destination = destinationDirectory / selected->filename();
+    if (!IsPathAtOrWithinRoot(assetRoot_, destinationDirectory)) {
+        status_ = "Model import rejected an invalid destination.";
+        return false;
+    }
+    error.clear();
+    if (std::filesystem::exists(destination, error) || error) {
+        status_ = "Model import stopped because assets/" +
+                  (currentAssetDirectory_ / selected->filename()).generic_string() +
+                  " already exists.";
+        return false;
+    }
+    std::filesystem::copy_file(*selected, destination, std::filesystem::copy_options::none,
+                               error);
+    if (error) {
+        status_ = "Model import failed: " + error.message();
+        return false;
+    }
+    selectedAsset_ = (currentAssetDirectory_ / selected->filename()).lexically_normal();
+    RefreshAssetBrowser();
+    status_ = "Imported model: assets/" + selectedAsset_.generic_string();
     return true;
 }
 
@@ -3131,4 +3249,23 @@ std::optional<std::filesystem::path> EditorScene::ShowSaveSceneDialog() const {
     return selected.extension() == L".likescene" && IsPathWithinRoot(sceneRoot_, selected)
                ? std::optional<std::filesystem::path>(selected)
                : std::nullopt;
+}
+
+std::optional<std::filesystem::path> EditorScene::ShowImportModelDialog() const {
+    std::array<wchar_t, 32768> buffer{};
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter =
+        L"Model Files (*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply)\0"
+        L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                   OFN_DONTADDTORECENT;
+    if (!GetOpenFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+    const std::filesystem::path selected(buffer.data());
+    return IsModelAsset(selected) ? std::optional<std::filesystem::path>(selected)
+                                  : std::nullopt;
 }
