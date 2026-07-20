@@ -183,6 +183,34 @@ bool BuildSceneRay(const Camera& camera, const ImVec2& imageMin, const ImVec2& i
            std::isfinite(direction.x) && std::isfinite(direction.y) &&
            std::isfinite(direction.z);
 }
+
+DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
+                                                  const ImVec2& imageMin,
+                                                  const ImVec2& imageMax,
+                                                  const ImVec2& screenPosition) {
+    DirectX::XMVECTOR rayOrigin{};
+    DirectX::XMVECTOR rayDirection{};
+    DirectX::XMFLOAT3 position{};
+    if (!BuildSceneRay(camera, imageMin, imageMax, screenPosition, rayOrigin, rayDirection)) {
+        return position;
+    }
+    DirectX::XMFLOAT3 origin{};
+    DirectX::XMFLOAT3 direction{};
+    DirectX::XMStoreFloat3(&origin, rayOrigin);
+    DirectX::XMStoreFloat3(&direction, rayDirection);
+    float distance = 5.0f;
+    if (std::abs(direction.y) > 1.0e-5f) {
+        const float groundDistance = -origin.y / direction.y;
+        if (groundDistance >= 0.0f) {
+            distance = groundDistance;
+        }
+    }
+    DirectX::XMStoreFloat3(
+        &position,
+        DirectX::XMVectorAdd(rayOrigin, DirectX::XMVectorScale(rayDirection, distance)));
+    position.y = 0.0f;
+    return position;
+}
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -448,6 +476,7 @@ void EditorScene::DrawPanels() {
         const ImVec2 imageMax = ImGui::GetItemRectMax();
         const bool imageHovered = ImGui::IsItemHovered();
         HandleSceneAssetDrop(imageMin, imageMax);
+        HandleSceneContextMenu(imageMin, imageMax, imageHovered);
         DrawSceneGrid(imageMin, imageMax);
         DrawSceneSelectionOutline(imageMin, imageMax);
         if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
@@ -588,12 +617,12 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
 }
 
 void EditorScene::DrawHierarchyPanel() {
-    if (ImGui::Button("Create Empty")) {
-        const std::string before = WorldSerializer::Serialize(world_);
-        const EntityId selectionBefore = selection_;
-        selection_ = world_.CreateEntity();
-        RecordImmediateEdit("Create Entity", before, selectionBefore);
-        status_ = "Created a new entity.";
+    if (ImGui::Button("Create")) {
+        ImGui::OpenPopup("CreateEntity");
+    }
+    if (ImGui::BeginPopup("CreateEntity")) {
+        DrawCreateEntityMenu({0.0f, 0.0f, 0.0f});
+        ImGui::EndPopup();
     }
     ImGui::SameLine();
     const bool canDelete = world_.Contains(selection_);
@@ -636,6 +665,59 @@ void EditorScene::DrawHierarchyPanel() {
         }
         ImGui::EndDragDropTarget();
     }
+}
+
+void EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position) {
+    if (ImGui::MenuItem("Empty Entity")) {
+        CreateEmptyEntity(position);
+    }
+    if (ImGui::BeginMenu("3D Primitive")) {
+        for (size_t index = 0; index < std::size(kPrimitiveNames); ++index) {
+            if (ImGui::MenuItem(kPrimitiveNames[index])) {
+                CreatePrimitiveEntity(static_cast<MeshPrimitive>(index), position);
+            }
+        }
+        ImGui::EndMenu();
+    }
+}
+
+void EditorScene::CreateEmptyEntity(const DirectX::XMFLOAT3& position) {
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const EntityId entityId = world_.CreateEntity();
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "Could not create an entity.";
+        return;
+    }
+    entity->transform.position = position;
+    selection_ = entityId;
+    RecordImmediateEdit("Create Entity", before, selectionBefore);
+    status_ = "Created a new entity.";
+}
+
+void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
+                                        const DirectX::XMFLOAT3& position) {
+    const size_t primitiveIndex = static_cast<size_t>(primitive);
+    if (primitiveIndex >= std::size(kPrimitiveNames)) {
+        status_ = "Could not create an invalid primitive.";
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const EntityId entityId = world_.CreateEntity(kPrimitiveNames[primitiveIndex]);
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "Could not create the primitive entity.";
+        return;
+    }
+    entity->transform.position = position;
+    entity->meshRenderer = MeshRendererComponent{};
+    entity->meshRenderer->sourceType = MeshSourceType::Primitive;
+    entity->meshRenderer->primitive = primitive;
+    selection_ = entityId;
+    RecordImmediateEdit("Create Primitive Entity", before, selectionBefore);
+    status_ = std::string("Created primitive: ") + kPrimitiveNames[primitiveIndex];
 }
 
 void EditorScene::DrawEntityNode(EntityId id) {
@@ -915,30 +997,28 @@ void EditorScene::HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& ima
     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
         payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
         static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
-        DirectX::XMVECTOR rayOrigin{};
-        DirectX::XMVECTOR rayDirection{};
-        DirectX::XMFLOAT3 position{};
-        if (BuildSceneRay(sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos(), rayOrigin,
-                          rayDirection)) {
-            DirectX::XMFLOAT3 origin{};
-            DirectX::XMFLOAT3 direction{};
-            DirectX::XMStoreFloat3(&origin, rayOrigin);
-            DirectX::XMStoreFloat3(&direction, rayDirection);
-            float distance = 5.0f;
-            if (std::abs(direction.y) > 1.0e-5f) {
-                const float groundDistance = -origin.y / direction.y;
-                if (groundDistance >= 0.0f) {
-                    distance = groundDistance;
-                }
-            }
-            const DirectX::XMVECTOR droppedPosition =
-                DirectX::XMVectorAdd(rayOrigin, DirectX::XMVectorScale(rayDirection, distance));
-            DirectX::XMStoreFloat3(&position, droppedPosition);
-            position.y = 0.0f;
-        }
+        const DirectX::XMFLOAT3 position = CalculateScenePlacementPosition(
+            sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos());
         CreateModelEntityFromAsset(static_cast<const char*>(payload->Data), position);
     }
     ImGui::EndDragDropTarget();
+}
+
+void EditorScene::HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
+                                         bool imageHovered) {
+    if (imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        sceneContextCreatePosition_ = CalculateScenePlacementPosition(
+            sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos());
+        ImGui::OpenPopup("SceneContext");
+    }
+    if (!ImGui::BeginPopup("SceneContext")) {
+        return;
+    }
+    ImGui::TextDisabled("Create at %.2f, %.2f, %.2f", sceneContextCreatePosition_.x,
+                        sceneContextCreatePosition_.y, sceneContextCreatePosition_.z);
+    ImGui::Separator();
+    DrawCreateEntityMenu(sceneContextCreatePosition_);
+    ImGui::EndPopup();
 }
 
 void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,

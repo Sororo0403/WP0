@@ -40,11 +40,16 @@ private:
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
+    void DrawCreateEntityMenu(const DirectX::XMFLOAT3& position);
     void HandleEditorShortcuts();
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
+    void HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
+                                bool imageHovered);
+    void CreateEmptyEntity(const DirectX::XMFLOAT3& position);
+    void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position);
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
@@ -160,6 +165,7 @@ private:
     GizmoOperation gizmoOperation_ = GizmoOperation::Translate;
     GizmoSpace gizmoSpace_ = GizmoSpace::World;
     bool showSceneGrid_ = true;
+    DirectX::XMFLOAT3 sceneContextCreatePosition_{};
     EntityId activeGizmoEntity_{};
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
