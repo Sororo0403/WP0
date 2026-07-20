@@ -394,6 +394,9 @@ void EditorScene::DrawMainMenu() {
             Redo();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem("Select All", "Ctrl+A", false, !world_.Empty())) {
+            SelectAllHierarchyEntities();
+        }
         if (ImGui::MenuItem("Copy", "Ctrl+C", false, canDuplicate)) {
             CopySelection();
         }
@@ -776,15 +779,21 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::TextDisabled("No matching entities.");
     }
     ImGui::Separator();
-    ImGui::Selectable("Scene Root (drop here)", false);
+    if (ImGui::Selectable("Scene Root (drop here)", false)) {
+        ClearHierarchySelection();
+    }
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
             payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
             EntityId child{};
             std::memcpy(&child, payload->Data, sizeof(child));
-            ReparentEntity(child, {});
+            ReparentSelection(child, {});
         }
         ImGui::EndDragDropTarget();
+    }
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        !ImGui::IsAnyItemHovered()) {
+        ClearHierarchySelection();
     }
 }
 
@@ -982,7 +991,11 @@ void EditorScene::DrawEntityNode(EntityId id) {
     }
     if (ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(kEntityDragPayload, &id, sizeof(id));
-        ImGui::TextUnformatted(entity->name.c_str());
+        if (IsHierarchyEntitySelected(id) && hierarchySelection_.size() > 1u) {
+            ImGui::Text("Move %zu selected entities", hierarchySelection_.size());
+        } else {
+            ImGui::TextUnformatted(entity->name.c_str());
+        }
         ImGui::EndDragDropSource();
     }
     if (ImGui::BeginDragDropTarget()) {
@@ -990,7 +1003,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
             payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
             EntityId child{};
             std::memcpy(&child, payload->Data, sizeof(child));
-            ReparentEntity(child, id);
+            ReparentSelection(child, id);
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
             payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
@@ -1146,7 +1159,9 @@ void EditorScene::HandleEditorShortcuts() {
         return;
     }
     if (!io.KeyCtrl) {
-        if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            ClearHierarchySelection();
+        } else if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
             MoveEntityInHierarchy(selection_, -1);
         } else if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
             MoveEntityInHierarchy(selection_, 1);
@@ -1163,7 +1178,9 @@ void EditorScene::HandleEditorShortcuts() {
         }
         return;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+        SelectAllHierarchyEntities();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
         RequestSceneAction(PendingSceneAction::NewScene);
     } else if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
         RequestSceneAction(PendingSceneAction::OpenScene);
@@ -1276,6 +1293,26 @@ void EditorScene::SelectHierarchyEntity(EntityId entity, bool toggle, bool range
     }
     selection_ = entity;
     hierarchySelectionAnchor_ = entity;
+}
+
+void EditorScene::SelectAllHierarchyEntities() {
+    hierarchySelection_.clear();
+    for (const WorldEntity& entity : world_.Entities()) {
+        hierarchySelection_.insert(entity.id);
+    }
+    if (!world_.Contains(selection_)) {
+        selection_ = world_.Empty() ? EntityId{} : world_.Entities().front().id;
+    }
+    hierarchySelectionAnchor_ = selection_;
+    status_ = hierarchySelection_.empty() ? "There are no entities to select."
+                                          : "Selected all entities.";
+}
+
+void EditorScene::ClearHierarchySelection() {
+    selection_ = {};
+    hierarchySelection_.clear();
+    hierarchySelectionAnchor_ = {};
+    status_ = "Cleared the entity selection.";
 }
 
 bool EditorScene::IsHierarchyEntitySelected(EntityId entity) const {
@@ -1511,17 +1548,35 @@ void EditorScene::DuplicateSelection() {
                                       : "Duplicated the selected entity hierarchies.";
 }
 
-void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
-    const WorldEntity* childEntity = world_.Find(child);
-    if (childEntity == nullptr || childEntity->parent == parent) {
+void EditorScene::ReparentSelection(EntityId draggedEntity, EntityId parent) {
+    if (!world_.Contains(draggedEntity) || (parent.IsValid() && !world_.Contains(parent))) {
         return;
     }
-    DirectX::XMFLOAT4X4 childWorld{};
-    if (!world_.TryGetWorldMatrix(child, childWorld)) {
-        status_ = "Could not read the entity world transform.";
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> roots;
+    if (hierarchySelection_.contains(draggedEntity)) {
+        roots = GetTopLevelSelectedEntities();
+    } else {
+        roots.push_back(draggedEntity);
+    }
+    std::erase_if(roots, [this, parent](EntityId entity) {
+        const WorldEntity* current = world_.Find(entity);
+        return current == nullptr || current->parent == parent;
+    });
+    if (roots.empty()) {
         return;
     }
-    DirectX::XMMATRIX localMatrix = DirectX::XMLoadFloat4x4(&childWorld);
+    const std::unordered_set<EntityId, EntityIdHash> rootIds(roots.begin(), roots.end());
+    for (EntityId ancestor = parent; ancestor.IsValid();) {
+        if (rootIds.contains(ancestor)) {
+            status_ = "Cannot reparent entities into their own hierarchy.";
+            return;
+        }
+        const WorldEntity* entity = world_.Find(ancestor);
+        ancestor = entity != nullptr ? entity->parent : EntityId{};
+    }
+
+    DirectX::XMMATRIX inverseParent = DirectX::XMMatrixIdentity();
     if (parent.IsValid()) {
         DirectX::XMFLOAT4X4 parentWorld{};
         if (!world_.TryGetWorldMatrix(parent, parentWorld)) {
@@ -1529,37 +1584,66 @@ void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
             return;
         }
         DirectX::XMVECTOR determinant{};
-        const DirectX::XMMATRIX inverseParent =
+        inverseParent =
             DirectX::XMMatrixInverse(&determinant, DirectX::XMLoadFloat4x4(&parentWorld));
         const float determinantValue = DirectX::XMVectorGetX(determinant);
         if (!std::isfinite(determinantValue) || std::abs(determinantValue) <= 1.0e-8f) {
             status_ = "Cannot reparent under a singular transform.";
             return;
         }
-        localMatrix *= inverseParent;
     }
-    TransformComponent localTransform{};
-    if (!TryDecomposeTransformComponent(localMatrix, localTransform)) {
-        status_ = "Could not preserve the entity world transform.";
-        return;
+
+    struct ReparentTransform {
+        EntityId entity{};
+        TransformComponent local{};
+    };
+    std::vector<ReparentTransform> transforms;
+    transforms.reserve(roots.size());
+    for (EntityId root : roots) {
+        DirectX::XMFLOAT4X4 worldMatrix{};
+        TransformComponent local{};
+        if (!world_.TryGetWorldMatrix(root, worldMatrix) ||
+            !TryDecomposeTransformComponent(DirectX::XMLoadFloat4x4(&worldMatrix) * inverseParent,
+                                            local)) {
+            status_ = "Could not preserve the selected entities' world transforms.";
+            return;
+        }
+        transforms.push_back({root, local});
     }
+
     CommitHistoryEdit();
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
-    if (!world_.SetParent(child, parent)) {
-        status_ = "Cannot create a cyclic or invalid hierarchy.";
-        return;
+    for (const ReparentTransform& transform : transforms) {
+        if (!world_.SetParent(transform.entity, parent)) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+            }
+            status_ = "Cannot create a cyclic or invalid hierarchy.";
+            return;
+        }
+        WorldEntity* reparented = world_.Find(transform.entity);
+        if (reparented == nullptr) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+            }
+            status_ = "A reparented entity no longer exists.";
+            return;
+        }
+        reparented->transform = transform.local;
     }
-    WorldEntity* reparented = world_.Find(child);
-    if (reparented == nullptr) {
-        status_ = "The reparented entity no longer exists.";
-        return;
+    selection_ = world_.Contains(draggedEntity) ? draggedEntity : roots.front();
+    RecordImmediateEdit(roots.size() == 1u ? "Reparent Entity" : "Reparent Entities", before,
+                        selectionBefore);
+    if (roots.size() == 1u) {
+        status_ = parent.IsValid() ? "Reparented the entity without moving it."
+                                   : "Moved the entity to the scene root without moving it.";
+    } else {
+        status_ = parent.IsValid() ? "Reparented the entities without moving them."
+                                   : "Moved the entities to the scene root without moving them.";
     }
-    reparented->transform = localTransform;
-    selection_ = child;
-    RecordImmediateEdit("Reparent Entity", before, selectionBefore);
-    status_ = parent.IsValid() ? "Reparented the entity without moving it."
-                               : "Moved the entity to the scene root without moving it.";
 }
 
 void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::path& path) {

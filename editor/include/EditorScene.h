@@ -46,6 +46,8 @@ private:
     void HandleEditorShortcuts();
     void SynchronizeHierarchySelection();
     void SelectHierarchyEntity(EntityId entity, bool toggle, bool range);
+    void SelectAllHierarchyEntities();
+    void ClearHierarchySelection();
     [[nodiscard]] bool IsHierarchyEntitySelected(EntityId entity) const;
     [[nodiscard]] std::vector<EntityId> GetTopLevelSelectedEntities() const;
     bool CopySelection();
@@ -54,7 +56,7 @@ private:
     void RequestEntityRename(EntityId entity);
     bool MoveEntityInHierarchy(EntityId entity, int direction);
     void DuplicateSelection();
-    void ReparentEntity(EntityId child, EntityId parent);
+    void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
