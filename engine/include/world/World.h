@@ -46,6 +46,8 @@ public:
     EntityId DuplicateEntityHierarchy(EntityId source);
     bool DestroyEntity(EntityId id);
     bool SetParent(EntityId child, EntityId parent);
+    bool MoveEntityBefore(EntityId entity, EntityId sibling);
+    bool MoveEntityAfter(EntityId entity, EntityId sibling);
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;

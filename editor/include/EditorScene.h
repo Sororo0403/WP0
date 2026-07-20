@@ -48,6 +48,7 @@ private:
     void CutSelection();
     bool PasteEntityClipboard(EntityId parent = {});
     void RequestEntityRename(EntityId entity);
+    bool MoveEntityInHierarchy(EntityId entity, int direction);
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);

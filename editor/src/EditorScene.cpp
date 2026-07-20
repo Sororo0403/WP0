@@ -20,6 +20,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <string_view>
 #include <system_error>
@@ -914,6 +915,22 @@ void EditorScene::DrawEntityNode(EntityId id) {
         if (ImGui::MenuItem("Rename", "F2")) {
             RequestEntityRename(id);
         }
+        const WorldEntity* contextEntity = world_.Find(id);
+        const std::vector<EntityId> siblings =
+            contextEntity != nullptr && contextEntity->parent.IsValid()
+                ? world_.GetChildren(contextEntity->parent)
+                : world_.GetRootEntities();
+        const auto siblingPosition = std::ranges::find(siblings, id);
+        const bool canMoveUp = siblingPosition != siblings.end() &&
+                               siblingPosition != siblings.begin();
+        const bool canMoveDown = siblingPosition != siblings.end() &&
+                                 std::next(siblingPosition) != siblings.end();
+        if (ImGui::MenuItem("Move Up", "Alt+Up", false, canMoveUp)) {
+            hierarchyChanged = MoveEntityInHierarchy(id, -1);
+        }
+        if (ImGui::MenuItem("Move Down", "Alt+Down", false, canMoveDown)) {
+            hierarchyChanged = MoveEntityInHierarchy(id, 1);
+        }
         if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
             DuplicateSelection();
             hierarchyChanged = true;
@@ -1115,7 +1132,11 @@ void EditorScene::HandleEditorShortcuts() {
         return;
     }
     if (!io.KeyCtrl) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+        if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            MoveEntityInHierarchy(selection_, -1);
+        } else if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            MoveEntityInHierarchy(selection_, 1);
+        } else if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
             RequestEntityRename(selection_);
         } else if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
             gizmoOperation_ = GizmoOperation::Translate;
@@ -1167,6 +1188,44 @@ void EditorScene::RequestEntityRename(EntityId entity) {
     renameBuffer_.fill('\0');
     strncpy_s(renameBuffer_.data(), renameBuffer_.size(), target->name.c_str(), _TRUNCATE);
     showEntityRenameDialog_ = true;
+}
+
+bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr || direction == 0) {
+        return false;
+    }
+    const std::vector<EntityId> siblings =
+        target->parent.IsValid() ? world_.GetChildren(target->parent) : world_.GetRootEntities();
+    const auto position = std::ranges::find(siblings, entity);
+    if (position == siblings.end()) {
+        return false;
+    }
+    EntityId adjacent{};
+    if (direction < 0) {
+        if (position == siblings.begin()) {
+            return false;
+        }
+        adjacent = *std::prev(position);
+    } else {
+        const auto next = std::next(position);
+        if (next == siblings.end()) {
+            return false;
+        }
+        adjacent = *next;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const bool moved = direction < 0 ? world_.MoveEntityBefore(entity, adjacent)
+                                     : world_.MoveEntityAfter(entity, adjacent);
+    if (!moved) {
+        return false;
+    }
+    selection_ = entity;
+    RecordImmediateEdit("Reorder Entity", before, selectionBefore);
+    status_ = direction < 0 ? "Moved the entity up." : "Moved the entity down.";
+    return true;
 }
 
 bool EditorScene::CopySelection() {

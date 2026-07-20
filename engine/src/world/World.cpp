@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -91,6 +92,54 @@ bool World::SetParent(EntityId child, EntityId parent) {
         return false;
     }
     childEntity->parent = parent;
+    return true;
+}
+
+bool World::MoveEntityBefore(EntityId entity, EntityId sibling) {
+    const auto entityIterator = std::ranges::find(entities_, entity, &WorldEntity::id);
+    const auto siblingIterator = std::ranges::find(entities_, sibling, &WorldEntity::id);
+    if (entityIterator == entities_.end() || siblingIterator == entities_.end() ||
+        entityIterator == siblingIterator || entityIterator->parent != siblingIterator->parent) {
+        return false;
+    }
+    const size_t entityIndex =
+        static_cast<size_t>(std::distance(entities_.begin(), entityIterator));
+    const size_t siblingIndex =
+        static_cast<size_t>(std::distance(entities_.begin(), siblingIterator));
+    if (entityIndex + 1u == siblingIndex) {
+        return false;
+    }
+    if (entityIndex < siblingIndex) {
+        std::rotate(entities_.begin() + entityIndex, entities_.begin() + entityIndex + 1u,
+                    entities_.begin() + siblingIndex);
+    } else {
+        std::rotate(entities_.begin() + siblingIndex, entities_.begin() + entityIndex,
+                    entities_.begin() + entityIndex + 1u);
+    }
+    return true;
+}
+
+bool World::MoveEntityAfter(EntityId entity, EntityId sibling) {
+    const auto entityIterator = std::ranges::find(entities_, entity, &WorldEntity::id);
+    const auto siblingIterator = std::ranges::find(entities_, sibling, &WorldEntity::id);
+    if (entityIterator == entities_.end() || siblingIterator == entities_.end() ||
+        entityIterator == siblingIterator || entityIterator->parent != siblingIterator->parent) {
+        return false;
+    }
+    const size_t entityIndex =
+        static_cast<size_t>(std::distance(entities_.begin(), entityIterator));
+    const size_t siblingIndex =
+        static_cast<size_t>(std::distance(entities_.begin(), siblingIterator));
+    if (siblingIndex + 1u == entityIndex) {
+        return false;
+    }
+    if (entityIndex < siblingIndex) {
+        std::rotate(entities_.begin() + entityIndex, entities_.begin() + entityIndex + 1u,
+                    entities_.begin() + siblingIndex + 1u);
+    } else {
+        std::rotate(entities_.begin() + siblingIndex + 1u, entities_.begin() + entityIndex,
+                    entities_.begin() + entityIndex + 1u);
+    }
     return true;
 }
 

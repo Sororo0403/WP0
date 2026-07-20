@@ -204,5 +204,32 @@ int main() {
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {
         return 24;
     }
+    World ordered;
+    const EntityId first = ordered.CreateEntity("First");
+    const EntityId second = ordered.CreateEntity("Second");
+    const EntityId third = ordered.CreateEntity("Third");
+    if (!Check(ordered.MoveEntityBefore(third, first) &&
+                   ordered.GetRootEntities() == std::vector<EntityId>{third, first, second},
+               "Moving a root entity before its sibling failed.")) {
+        return 25;
+    }
+    if (!Check(ordered.MoveEntityAfter(third, second) &&
+                   ordered.GetRootEntities() == std::vector<EntityId>{first, second, third},
+               "Moving a root entity after its sibling failed.")) {
+        return 26;
+    }
+    const EntityId firstChild = ordered.CreateEntity("First Child");
+    const EntityId secondChild = ordered.CreateEntity("Second Child");
+    if (!Check(ordered.SetParent(firstChild, first) && ordered.SetParent(secondChild, first) &&
+                   ordered.MoveEntityBefore(secondChild, firstChild) &&
+                   ordered.GetChildren(first) ==
+                       std::vector<EntityId>{secondChild, firstChild},
+               "Moving a child entity before its sibling failed.")) {
+        return 27;
+    }
+    if (!Check(!ordered.MoveEntityBefore(firstChild, second),
+               "Entity ordering accepted a sibling from another parent.")) {
+        return 28;
+    }
     return 0;
 }
