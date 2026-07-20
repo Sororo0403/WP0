@@ -660,8 +660,42 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::EndDisabled();
     }
     ImGui::Separator();
+    ImGui::SetNextItemWidth(-58.0f);
+    ImGui::InputTextWithHint("##HierarchySearch", "Search entities...", hierarchySearch_.data(),
+                             hierarchySearch_.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) {
+        hierarchySearch_.fill('\0');
+    }
+    const std::string hierarchyQuery(hierarchySearch_.data());
+    visibleHierarchyEntities_.clear();
+    if (!hierarchyQuery.empty()) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (!ContainsCaseInsensitive(entity.name, hierarchyQuery)) {
+                continue;
+            }
+            EntityId current = entity.id;
+            for (size_t depth = 0; current.IsValid() && depth <= world_.Entities().size();
+                 ++depth) {
+                if (!visibleHierarchyEntities_.insert(current).second) {
+                    break;
+                }
+                const WorldEntity* currentEntity = world_.Find(current);
+                current = currentEntity != nullptr ? currentEntity->parent : EntityId{};
+            }
+        }
+    }
+    ImGui::Separator();
+    bool drewEntity = false;
     for (EntityId id : world_.GetRootEntities()) {
+        if (!hierarchyQuery.empty() && !visibleHierarchyEntities_.contains(id)) {
+            continue;
+        }
         DrawEntityNode(id);
+        drewEntity = true;
+    }
+    if (!hierarchyQuery.empty() && !drewEntity) {
+        ImGui::TextDisabled("No matching entities.");
     }
     ImGui::Separator();
     ImGui::Selectable("Scene Root (drop here)", false);
@@ -762,11 +796,20 @@ void EditorScene::DeleteEntity(EntityId entity) {
 
 void EditorScene::DrawEntityNode(EntityId id) {
     const WorldEntity* entity = world_.Find(id);
-    if (entity == nullptr) {
+    const bool filtering = hierarchySearch_[0] != '\0';
+    if (entity == nullptr || (filtering && !visibleHierarchyEntities_.contains(id))) {
         return;
     }
-    const std::vector<EntityId> children = world_.GetChildren(id);
+    std::vector<EntityId> children = world_.GetChildren(id);
+    if (filtering) {
+        std::erase_if(children, [this](EntityId child) {
+            return !visibleHierarchyEntities_.contains(child);
+        });
+    }
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (filtering) {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
     if (children.empty()) {
         flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     }

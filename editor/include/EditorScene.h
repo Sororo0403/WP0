@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 struct ImVec2;
@@ -138,6 +139,8 @@ private:
     std::vector<HistoryEntry> redoHistory_;
     std::optional<PendingHistoryEdit> pendingHistoryEdit_;
     std::string entityClipboard_;
+    std::array<char, 128> hierarchySearch_{};
+    std::unordered_set<EntityId, EntityIdHash> visibleHierarchyEntities_;
     bool dirty_ = false;
     bool showUnsavedChangesDialog_ = false;
     RenderSurface sceneViewSurface_{};
