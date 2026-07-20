@@ -44,6 +44,10 @@ private:
     void DrawInspectorPanel();
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
+    void SynchronizeHierarchySelection();
+    void SelectHierarchyEntity(EntityId entity, bool toggle, bool range);
+    [[nodiscard]] bool IsHierarchyEntitySelected(EntityId entity) const;
+    [[nodiscard]] std::vector<EntityId> GetTopLevelSelectedEntities() const;
     bool CopySelection();
     void CutSelection();
     bool PasteEntityClipboard(EntityId parent = {});
@@ -58,7 +62,7 @@ private:
     void CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position,
                                EntityId parent = {});
-    void DeleteEntity(EntityId entity);
+    void DeleteSelection();
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
@@ -132,6 +136,8 @@ private:
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
+    std::unordered_set<EntityId, EntityIdHash> hierarchySelection_;
+    EntityId hierarchySelectionAnchor_{};
     std::filesystem::path scenePath_;
     std::vector<std::filesystem::path> recentScenePaths_;
     PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;

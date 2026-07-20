@@ -407,7 +407,7 @@ void EditorScene::DrawMainMenu() {
             DuplicateSelection();
         }
         if (ImGui::MenuItem("Delete", "Delete", false, canDuplicate)) {
-            DeleteEntity(selection_);
+            DeleteSelection();
         }
         ImGui::EndMenu();
     }
@@ -708,6 +708,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
 }
 
 void EditorScene::DrawHierarchyPanel() {
+    SynchronizeHierarchySelection();
     if (ImGui::Button("Create")) {
         ImGui::OpenPopup("CreateEntity");
     }
@@ -716,7 +717,7 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::EndPopup();
     }
     ImGui::SameLine();
-    const bool canDelete = world_.Contains(selection_);
+    const bool canDelete = !hierarchySelection_.empty();
     if (!canDelete) {
         ImGui::BeginDisabled();
     }
@@ -731,7 +732,7 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::BeginDisabled();
     }
     if (ImGui::Button("Delete")) {
-        DeleteEntity(selection_);
+        DeleteSelection();
     }
     if (!canDelete) {
         ImGui::EndDisabled();
@@ -854,21 +855,31 @@ void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
     status_ = std::string("Created primitive: ") + kPrimitiveNames[primitiveIndex];
 }
 
-void EditorScene::DeleteEntity(EntityId entity) {
-    if (!world_.Contains(entity)) {
+void EditorScene::DeleteSelection() {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
         return;
     }
+    CommitHistoryEdit();
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
-    if (!world_.DestroyEntity(entity)) {
-        status_ = "Could not delete the entity hierarchy.";
+    size_t deletedCount = 0;
+    for (EntityId root : roots) {
+        if (world_.DestroyEntity(root)) {
+            ++deletedCount;
+        }
+    }
+    if (deletedCount == 0u) {
+        status_ = "Could not delete the selected entity hierarchies.";
         return;
     }
-    if (selection_ == entity || !world_.Contains(selection_)) {
-        selection_ = {};
-    }
-    RecordImmediateEdit("Delete Entity", before, selectionBefore);
-    status_ = "Deleted the selected entity hierarchy.";
+    selection_ = {};
+    hierarchySelection_.clear();
+    hierarchySelectionAnchor_ = {};
+    RecordImmediateEdit("Delete Entities", before, selectionBefore);
+    status_ = deletedCount == 1u ? "Deleted the selected entity hierarchy."
+                                 : "Deleted the selected entity hierarchies.";
 }
 
 void EditorScene::DrawEntityNode(EntityId id) {
@@ -890,7 +901,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
     if (children.empty()) {
         flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     }
-    if (selection_ == id) {
+    if (IsHierarchyEntitySelected(id)) {
         flags |= ImGuiTreeNodeFlags_Selected;
     }
 
@@ -898,7 +909,8 @@ void EditorScene::DrawEntityNode(EntityId id) {
     ImGui::PushID(idText.c_str());
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
     if (ImGui::IsItemClicked()) {
-        selection_ = id;
+        const ImGuiIO& io = ImGui::GetIO();
+        SelectHierarchyEntity(id, io.KeyCtrl, io.KeyShift);
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         RequestEntityRename(id);
@@ -906,7 +918,9 @@ void EditorScene::DrawEntityNode(EntityId id) {
     bool hierarchyChanged = false;
     bool deleteRequested = false;
     if (ImGui::BeginPopupContextItem("EntityContext")) {
-        selection_ = id;
+        if (!IsHierarchyEntitySelected(id)) {
+            SelectHierarchyEntity(id, false, false);
+        }
         if (ImGui::BeginMenu("Create Child")) {
             hierarchyChanged = DrawCreateEntityMenu({0.0f, 0.0f, 0.0f}, id);
             ImGui::EndMenu();
@@ -956,7 +970,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
         ImGui::EndPopup();
     }
     if (deleteRequested) {
-        DeleteEntity(id);
+        DeleteSelection();
         hierarchyChanged = true;
     }
     if (hierarchyChanged) {
@@ -1145,7 +1159,7 @@ void EditorScene::HandleEditorShortcuts() {
         } else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
             gizmoOperation_ = GizmoOperation::Scale;
         } else if (!gizmoWasUsing_ && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
-            DeleteEntity(selection_);
+            DeleteSelection();
         }
         return;
     }
@@ -1190,6 +1204,108 @@ void EditorScene::RequestEntityRename(EntityId entity) {
     showEntityRenameDialog_ = true;
 }
 
+void EditorScene::SynchronizeHierarchySelection() {
+    std::erase_if(hierarchySelection_, [this](EntityId entity) {
+        return !world_.Contains(entity);
+    });
+    if (!world_.Contains(hierarchySelectionAnchor_)) {
+        hierarchySelectionAnchor_ = {};
+    }
+    if (!world_.Contains(selection_)) {
+        selection_ = {};
+        hierarchySelection_.clear();
+        hierarchySelectionAnchor_ = {};
+        return;
+    }
+    if (!hierarchySelection_.contains(selection_)) {
+        hierarchySelection_.clear();
+        hierarchySelection_.insert(selection_);
+        hierarchySelectionAnchor_ = selection_;
+    }
+}
+
+void EditorScene::SelectHierarchyEntity(EntityId entity, bool toggle, bool range) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr) {
+        return;
+    }
+    if (range && world_.Contains(hierarchySelectionAnchor_)) {
+        const WorldEntity* anchor = world_.Find(hierarchySelectionAnchor_);
+        if (anchor != nullptr && anchor->parent == target->parent) {
+            const std::vector<EntityId> siblings = target->parent.IsValid()
+                                                       ? world_.GetChildren(target->parent)
+                                                       : world_.GetRootEntities();
+            const auto anchorPosition = std::ranges::find(siblings, hierarchySelectionAnchor_);
+            const auto targetPosition = std::ranges::find(siblings, entity);
+            if (anchorPosition != siblings.end() && targetPosition != siblings.end()) {
+                if (!toggle) {
+                    hierarchySelection_.clear();
+                }
+                auto first = anchorPosition;
+                auto last = targetPosition;
+                if (last < first) {
+                    std::swap(first, last);
+                }
+                hierarchySelection_.insert(first, std::next(last));
+                selection_ = entity;
+                return;
+            }
+        }
+    }
+    if (toggle) {
+        if (hierarchySelection_.contains(entity)) {
+            hierarchySelection_.erase(entity);
+            if (selection_ == entity) {
+                selection_ = {};
+                for (const WorldEntity& candidate : world_.Entities()) {
+                    if (hierarchySelection_.contains(candidate.id)) {
+                        selection_ = candidate.id;
+                        break;
+                    }
+                }
+            }
+            if (hierarchySelection_.empty()) {
+                hierarchySelectionAnchor_ = {};
+            }
+            return;
+        }
+        hierarchySelection_.insert(entity);
+    } else {
+        hierarchySelection_.clear();
+        hierarchySelection_.insert(entity);
+    }
+    selection_ = entity;
+    hierarchySelectionAnchor_ = entity;
+}
+
+bool EditorScene::IsHierarchyEntitySelected(EntityId entity) const {
+    return hierarchySelection_.contains(entity);
+}
+
+std::vector<EntityId> EditorScene::GetTopLevelSelectedEntities() const {
+    std::vector<EntityId> roots;
+    roots.reserve(hierarchySelection_.size());
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!hierarchySelection_.contains(entity.id)) {
+            continue;
+        }
+        bool hasSelectedAncestor = false;
+        EntityId ancestor = entity.parent;
+        for (size_t depth = 0; ancestor.IsValid() && depth < world_.Entities().size(); ++depth) {
+            if (hierarchySelection_.contains(ancestor)) {
+                hasSelectedAncestor = true;
+                break;
+            }
+            const WorldEntity* parent = world_.Find(ancestor);
+            ancestor = parent != nullptr ? parent->parent : EntityId{};
+        }
+        if (!hasSelectedAncestor) {
+            roots.push_back(entity.id);
+        }
+    }
+    return roots;
+}
+
 bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
     const WorldEntity* target = world_.Find(entity);
     if (target == nullptr || direction == 0) {
@@ -1229,11 +1345,14 @@ bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
 }
 
 bool EditorScene::CopySelection() {
-    if (!world_.Contains(selection_)) {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
         return false;
     }
+    const std::unordered_set<EntityId, EntityIdHash> rootIds(roots.begin(), roots.end());
     std::unordered_set<EntityId, EntityIdHash> copiedIds;
-    std::vector<EntityId> pending{selection_};
+    std::vector<EntityId> pending = roots;
     while (!pending.empty()) {
         const EntityId current = pending.back();
         pending.pop_back();
@@ -1251,7 +1370,7 @@ bool EditorScene::CopySelection() {
             continue;
         }
         copiedEntities.push_back(entity);
-        if (entity.id == selection_) {
+        if (rootIds.contains(entity.id)) {
             copiedEntities.back().parent = {};
         }
     }
@@ -1262,17 +1381,19 @@ bool EditorScene::CopySelection() {
         return false;
     }
     entityClipboard_ = WorldSerializer::Serialize(clipboardWorld);
-    status_ = "Copied the selected entity hierarchy.";
+    status_ = roots.size() == 1u ? "Copied the selected entity hierarchy."
+                                 : "Copied the selected entity hierarchies.";
     return true;
 }
 
 void EditorScene::CutSelection() {
-    const EntityId cutEntity = selection_;
     if (!CopySelection()) {
         return;
     }
-    DeleteEntity(cutEntity);
-    status_ = "Cut the selected entity hierarchy.";
+    const size_t cutCount = GetTopLevelSelectedEntities().size();
+    DeleteSelection();
+    status_ = cutCount == 1u ? "Cut the selected entity hierarchy."
+                             : "Cut the selected entity hierarchies.";
 }
 
 bool EditorScene::PasteEntityClipboard(EntityId parent) {
@@ -1290,8 +1411,8 @@ bool EditorScene::PasteEntityClipboard(EntityId parent) {
         clipboardWorld.Entities(), [](const WorldEntity& entity) {
             return !entity.parent.IsValid();
         }));
-    if (rootCount != 1u) {
-        status_ = "Paste failed: clipboard must contain one entity hierarchy.";
+    if (rootCount == 0u) {
+        status_ = "Paste failed: clipboard has no entity hierarchy roots.";
         return false;
     }
 
@@ -1299,7 +1420,8 @@ bool EditorScene::PasteEntityClipboard(EntityId parent) {
     const EntityId selectionBefore = selection_;
     std::unordered_map<EntityId, EntityId, EntityIdHash> pastedIds;
     pastedIds.reserve(clipboardWorld.Entities().size());
-    EntityId pastedRoot{};
+    std::vector<EntityId> pastedRoots;
+    pastedRoots.reserve(rootCount);
     for (const WorldEntity& source : clipboardWorld.Entities()) {
         const EntityId pasted = world_.CreateEntity(source.name);
         pastedIds.emplace(source.id, pasted);
@@ -1310,11 +1432,11 @@ bool EditorScene::PasteEntityClipboard(EntityId parent) {
         destination->transform = source.transform;
         destination->meshRenderer = source.meshRenderer;
         if (!source.parent.IsValid()) {
-            pastedRoot = pasted;
+            pastedRoots.push_back(pasted);
             destination->name += " Copy";
         }
     }
-    bool valid = pastedRoot.IsValid();
+    bool valid = pastedRoots.size() == rootCount;
     for (const WorldEntity& source : clipboardWorld.Entities()) {
         const EntityId pasted = pastedIds.at(source.id);
         const EntityId pastedParent = source.parent.IsValid() ? pastedIds.at(source.parent) : parent;
@@ -1332,27 +1454,61 @@ bool EditorScene::PasteEntityClipboard(EntityId parent) {
         status_ = "Paste failed while rebuilding the entity hierarchy.";
         return false;
     }
-    selection_ = pastedRoot;
-    RecordImmediateEdit("Paste Entity Hierarchy", before, selectionBefore);
-    status_ = parent.IsValid() ? "Pasted the entity hierarchy as a child."
-                               : "Pasted the entity hierarchy.";
+    hierarchySelection_.clear();
+    hierarchySelection_.insert(pastedRoots.begin(), pastedRoots.end());
+    selection_ = pastedRoots.front();
+    hierarchySelectionAnchor_ = selection_;
+    RecordImmediateEdit(rootCount == 1u ? "Paste Entity Hierarchy" : "Paste Entity Hierarchies",
+                        before, selectionBefore);
+    if (rootCount == 1u) {
+        status_ = parent.IsValid() ? "Pasted the entity hierarchy as a child."
+                                   : "Pasted the entity hierarchy.";
+    } else {
+        status_ = parent.IsValid() ? "Pasted the entity hierarchies as children."
+                                   : "Pasted the entity hierarchies.";
+    }
     return true;
 }
 
 void EditorScene::DuplicateSelection() {
-    if (!world_.Contains(selection_)) {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
         return;
     }
+    CommitHistoryEdit();
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
-    const EntityId duplicate = world_.DuplicateEntityHierarchy(selection_);
-    if (!duplicate.IsValid()) {
-        status_ = "Could not duplicate the selected entity hierarchy.";
-        return;
+    std::vector<EntityId> duplicates;
+    duplicates.reserve(roots.size());
+    for (EntityId root : roots) {
+        const EntityId duplicate = world_.DuplicateEntityHierarchy(root);
+        if (!duplicate.IsValid()) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+            }
+            selection_ = selectionBefore;
+            hierarchySelection_.clear();
+            if (world_.Contains(selectionBefore)) {
+                hierarchySelection_.insert(selectionBefore);
+                hierarchySelectionAnchor_ = selectionBefore;
+            } else {
+                hierarchySelectionAnchor_ = {};
+            }
+            status_ = "Could not duplicate the selected entity hierarchies.";
+            return;
+        }
+        duplicates.push_back(duplicate);
     }
-    selection_ = duplicate;
-    RecordImmediateEdit("Duplicate Entity", before, selectionBefore);
-    status_ = "Duplicated the selected entity hierarchy.";
+    hierarchySelection_.clear();
+    hierarchySelection_.insert(duplicates.begin(), duplicates.end());
+    selection_ = duplicates.front();
+    hierarchySelectionAnchor_ = selection_;
+    RecordImmediateEdit(duplicates.size() == 1u ? "Duplicate Entity" : "Duplicate Entities",
+                        before, selectionBefore);
+    status_ = duplicates.size() == 1u ? "Duplicated the selected entity hierarchy."
+                                      : "Duplicated the selected entity hierarchies.";
 }
 
 void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
@@ -1624,6 +1780,11 @@ bool EditorScene::RestoreHistoryState(const HistoryState& state) {
     }
     world_ = std::move(restored);
     selection_ = world_.Contains(state.selection) ? state.selection : EntityId{};
+    hierarchySelection_.clear();
+    if (selection_.IsValid()) {
+        hierarchySelection_.insert(selection_);
+    }
+    hierarchySelectionAnchor_ = selection_;
     RefreshDirty();
     return true;
 }
