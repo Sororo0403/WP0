@@ -303,6 +303,7 @@ void EditorScene::DrawPostProcessOverlay() {
     HandleEditorShortcuts();
     DrawMainMenu();
     DrawUnsavedChangesDialog();
+    DrawEntityRenameDialog();
     DrawPanels();
 }
 
@@ -428,6 +429,55 @@ void EditorScene::DrawUnsavedChangesDialog() {
         pendingSceneAction_ = PendingSceneAction::None;
         pendingScenePath_.clear();
         ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void EditorScene::DrawEntityRenameDialog() {
+    if (showEntityRenameDialog_) {
+        ImGui::OpenPopup("Rename Entity");
+        showEntityRenameDialog_ = false;
+        focusEntityRenameInput_ = true;
+    }
+    if (!ImGui::BeginPopupModal("Rename Entity", nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    WorldEntity* entity = world_.Find(renameEntity_);
+    if (entity == nullptr) {
+        renameEntity_ = {};
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    ImGui::TextDisabled("ID: %s", renameEntity_.ToString().c_str());
+    if (focusEntityRenameInput_) {
+        ImGui::SetKeyboardFocusHere();
+        focusEntityRenameInput_ = false;
+    }
+    ImGui::SetNextItemWidth(320.0f);
+    const bool submitted = ImGui::InputText(
+        "##EntityName", renameBuffer_.data(), renameBuffer_.size(),
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    if (submitted || ImGui::Button("Rename", ImVec2(100.0f, 0.0f))) {
+        const std::string before = WorldSerializer::Serialize(world_);
+        const EntityId selectionBefore = selection_;
+        entity->name = renameBuffer_.data();
+        if (entity->name.empty()) {
+            entity->name = "Entity";
+        }
+        selection_ = renameEntity_;
+        renameEntity_ = {};
+        RecordImmediateEdit("Rename Entity", before, selectionBefore);
+        status_ = "Renamed the entity.";
+        ImGui::CloseCurrentPopup();
+    } else {
+        ImGui::SameLine();
+        if (cancel || ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+            renameEntity_ = {};
+            ImGui::CloseCurrentPopup();
+        }
     }
     ImGui::EndPopup();
 }
@@ -823,6 +873,9 @@ void EditorScene::DrawEntityNode(EntityId id) {
     if (ImGui::IsItemClicked()) {
         selection_ = id;
     }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        RequestEntityRename(id);
+    }
     bool hierarchyChanged = false;
     bool deleteRequested = false;
     if (ImGui::BeginPopupContextItem("EntityContext")) {
@@ -832,6 +885,9 @@ void EditorScene::DrawEntityNode(EntityId id) {
             ImGui::EndMenu();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem("Rename", "F2")) {
+            RequestEntityRename(id);
+        }
         if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
             DuplicateSelection();
             hierarchyChanged = true;
@@ -1003,7 +1059,9 @@ void EditorScene::HandleEditorShortcuts() {
         return;
     }
     if (!io.KeyCtrl) {
-        if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+            RequestEntityRename(selection_);
+        } else if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
             gizmoOperation_ = GizmoOperation::Translate;
         } else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
             gizmoOperation_ = GizmoOperation::Rotate;
@@ -1041,6 +1099,18 @@ void EditorScene::HandleEditorShortcuts() {
     } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
         Redo();
     }
+}
+
+void EditorScene::RequestEntityRename(EntityId entity) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr) {
+        return;
+    }
+    renameEntity_ = entity;
+    selection_ = entity;
+    renameBuffer_.fill('\0');
+    strncpy_s(renameBuffer_.data(), renameBuffer_.size(), target->name.c_str(), _TRUNCATE);
+    showEntityRenameDialog_ = true;
 }
 
 bool EditorScene::CopySelection() {

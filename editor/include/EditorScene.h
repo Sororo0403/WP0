@@ -36,6 +36,7 @@ public:
 private:
     void DrawMainMenu();
     void DrawUnsavedChangesDialog();
+    void DrawEntityRenameDialog();
     void DrawPanels();
     void DrawProjectPanel();
     void DrawHierarchyPanel();
@@ -46,6 +47,7 @@ private:
     bool CopySelection();
     void CutSelection();
     bool PasteEntityClipboard(EntityId parent = {});
+    void RequestEntityRename(EntityId entity);
     void DuplicateSelection();
     void ReparentEntity(EntityId child, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
@@ -141,8 +143,12 @@ private:
     std::string entityClipboard_;
     std::array<char, 128> hierarchySearch_{};
     std::unordered_set<EntityId, EntityIdHash> visibleHierarchyEntities_;
+    EntityId renameEntity_{};
+    std::array<char, 256> renameBuffer_{};
     bool dirty_ = false;
     bool showUnsavedChangesDialog_ = false;
+    bool showEntityRenameDialog_ = false;
+    bool focusEntityRenameInput_ = false;
     RenderSurface sceneViewSurface_{};
     PostProcessSystem sceneViewPostProcess_{};
     SceneRenderer sceneRenderer_{};
