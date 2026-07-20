@@ -334,12 +334,14 @@ void EditorScene::Draw() {}
 
 void EditorScene::DrawPostProcessOverlay() {
     ImGuizmo::BeginFrame();
+    CaptureConsoleStatus();
     HandleEditorShortcuts();
     DrawMainMenu();
     DrawDockSpace();
     DrawUnsavedChangesDialog();
     DrawEntityRenameDialog();
     DrawPanels();
+    CaptureConsoleStatus();
 }
 
 bool EditorScene::OnCloseRequested() {
@@ -643,7 +645,7 @@ void EditorScene::DrawPanels() {
 
     if (showConsolePanel_) {
         if (ImGui::Begin("Console", &showConsolePanel_, kPanelFlags)) {
-            ImGui::TextWrapped("%s", status_.c_str());
+            DrawConsolePanel();
         }
         ImGui::End();
     }
@@ -654,6 +656,133 @@ void EditorScene::DrawPanels() {
         }
         ImGui::End();
     }
+}
+
+void EditorScene::CaptureConsoleStatus() {
+    if (status_.empty() || status_ == lastCapturedStatus_) {
+        return;
+    }
+    lastCapturedStatus_ = status_;
+    std::string normalized = status_;
+    std::ranges::transform(normalized, normalized.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    ConsoleSeverity severity = ConsoleSeverity::Info;
+    if (normalized.find("failed") != std::string::npos ||
+        normalized.find("failure") != std::string::npos ||
+        normalized.find("error") != std::string::npos) {
+        severity = ConsoleSeverity::Error;
+    } else if (normalized.find("could not") != std::string::npos ||
+               normalized.find("cannot") != std::string::npos ||
+               normalized.find("invalid") != std::string::npos ||
+               normalized.find("rejected") != std::string::npos ||
+               normalized.find("unavailable") != std::string::npos) {
+        severity = ConsoleSeverity::Warning;
+    }
+    consoleEntries_.push_back({status_, ImGui::GetTime(), severity});
+    constexpr size_t kMaxConsoleEntries = 512u;
+    if (consoleEntries_.size() > kMaxConsoleEntries) {
+        consoleEntries_.erase(consoleEntries_.begin(),
+                              consoleEntries_.begin() +
+                                  static_cast<ptrdiff_t>(consoleEntries_.size() -
+                                                         kMaxConsoleEntries));
+    }
+    consoleScrollToBottom_ = true;
+}
+
+void EditorScene::DrawConsolePanel() {
+    size_t infoCount = 0;
+    size_t warningCount = 0;
+    size_t errorCount = 0;
+    for (const ConsoleEntry& entry : consoleEntries_) {
+        switch (entry.severity) {
+        case ConsoleSeverity::Info:
+            ++infoCount;
+            break;
+        case ConsoleSeverity::Warning:
+            ++warningCount;
+            break;
+        case ConsoleSeverity::Error:
+            ++errorCount;
+            break;
+        }
+    }
+    if (ImGui::Button("Clear")) {
+        consoleEntries_.clear();
+        lastCapturedStatus_ = status_;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Copy All")) {
+        std::string text;
+        for (const ConsoleEntry& entry : consoleEntries_) {
+            const char* severity = entry.severity == ConsoleSeverity::Error
+                                       ? "Error"
+                                       : entry.severity == ConsoleSeverity::Warning ? "Warning"
+                                                                                    : "Info";
+            text += '[';
+            text += severity;
+            text += "] ";
+            text += entry.message;
+            text += '\n';
+        }
+        ImGui::SetClipboardText(text.c_str());
+    }
+    ImGui::SameLine();
+    std::string infoLabel = "Info (" + std::to_string(infoCount) + ")";
+    std::string warningLabel = "Warnings (" + std::to_string(warningCount) + ")";
+    std::string errorLabel = "Errors (" + std::to_string(errorCount) + ")";
+    ImGui::Checkbox(infoLabel.c_str(), &showConsoleInfo_);
+    ImGui::SameLine();
+    ImGui::Checkbox(warningLabel.c_str(), &showConsoleWarnings_);
+    ImGui::SameLine();
+    ImGui::Checkbox(errorLabel.c_str(), &showConsoleErrors_);
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##ConsoleSearch", "Search messages...", consoleSearch_.data(),
+                             consoleSearch_.size());
+    ImGui::Separator();
+
+    if (ImGui::BeginChild("ConsoleMessages", {0.0f, 0.0f}, ImGuiChildFlags_Borders,
+                          ImGuiWindowFlags_HorizontalScrollbar)) {
+        const std::string query(consoleSearch_.data());
+        for (size_t index = 0; index < consoleEntries_.size(); ++index) {
+            const ConsoleEntry& entry = consoleEntries_[index];
+            const bool severityVisible =
+                (entry.severity == ConsoleSeverity::Info && showConsoleInfo_) ||
+                (entry.severity == ConsoleSeverity::Warning && showConsoleWarnings_) ||
+                (entry.severity == ConsoleSeverity::Error && showConsoleErrors_);
+            if (!severityVisible || (!query.empty() &&
+                                     !ContainsCaseInsensitive(entry.message, query))) {
+                continue;
+            }
+            const char* label = entry.severity == ConsoleSeverity::Error
+                                    ? "Error"
+                                    : entry.severity == ConsoleSeverity::Warning ? "Warning"
+                                                                                 : "Info";
+            const ImVec4 color = entry.severity == ConsoleSeverity::Error
+                                     ? ImVec4{1.0f, 0.35f, 0.35f, 1.0f}
+                                     : entry.severity == ConsoleSeverity::Warning
+                                           ? ImVec4{1.0f, 0.75f, 0.25f, 1.0f}
+                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+            ImGui::PushID(static_cast<int>(index));
+            ImGui::TextDisabled("[%7.2f]", entry.timestampSeconds);
+            ImGui::SameLine();
+            ImGui::TextColored(color, "[%s]", label);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(entry.message.c_str());
+            if (ImGui::BeginPopupContextItem("MessageContext")) {
+                if (ImGui::MenuItem("Copy Message")) {
+                    ImGui::SetClipboardText(entry.message.c_str());
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        if (consoleScrollToBottom_) {
+            ImGui::SetScrollHereY(1.0f);
+            consoleScrollToBottom_ = false;
+        }
+    }
+    ImGui::EndChild();
 }
 
 void EditorScene::DrawProjectPanel() {

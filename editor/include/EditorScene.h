@@ -43,6 +43,8 @@ private:
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
+    void DrawConsolePanel();
+    void CaptureConsoleStatus();
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
     void SynchronizeHierarchySelection();
@@ -154,6 +156,23 @@ private:
     PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;
     std::filesystem::path pendingScenePath_;
     std::string status_ = "Editor session started.";
+    enum class ConsoleSeverity : uint8_t {
+        Info,
+        Warning,
+        Error,
+    };
+    struct ConsoleEntry {
+        std::string message;
+        double timestampSeconds = 0.0;
+        ConsoleSeverity severity = ConsoleSeverity::Info;
+    };
+    std::vector<ConsoleEntry> consoleEntries_;
+    std::string lastCapturedStatus_;
+    std::array<char, 128> consoleSearch_{};
+    bool showConsoleInfo_ = true;
+    bool showConsoleWarnings_ = true;
+    bool showConsoleErrors_ = true;
+    bool consoleScrollToBottom_ = false;
     std::string savedWorldSnapshot_;
     std::vector<HistoryEntry> undoHistory_;
     std::vector<HistoryEntry> redoHistory_;
