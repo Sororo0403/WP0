@@ -92,6 +92,32 @@ Transform DecomposeTransform(const DirectX::XMFLOAT4X4& matrix) {
     return result;
 }
 
+bool TryDecomposeTransformComponent(const DirectX::XMMATRIX& matrix,
+                                    TransformComponent& transform) {
+    DirectX::XMFLOAT4X4 stored{};
+    DirectX::XMStoreFloat4x4(&stored, matrix);
+    float translation[3]{};
+    float rotation[3]{};
+    float scale[3]{};
+    ImGuizmo::DecomposeMatrixToComponents(&stored._11, translation, rotation, scale);
+    const bool finite = std::ranges::all_of(translation, [](float value) {
+                            return std::isfinite(value);
+                        }) &&
+                        std::ranges::all_of(rotation, [](float value) {
+                            return std::isfinite(value);
+                        }) &&
+                        std::ranges::all_of(scale, [](float value) {
+                            return std::isfinite(value);
+                        });
+    if (!finite) {
+        return false;
+    }
+    transform.position = {translation[0], translation[1], translation[2]};
+    transform.rotationDegrees = {rotation[0], rotation[1], rotation[2]};
+    transform.scale = {scale[0], scale[1], scale[2]};
+    return true;
+}
+
 bool TryGetModelBounds(const Model& model, DirectX::XMFLOAT3& boundsMin,
                        DirectX::XMFLOAT3& boundsMax) {
     bool found = false;
@@ -1275,15 +1301,50 @@ void EditorScene::ReparentEntity(EntityId child, EntityId parent) {
     if (childEntity == nullptr || childEntity->parent == parent) {
         return;
     }
+    DirectX::XMFLOAT4X4 childWorld{};
+    if (!world_.TryGetWorldMatrix(child, childWorld)) {
+        status_ = "Could not read the entity world transform.";
+        return;
+    }
+    DirectX::XMMATRIX localMatrix = DirectX::XMLoadFloat4x4(&childWorld);
+    if (parent.IsValid()) {
+        DirectX::XMFLOAT4X4 parentWorld{};
+        if (!world_.TryGetWorldMatrix(parent, parentWorld)) {
+            status_ = "Could not read the new parent world transform.";
+            return;
+        }
+        DirectX::XMVECTOR determinant{};
+        const DirectX::XMMATRIX inverseParent =
+            DirectX::XMMatrixInverse(&determinant, DirectX::XMLoadFloat4x4(&parentWorld));
+        const float determinantValue = DirectX::XMVectorGetX(determinant);
+        if (!std::isfinite(determinantValue) || std::abs(determinantValue) <= 1.0e-8f) {
+            status_ = "Cannot reparent under a singular transform.";
+            return;
+        }
+        localMatrix *= inverseParent;
+    }
+    TransformComponent localTransform{};
+    if (!TryDecomposeTransformComponent(localMatrix, localTransform)) {
+        status_ = "Could not preserve the entity world transform.";
+        return;
+    }
+    CommitHistoryEdit();
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
     if (!world_.SetParent(child, parent)) {
         status_ = "Cannot create a cyclic or invalid hierarchy.";
         return;
     }
+    WorldEntity* reparented = world_.Find(child);
+    if (reparented == nullptr) {
+        status_ = "The reparented entity no longer exists.";
+        return;
+    }
+    reparented->transform = localTransform;
     selection_ = child;
     RecordImmediateEdit("Reparent Entity", before, selectionBefore);
-    status_ = parent.IsValid() ? "Reparented the entity." : "Moved the entity to the scene root.";
+    status_ = parent.IsValid() ? "Reparented the entity without moving it."
+                               : "Moved the entity to the scene root without moving it.";
 }
 
 void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::path& path) {
@@ -1933,25 +1994,9 @@ bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& 
                 }
             }
         }
-        XMFLOAT4X4 local{};
-        XMStoreFloat4x4(&local, localMatrix);
-        float translation[3]{};
-        float rotation[3]{};
-        float scale[3]{};
-        ImGuizmo::DecomposeMatrixToComponents(&local._11, translation, rotation, scale);
-        const bool finite = std::ranges::all_of(translation, [](float value) {
-                                return std::isfinite(value);
-                            }) &&
-                            std::ranges::all_of(rotation, [](float value) {
-                                return std::isfinite(value);
-                            }) &&
-                            std::ranges::all_of(scale, [](float value) {
-                                return std::isfinite(value);
-                            });
-        if (canApply && finite) {
-            entity->transform.position = {translation[0], translation[1], translation[2]};
-            entity->transform.rotationDegrees = {rotation[0], rotation[1], rotation[2]};
-            entity->transform.scale = {scale[0], scale[1], scale[2]};
+        TransformComponent localTransform{};
+        if (canApply && TryDecomposeTransformComponent(localMatrix, localTransform)) {
+            entity->transform = localTransform;
             RefreshDirty();
         }
     }
