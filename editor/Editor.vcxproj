@@ -105,6 +105,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ApplicationPaths.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
@@ -117,6 +118,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\AssetImportPlanner.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectLauncher.h" />

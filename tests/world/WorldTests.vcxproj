@@ -82,6 +82,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="$(MSBuildThisFileDirectory)WorldTests.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />
   </ItemGroup>

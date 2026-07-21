@@ -1,3 +1,4 @@
+#include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
 #include "RecentScenesStore.h"
 #include "core/AssetManager.h"
@@ -6,6 +7,7 @@
 
 #include <filesystem>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -245,6 +247,89 @@ int main() {
                    std::vector<EntityId>{third, first, second, fourth},
                "Moving multiple siblings after a target did not preserve their order.")) {
         return 30;
+    }
+
+    const std::filesystem::path importDirectory =
+        std::filesystem::temp_directory_path() / ("asset-import-" + root.ToString());
+    std::error_code importFilesystemError;
+    std::filesystem::remove_all(importDirectory, importFilesystemError);
+    importFilesystemError.clear();
+    std::filesystem::create_directories(importDirectory / "gltf/data", importFilesystemError);
+    std::filesystem::create_directories(importDirectory / "gltf/textures",
+                                        importFilesystemError);
+    std::filesystem::create_directories(importDirectory / "obj/materials",
+                                        importFilesystemError);
+    std::filesystem::create_directories(importDirectory / "obj/textures",
+                                        importFilesystemError);
+    const auto writeFile = [](const std::filesystem::path& path, std::string_view contents) {
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        return static_cast<bool>(stream);
+    };
+    const bool importFilesCreated = !importFilesystemError &&
+        writeFile(importDirectory / "gltf/model.gltf",
+                  R"({"asset":{"version":"2.0"},"buffers":[{"uri":"data/model.bin"}],"images":[{"uri":"textures/albedo.png"}]})") &&
+        writeFile(importDirectory / "gltf/data/model.bin", "mesh-data") &&
+        writeFile(importDirectory / "gltf/textures/albedo.png", "image-data") &&
+        writeFile(importDirectory / "obj/model.obj", "mtllib materials/model.mtl\n") &&
+        writeFile(importDirectory / "obj/materials/model.mtl",
+                  "map_Kd -s 1 1 1 ../textures/diffuse\\ image.png\n"
+                  "bump ../textures/normal.png\n") &&
+        writeFile(importDirectory / "obj/textures/diffuse image.png", "diffuse") &&
+        writeFile(importDirectory / "obj/textures/normal.png", "normal");
+    if (!Check(importFilesCreated, "Asset import test files could not be created.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 31;
+    }
+
+    std::vector<AssetImport::File> importPlan;
+    std::string importError;
+    const bool gltfPlanBuilt = AssetImport::BuildPlan(
+        {importDirectory / "gltf/model.gltf"}, importPlan, importError);
+    if (!Check(gltfPlanBuilt, importError.c_str()) ||
+        !Check(importPlan.size() == 3u,
+               "glTF import did not collect its buffer and image dependencies.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 32;
+    }
+    const bool objPlanBuilt = AssetImport::BuildPlan(
+        {importDirectory / "obj/model.obj"}, importPlan, importError);
+    if (!Check(objPlanBuilt, importError.c_str()) ||
+        !Check(importPlan.size() == 4u,
+               "OBJ import did not collect its MTL and texture dependencies.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 33;
+    }
+    std::filesystem::remove(importDirectory / "obj/textures/normal.png",
+                            importFilesystemError);
+    if (!Check(!AssetImport::BuildPlan({importDirectory / "obj/model.obj"}, importPlan,
+                                       importError) &&
+                   importError.find("Missing OBJ dependency") != std::string::npos,
+               "OBJ import accepted a missing texture dependency.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 34;
+    }
+    if (!Check(writeFile(importDirectory / "outside.png", "outside") &&
+                   writeFile(importDirectory / "obj/materials/model.mtl",
+                             "map_Kd ../../outside.png\n") &&
+                   !AssetImport::BuildPlan({importDirectory / "obj/model.obj"}, importPlan,
+                                           importError) &&
+                   importError.find("escapes its source folder") != std::string::npos,
+               "OBJ import accepted a dependency outside the OBJ folder.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 35;
+    }
+    if (!Check(AssetImport::HaveEqualContents(importDirectory / "gltf/data/model.bin",
+                                              importDirectory / "gltf/data/model.bin") &&
+                   !AssetImport::HaveEqualContents(importDirectory / "gltf/data/model.bin",
+                                                   importDirectory / "gltf/textures/albedo.png"),
+               "Asset import content comparison is incorrect.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 36;
+    }
+    std::filesystem::remove_all(importDirectory, importFilesystemError);
+    if (!Check(!importFilesystemError, "Asset import test cleanup failed.")) {
+        return 37;
     }
     return 0;
 }

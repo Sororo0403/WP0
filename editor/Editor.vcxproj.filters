@@ -12,6 +12,9 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\AssetImportPlanner.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -33,6 +36,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\AssetImportPlanner.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h">
