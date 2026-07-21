@@ -71,6 +71,8 @@ private:
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);
     bool FocusSceneCameraOnSelection();
+    bool AlignSelectedCameraToSceneView();
+    bool AlignSceneViewToSelectedCamera();
     void HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
                                 bool imageHovered);
     void CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent = {});

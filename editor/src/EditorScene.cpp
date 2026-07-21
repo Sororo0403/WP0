@@ -2458,6 +2458,19 @@ void EditorScene::DrawInspectorPanel() {
             status_ = "Removed Camera.";
         } else {
             CameraComponent& camera = *entity->camera;
+            if (ImGui::Button("Align to Scene View")) {
+                AlignSelectedCameraToSceneView();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Move and rotate this Camera to match the Scene View.");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Move View to Camera")) {
+                AlignSceneViewToSelectedCamera();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Move the Scene View to this Camera's position and rotation.");
+            }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
             if (ImGui::Checkbox("Enabled##Camera", &camera.enabled)) {
@@ -3455,6 +3468,83 @@ bool EditorScene::FocusSceneCameraOnSelection() {
     sceneViewCamera_.SetClipRange(0.01f,
                                   (std::max)(1000.0f, distance + radius * 4.0f));
     status_ = "Focused the Scene camera on " + entity->name + ".";
+    return true;
+}
+
+bool EditorScene::AlignSelectedCameraToSceneView() {
+    WorldEntity* entity = world_.Find(selection_);
+    if (entity == nullptr || !entity->camera) {
+        status_ = "Select a Camera before aligning it to the Scene View.";
+        return false;
+    }
+
+    using namespace DirectX;
+    XMFLOAT4X4 currentWorld{};
+    TransformComponent currentWorldTransform{};
+    if (!world_.TryGetWorldMatrix(entity->id, currentWorld) ||
+        !TryDecomposeTransformComponent(XMLoadFloat4x4(&currentWorld),
+                                        currentWorldTransform)) {
+        status_ = "Could not read the Camera world transform.";
+        return false;
+    }
+
+    const XMFLOAT3 position = sceneViewCamera_.GetPosition();
+    const XMFLOAT3 rotation = sceneViewCamera_.GetRotation();
+    XMMATRIX local =
+        XMMatrixScaling(currentWorldTransform.scale.x, currentWorldTransform.scale.y,
+                        currentWorldTransform.scale.z) *
+        XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, rotation.z) *
+        XMMatrixTranslation(position.x, position.y, position.z);
+    if (entity->parent.IsValid()) {
+        XMFLOAT4X4 parentWorld{};
+        if (!world_.TryGetWorldMatrix(entity->parent, parentWorld)) {
+            status_ = "Could not read the Camera parent transform.";
+            return false;
+        }
+        XMVECTOR determinant{};
+        const XMMATRIX inverseParent =
+            XMMatrixInverse(&determinant, XMLoadFloat4x4(&parentWorld));
+        const float determinantValue = XMVectorGetX(determinant);
+        if (!std::isfinite(determinantValue) || std::abs(determinantValue) <= 1.0e-8f) {
+            status_ = "Cannot align a Camera under a singular parent transform.";
+            return false;
+        }
+        local *= inverseParent;
+    }
+
+    TransformComponent aligned{};
+    if (!TryDecomposeTransformComponent(local, aligned)) {
+        status_ = "Could not calculate the aligned Camera transform.";
+        return false;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    entity->transform = aligned;
+    RecordImmediateEdit("Align Camera to Scene View", before, selectionBefore);
+    status_ = "Aligned " + entity->name + " to the Scene View.";
+    return true;
+}
+
+bool EditorScene::AlignSceneViewToSelectedCamera() {
+    const WorldEntity* entity = world_.Find(selection_);
+    DirectX::XMFLOAT4X4 worldMatrix{};
+    TransformComponent worldTransform{};
+    if (entity == nullptr || !entity->camera) {
+        status_ = "Select a Camera before moving the Scene View.";
+        return false;
+    }
+    if (!world_.TryGetWorldMatrix(entity->id, worldMatrix) ||
+        !TryDecomposeTransformComponent(DirectX::XMLoadFloat4x4(&worldMatrix),
+                                        worldTransform)) {
+        status_ = "Could not read the Camera world transform.";
+        return false;
+    }
+    sceneViewCamera_.SetPosition(worldTransform.position);
+    sceneViewCamera_.SetRotation(
+        {DirectX::XMConvertToRadians(worldTransform.rotationDegrees.x),
+         DirectX::XMConvertToRadians(worldTransform.rotationDegrees.y),
+         DirectX::XMConvertToRadians(worldTransform.rotationDegrees.z)});
+    status_ = "Moved the Scene View to " + entity->name + ".";
     return true;
 }
 
