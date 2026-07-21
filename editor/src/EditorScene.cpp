@@ -2047,7 +2047,8 @@ void EditorScene::DrawEntityNode(EntityId id) {
         SelectHierarchyEntity(id, io.KeyCtrl, io.KeyShift);
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        RequestEntityRename(id);
+        SelectHierarchyEntity(id, false, false);
+        FocusSceneCameraOnSelection();
     }
     bool hierarchyChanged = false;
     bool deleteRequested = false;
@@ -2062,6 +2063,10 @@ void EditorScene::DrawEntityNode(EntityId id) {
         ImGui::Separator();
         if (ImGui::MenuItem("Rename", "F2")) {
             RequestEntityRename(id);
+        }
+        if (ImGui::MenuItem("Focus in Scene", "F")) {
+            SelectHierarchyEntity(id, false, false);
+            FocusSceneCameraOnSelection();
         }
         if (entity->meshRenderer &&
             ImGui::MenuItem("Renderer Enabled", nullptr, entity->meshRenderer->enabled)) {
@@ -3618,6 +3623,9 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
     selection_ = closest;
     status_ = closest.IsValid() ? "Selected entity from Scene View."
                                 : "Scene View selection cleared.";
+    if (closest.IsValid() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        FocusSceneCameraOnSelection();
+    }
 }
 
 void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,
