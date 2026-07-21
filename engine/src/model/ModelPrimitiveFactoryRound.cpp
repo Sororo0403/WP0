@@ -124,11 +124,11 @@ std::optional<PrimitiveMeshData> BuildSphere(uint32_t textureId, const Material&
                 const uint32_t i2 = i0 + row;
                 const uint32_t i3 = i2 + 1u;
                 data.indices.push_back(i0);
-                data.indices.push_back(i1);
-                data.indices.push_back(i2);
                 data.indices.push_back(i2);
                 data.indices.push_back(i1);
+                data.indices.push_back(i2);
                 data.indices.push_back(i3);
+                data.indices.push_back(i1);
             }
         }
     } catch (const std::exception&) {
@@ -176,11 +176,11 @@ std::optional<PrimitiveMeshData> BuildRing(uint32_t textureId, const Material& m
                  {segment.u1, 1.0f}});
 
             data.indices.push_back(base + 0);
-            data.indices.push_back(base + 2);
             data.indices.push_back(base + 1);
             data.indices.push_back(base + 2);
+            data.indices.push_back(base + 2);
+            data.indices.push_back(base + 1);
             data.indices.push_back(base + 3);
-            data.indices.push_back(base + 1);
         }
     } catch (const std::exception&) {
         return std::nullopt;

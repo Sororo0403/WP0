@@ -31,6 +31,33 @@ bool IsVerticallyCentered(const ModelPrimitiveFactory::PrimitiveMeshData& primit
     }
     return !primitive.vertices.empty() && std::abs(minimum + maximum) < 0.0001f;
 }
+
+bool HasOutwardWinding(const ModelPrimitiveFactory::PrimitiveMeshData& primitive) {
+    if (primitive.indices.empty() || primitive.indices.size() % 3u != 0u) {
+        return false;
+    }
+    for (size_t index = 0; index < primitive.indices.size(); index += 3u) {
+        const ModelVertex& a = primitive.vertices[primitive.indices[index]];
+        const ModelVertex& b = primitive.vertices[primitive.indices[index + 1u]];
+        const ModelVertex& c = primitive.vertices[primitive.indices[index + 2u]];
+        const DirectX::XMFLOAT3 ab{b.position.x - a.position.x, b.position.y - a.position.y,
+                                  b.position.z - a.position.z};
+        const DirectX::XMFLOAT3 ac{c.position.x - a.position.x, c.position.y - a.position.y,
+                                  c.position.z - a.position.z};
+        const DirectX::XMFLOAT3 cross{ab.y * ac.z - ab.z * ac.y,
+                                     ab.z * ac.x - ab.x * ac.z,
+                                     ab.x * ac.y - ab.y * ac.x};
+        const DirectX::XMFLOAT3 normal{a.normal.x + b.normal.x + c.normal.x,
+                                      a.normal.y + b.normal.y + c.normal.y,
+                                      a.normal.z + b.normal.z + c.normal.z};
+        const float areaSquared = cross.x * cross.x + cross.y * cross.y + cross.z * cross.z;
+        const float facing = cross.x * normal.x + cross.y * normal.y + cross.z * normal.z;
+        if (areaSquared > 0.00000001f && facing <= 0.0f) {
+            return false;
+        }
+    }
+    return true;
+}
 } // namespace
 
 int main() {
@@ -38,6 +65,9 @@ int main() {
         ModelPrimitiveFactory::BuildBox(0u, Material{}, 1.0f, 2.0f, 1.0f);
     const auto cylinderPrimitive =
         ModelPrimitiveFactory::BuildCylinder(0u, Material{}, 16u, 0.5f, 0.5f, 2.0f);
+    const auto planePrimitive = ModelPrimitiveFactory::BuildPlane(0u, Material{});
+    const auto spherePrimitive =
+        ModelPrimitiveFactory::BuildSphere(0u, Material{}, 16u, 8u, 0.5f);
     if (!Check(boxPrimitive && IsVerticallyCentered(*boxPrimitive),
                "Box primitive is not centered on its origin.")) {
         return 116;
@@ -45,6 +75,14 @@ int main() {
     if (!Check(cylinderPrimitive && IsVerticallyCentered(*cylinderPrimitive),
                "Cylinder primitive is not centered on its origin.")) {
         return 117;
+    }
+    if (!Check(planePrimitive && boxPrimitive && spherePrimitive && cylinderPrimitive &&
+                   HasOutwardWinding(*planePrimitive) &&
+                   HasOutwardWinding(*boxPrimitive) &&
+                   HasOutwardWinding(*spherePrimitive) &&
+                   HasOutwardWinding(*cylinderPrimitive),
+               "Primitive front-face winding is inconsistent.")) {
+        return 123;
     }
 
     World source;

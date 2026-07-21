@@ -14,11 +14,11 @@
         "Transform": {
           "position": [
             0.0,
-            0.0,
+            4.0,
             -5.0
           ],
           "rotation": [
-            0.0,
+            36.5,
             0.0,
             0.0
           ],
@@ -29,39 +29,59 @@
           ]
         }
       },
-      "id": "42c90dee-c8f8-60a6-a092-2a07c76eb188",
+      "id": "423e7470-bb1c-6a5f-c411-2b5ab0d64190",
       "name": "Main Camera",
       "parent": null
     },
     {
       "components": {
-        "MaterialOverride": {
-          "baseColor": [
+        "Light": {
+          "color": [
             1.0,
-            1.0,
-            1.0,
-            1.0
+            0.23166024684906006,
+            0.0
           ],
-          "baseColorTexture": "asset://models/PBR/ScatteredLeaves009.png",
           "enabled": true,
-          "metallic": 0.0,
-          "metallicTexture": "",
-          "normalStrength": 1.0,
-          "normalTexture": "asset://models/PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
-          "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
-          "roughnessTexture": ""
+          "innerAngle": 25.0,
+          "intensity": 33.31999969482422,
+          "outerAngle": 45.0,
+          "range": 10.0,
+          "type": "Spot"
         },
+        "Transform": {
+          "position": [
+            0.0,
+            1.9959744215011597,
+            -4.4957122802734375
+          ],
+          "rotation": [
+            38.538734436035156,
+            -0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            0.9999991059303284,
+            0.9999991059303284
+          ]
+        }
+      },
+      "id": "43cf6350-f14d-e8e1-5709-765fa365109c",
+      "name": "Directional Light",
+      "parent": null
+    },
+    {
+      "components": {
         "MeshRenderer": {
           "enabled": true,
           "model": "",
-          "primitive": 1,
+          "primitive": 0,
           "source": "Primitive"
         },
         "Transform": {
           "position": [
-            0.05000000074505806,
-            1.0499999523162842,
+            0.0,
+            0.0,
             0.0
           ],
           "rotation": [
@@ -76,8 +96,8 @@
           ]
         }
       },
-      "id": "43fcd97e-a2f5-1474-0d8e-b089ae4b988b",
-      "name": "Box",
+      "id": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497",
+      "name": "Cube",
       "parent": null
     }
   ],

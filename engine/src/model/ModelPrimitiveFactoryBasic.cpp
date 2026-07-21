@@ -21,7 +21,7 @@ constexpr std::array<ModelVertex, 4> kPlaneVertices = {{
     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
 }};
 
-constexpr std::array<uint32_t, 6> kPlaneIndices = {0, 1, 2, 2, 1, 3};
+constexpr std::array<uint32_t, 6> kPlaneIndices = {0, 2, 1, 2, 3, 1};
 
 XMFLOAT3 Subtract(const XMFLOAT3& lhs, const XMFLOAT3& rhs) {
     return {lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
