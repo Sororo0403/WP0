@@ -117,6 +117,7 @@ private:
     void BuildRenderScene();
     void UpdateAssetPreview();
     void BuildAssetPreviewScene();
+    bool UpdateGameViewCamera();
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
@@ -173,6 +174,7 @@ private:
     bool showHierarchyPanel_ = true;
     bool showProjectPanel_ = true;
     bool showScenePanel_ = true;
+    bool showGamePanel_ = true;
     bool showConsolePanel_ = true;
     bool showInspectorPanel_ = true;
     RecentScenesStore recentScenesStore_;
@@ -221,6 +223,9 @@ private:
     SceneRenderer sceneRenderer_{};
     RenderScene renderScene_{};
     Camera sceneViewCamera_{};
+    RenderSurface gameViewSurface_{};
+    PostProcessSystem gameViewPostProcess_{};
+    Camera gameViewCamera_{};
     RenderSurface assetPreviewSurface_{};
     PostProcessSystem assetPreviewPostProcess_{};
     RenderScene assetPreviewScene_{};
@@ -257,6 +262,8 @@ private:
     bool focusAssetFolderNameInput_ = false;
     int requestedSceneWidth_ = 960;
     int requestedSceneHeight_ = 540;
+    int requestedGameWidth_ = 960;
+    int requestedGameHeight_ = 540;
     enum class GizmoOperation : uint8_t {
         Translate,
         Rotate,
@@ -283,6 +290,7 @@ private:
     EntityId activeGizmoEntity_{};
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
+    bool gamePostProcessInitializationAttempted_ = false;
     bool assetPreviewPostProcessInitializationAttempted_ = false;
     float projectPanelMinX_ = 0.0f;
     float projectPanelMinY_ = 0.0f;

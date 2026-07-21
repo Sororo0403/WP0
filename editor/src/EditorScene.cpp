@@ -329,6 +329,9 @@ void EditorScene::Initialize(const SceneContext& ctx) {
         status_ = "Scene View RenderSurface initialization failed.";
         return;
     }
+    if (!gameViewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 960, 540)) {
+        status_ = "Game View RenderSurface initialization failed.";
+    }
     if (!assetPreviewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 320, 320)) {
         status_ = "Asset Preview RenderSurface initialization failed.";
     }
@@ -352,6 +355,7 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     sceneViewCamera_.SetPosition({0.0f, 0.35f, -4.0f});
     sceneViewCamera_.SetRotation({0.08f, 0.0f, 0.0f});
     sceneViewCamera_.Initialize(960.0f / 540.0f);
+    gameViewCamera_.Initialize(960.0f / 540.0f);
     assetPreviewCamera_.SetPosition({0.0f, 0.0f, -4.0f});
     assetPreviewCamera_.SetRotation({0.0f, 0.0f, 0.0f});
     assetPreviewCamera_.Initialize(1.0f);
@@ -384,6 +388,30 @@ void EditorScene::Update() {
                                          sceneViewSurface_.GetHeight());
         if (!sceneViewPostProcess_.IsReady()) {
             status_ = "Scene View PostProcess initialization failed.";
+        }
+    }
+    if (gameViewSurface_.IsReady() && gameViewPostProcess_.IsReady() && ctx_ != nullptr &&
+        ctx_->rendering.dxCommon != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording() &&
+        (requestedGameWidth_ != gameViewSurface_.GetWidth() ||
+         requestedGameHeight_ != gameViewSurface_.GetHeight())) {
+        const int width = (std::max)(1, requestedGameWidth_);
+        const int height = (std::max)(1, requestedGameHeight_);
+        if (!gameViewSurface_.Resize(width, height) ||
+            !gameViewPostProcess_.Resize(width, height)) {
+            status_ = "Game View resize failed.";
+        }
+    }
+    if (!gamePostProcessInitializationAttempted_ && gameViewSurface_.IsReady() &&
+        ctx_ != nullptr && ctx_->rendering.dxCommon != nullptr &&
+        ctx_->rendering.srv != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording()) {
+        gamePostProcessInitializationAttempted_ = true;
+        gameViewPostProcess_.Initialize(ctx_->rendering.dxCommon, ctx_->rendering.srv,
+                                        gameViewSurface_.GetWidth(),
+                                        gameViewSurface_.GetHeight());
+        if (!gameViewPostProcess_.IsReady()) {
+            status_ = "Game View PostProcess initialization failed.";
         }
     }
     if (!assetPreviewPostProcessInitializationAttempted_ && assetPreviewSurface_.IsReady() &&
@@ -513,6 +541,7 @@ void EditorScene::DrawMainMenu() {
             ImGui::MenuItem("Hierarchy", nullptr, &showHierarchyPanel_);
             ImGui::MenuItem("Project", nullptr, &showProjectPanel_);
             ImGui::MenuItem("Scene", nullptr, &showScenePanel_);
+            ImGui::MenuItem("Game", nullptr, &showGamePanel_);
             ImGui::MenuItem("Console", nullptr, &showConsolePanel_);
             ImGui::MenuItem("Inspector", nullptr, &showInspectorPanel_);
             ImGui::Separator();
@@ -520,6 +549,7 @@ void EditorScene::DrawMainMenu() {
                 showHierarchyPanel_ = true;
                 showProjectPanel_ = true;
                 showScenePanel_ = true;
+                showGamePanel_ = true;
                 showConsolePanel_ = true;
                 showInspectorPanel_ = true;
             }
@@ -529,6 +559,7 @@ void EditorScene::DrawMainMenu() {
             showHierarchyPanel_ = true;
             showProjectPanel_ = true;
             showScenePanel_ = true;
+            showGamePanel_ = true;
             showConsolePanel_ = true;
             showInspectorPanel_ = true;
             resetDockLayoutRequested_ = true;
@@ -656,6 +687,7 @@ void EditorScene::DrawDockSpace() {
         ImGui::DockBuilderSplitNode(mainDock, ImGuiDir_Down, 0.28f, &consoleDock, &mainDock);
         ImGui::DockBuilderDockWindow("Hierarchy", leftDock);
         ImGui::DockBuilderDockWindow("Project", projectDock);
+        ImGui::DockBuilderDockWindow("Game", mainDock);
         ImGui::DockBuilderDockWindow("Scene", mainDock);
         ImGui::DockBuilderDockWindow("Console", consoleDock);
         ImGui::DockBuilderDockWindow("Inspector", rightDock);
@@ -667,6 +699,7 @@ void EditorScene::DrawDockSpace() {
 
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
+    gameViewSurface_.ReleaseCompletedFrameResources();
     assetPreviewSurface_.ReleaseCompletedFrameResources();
     projectPanelMinX_ = 0.0f;
     projectPanelMinY_ = 0.0f;
@@ -749,6 +782,44 @@ void EditorScene::DrawPanels() {
                 }
             } else {
                 ImGui::TextDisabled("Scene View RenderSurface is not ready.");
+            }
+        }
+        ImGui::End();
+    }
+
+    if (showGamePanel_) {
+        if (ImGui::Begin("Game", &showGamePanel_, kPanelFlags)) {
+            const ImVec2 available = ImGui::GetContentRegionAvail();
+            requestedGameWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
+            requestedGameHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
+            if (!gameViewSurface_.IsReady() || !gameViewPostProcess_.IsReady() ||
+                ctx_ == nullptr || ctx_->rendering.dxCommon == nullptr ||
+                ctx_->rendering.model == nullptr) {
+                ImGui::TextDisabled("Game View RenderSurface is not ready.");
+            } else if (!UpdateGameViewCamera()) {
+                ImGui::TextDisabled("No enabled Primary Camera in the scene.");
+            } else {
+                BuildRenderScene();
+                sceneRenderer_.Render(renderScene_, gameViewCamera_, gameViewSurface_,
+                                      {0.025f, 0.035f, 0.055f, 1.0f});
+                gameViewSurface_.TransitionDepthToShaderResource();
+                gameViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+                const PostProcessOutputTarget target{
+                    gameViewSurface_.GetOutputRtvHandle(),
+                    static_cast<uint32_t>(gameViewSurface_.GetWidth()),
+                    static_cast<uint32_t>(gameViewSurface_.GetHeight()),
+                    DirectXCommon::kBackBufferFormat,
+                };
+                gameViewPostProcess_.DrawToTarget(gameViewSurface_.GetSceneColorGpuHandle(),
+                                                  gameViewSurface_.GetDepthGpuHandle(), target);
+                gameViewSurface_.EndOutputPass();
+                gameViewSurface_.TransitionDepthToWrite();
+                ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+                const D3D12_GPU_DESCRIPTOR_HANDLE output =
+                    gameViewSurface_.GetOutputGpuHandle();
+                ImGui::Image(static_cast<ImTextureID>(output.ptr),
+                             ImVec2(static_cast<float>(requestedGameWidth_),
+                                    static_cast<float>(requestedGameHeight_)));
             }
         }
         ImGui::End();
@@ -3508,6 +3579,42 @@ ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) co
     }
     const auto found = loadedModels_.find(component.modelPath);
     return found != loadedModels_.end() ? found->second : ModelHandle{};
+}
+
+bool EditorScene::UpdateGameViewCamera() {
+    const WorldEntity* primaryCamera = nullptr;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (entity.camera && entity.camera->enabled && entity.camera->primary) {
+            primaryCamera = &entity;
+            break;
+        }
+    }
+    if (primaryCamera == nullptr) {
+        return false;
+    }
+
+    DirectX::XMFLOAT4X4 worldMatrix{};
+    TransformComponent worldTransform{};
+    if (!world_.TryGetWorldMatrix(primaryCamera->id, worldMatrix) ||
+        !TryDecomposeTransformComponent(DirectX::XMLoadFloat4x4(&worldMatrix),
+                                        worldTransform)) {
+        return false;
+    }
+    gameViewCamera_.SetPosition(worldTransform.position);
+    gameViewCamera_.SetRotation(
+        {DirectX::XMConvertToRadians(worldTransform.rotationDegrees.x),
+         DirectX::XMConvertToRadians(worldTransform.rotationDegrees.y),
+         DirectX::XMConvertToRadians(worldTransform.rotationDegrees.z)});
+    const CameraComponent& camera = *primaryCamera->camera;
+    gameViewCamera_.SetAspect(static_cast<float>(gameViewSurface_.GetWidth()) /
+                              static_cast<float>((std::max)(1, gameViewSurface_.GetHeight())));
+    if (camera.projection == CameraProjection::Perspective) {
+        gameViewCamera_.SetPerspectiveFovDeg(camera.fieldOfViewDegrees);
+    } else {
+        gameViewCamera_.SetOrthographicHeight(camera.orthographicHeight);
+    }
+    gameViewCamera_.SetClipRange(camera.nearClip, camera.farClip);
+    return true;
 }
 
 void EditorScene::UpdateAssetPreview() {
