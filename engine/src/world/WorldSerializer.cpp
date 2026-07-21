@@ -179,6 +179,19 @@ std::string WorldSerializer::Serialize(const World& world) {
             encoded["components"]["BoxCollider"]["isTrigger"] =
                 entity.boxCollider->isTrigger;
         }
+        if (entity.characterController) {
+            const CharacterControllerComponent& controller = *entity.characterController;
+            Json encodedController;
+            encodedController["enabled"] = controller.enabled;
+            encodedController["center"] = EncodeFloat3(controller.center);
+            encodedController["radius"] = controller.radius;
+            encodedController["height"] = controller.height;
+            encodedController["slopeLimit"] = controller.slopeLimitDegrees;
+            encodedController["stepOffset"] = controller.stepOffset;
+            encodedController["skinWidth"] = controller.skinWidth;
+            encodedController["minMoveDistance"] = controller.minMoveDistance;
+            encoded["components"]["CharacterController"] = std::move(encodedController);
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -512,6 +525,44 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.boxCollider = component;
+        }
+        if (encoded["components"].contains("CharacterController")) {
+            const Json& controller = encoded["components"]["CharacterController"];
+            CharacterControllerComponent component{};
+            if (!controller.is_object() || !controller.contains("enabled") ||
+                !controller["enabled"].is_boolean() || !controller.contains("center") ||
+                !controller.contains("radius") || !controller["radius"].is_number() ||
+                !controller.contains("height") || !controller["height"].is_number() ||
+                !controller.contains("slopeLimit") ||
+                !controller["slopeLimit"].is_number() || !controller.contains("stepOffset") ||
+                !controller["stepOffset"].is_number() || !controller.contains("skinWidth") ||
+                !controller["skinWidth"].is_number() ||
+                !controller.contains("minMoveDistance") ||
+                !controller["minMoveDistance"].is_number() ||
+                !DecodeFloat3(controller["center"], component.center)) {
+                SetError(error, "Scene CharacterController component is invalid.");
+                return false;
+            }
+            component.enabled = controller["enabled"].get<bool>();
+            component.radius = controller["radius"].get<float>();
+            component.height = controller["height"].get<float>();
+            component.slopeLimitDegrees = controller["slopeLimit"].get<float>();
+            component.stepOffset = controller["stepOffset"].get<float>();
+            component.skinWidth = controller["skinWidth"].get<float>();
+            component.minMoveDistance = controller["minMoveDistance"].get<float>();
+            if (!std::isfinite(component.radius) || !std::isfinite(component.height) ||
+                !std::isfinite(component.slopeLimitDegrees) ||
+                !std::isfinite(component.stepOffset) || !std::isfinite(component.skinWidth) ||
+                !std::isfinite(component.minMoveDistance) || component.radius < 0.001f ||
+                component.height < component.radius * 2.0f ||
+                component.slopeLimitDegrees < 0.0f ||
+                component.slopeLimitDegrees > 90.0f || component.stepOffset < 0.0f ||
+                component.stepOffset > component.height || component.skinWidth < 0.0f ||
+                component.skinWidth >= component.radius || component.minMoveDistance < 0.0f) {
+                SetError(error, "Scene CharacterController settings are invalid.");
+                return false;
+            }
+            entity.characterController = component;
         }
         entities.push_back(std::move(entity));
     }

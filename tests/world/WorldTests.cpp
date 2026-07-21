@@ -243,6 +243,10 @@ int main() {
     childEntity->boxCollider = BoxColliderComponent{};
     childEntity->boxCollider->center = {0.25f, 0.5f, -0.25f};
     childEntity->boxCollider->size = {1.0f, 2.0f, 3.0f};
+    childEntity->characterController = CharacterControllerComponent{};
+    childEntity->characterController->center = {0.0f, 1.0f, 0.0f};
+    childEntity->characterController->radius = 0.4f;
+    childEntity->characterController->height = 1.8f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -275,6 +279,52 @@ int main() {
     if (!Check(!CollisionUtil::CheckOBB(childCollider, overlappingCollider),
                "Separated World BoxColliders reported a collision.")) {
         return 132;
+    }
+
+    World movementWorld;
+    const EntityId mover = movementWorld.CreateEntity("Mover");
+    const EntityId wall = movementWorld.CreateEntity("Wall");
+    movementWorld.Find(mover)->characterController = CharacterControllerComponent{};
+    movementWorld.Find(wall)->boxCollider = BoxColliderComponent{};
+    movementWorld.Find(wall)->transform.position.x = 1.0f;
+    const CharacterMoveResult blockedMovement =
+        MoveCharacterController(movementWorld, mover, {2.0f, 0.0f, 0.5f});
+    if (!Check(blockedMovement.appliedMotion.x >= 0.0f &&
+                   blockedMovement.appliedMotion.x < 0.1f &&
+                   std::abs(blockedMovement.appliedMotion.z - 0.5f) < 0.001f &&
+                   (static_cast<uint8_t>(blockedMovement.flags) &
+                    static_cast<uint8_t>(CharacterCollisionFlags::Sides)) != 0u &&
+                   movementWorld.Find(mover)->transform.position.x < 0.1f &&
+                   std::abs(movementWorld.Find(mover)->transform.position.z - 0.5f) < 0.001f,
+               "CharacterController did not stop at a solid BoxCollider and slide.")) {
+        return 134;
+    }
+    movementWorld.Find(wall)->boxCollider->isTrigger = true;
+    const float positionBeforeTrigger = movementWorld.Find(mover)->transform.position.x;
+    const CharacterMoveResult triggerMovement =
+        MoveCharacterController(movementWorld, mover, {2.0f, 0.0f, 0.0f});
+    if (!Check(std::abs(triggerMovement.appliedMotion.x - 2.0f) < 0.001f &&
+                   std::abs(movementWorld.Find(mover)->transform.position.x -
+                            (positionBeforeTrigger + 2.0f)) < 0.001f,
+               "Trigger BoxCollider incorrectly blocked movement.")) {
+        return 135;
+    }
+
+    World groundWorld;
+    const EntityId groundedController = groundWorld.CreateEntity("Grounded Controller");
+    const EntityId floor = groundWorld.CreateEntity("Floor");
+    groundWorld.Find(groundedController)->characterController =
+        CharacterControllerComponent{};
+    groundWorld.Find(groundedController)->transform.position.y = 1.5f;
+    groundWorld.Find(floor)->boxCollider = BoxColliderComponent{};
+    groundWorld.Find(floor)->boxCollider->size = {10.0f, 1.0f, 10.0f};
+    const CharacterMoveResult downwardMovement =
+        MoveCharacterController(groundWorld, groundedController, {0.0f, -1.0f, 0.0f});
+    if (!Check(downwardMovement.appliedMotion.y > -0.1f &&
+                   (static_cast<uint8_t>(downwardMovement.flags) &
+                    static_cast<uint8_t>(CharacterCollisionFlags::Below)) != 0u,
+               "CharacterController did not report a collision below.")) {
+        return 138;
     }
 
     const std::string serialized = WorldSerializer::Serialize(source);
@@ -318,6 +368,10 @@ int main() {
                    restoredChild->boxCollider && !restoredChild->boxCollider->isTrigger &&
                    restoredChild->boxCollider->center.y == 0.5f &&
                    restoredChild->boxCollider->size.z == 3.0f &&
+                   restoredChild->characterController &&
+                   restoredChild->characterController->center.y == 1.0f &&
+                   restoredChild->characterController->radius == 0.4f &&
+                   restoredChild->characterController->height == 1.8f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
@@ -354,6 +408,9 @@ int main() {
                    duplicateChild->boxCollider &&
                    duplicateChild->boxCollider->center.x == 0.25f &&
                    duplicateChild->boxCollider->size.y == 2.0f &&
+                   duplicateChild->characterController &&
+                   duplicateChild->characterController->radius == 0.4f &&
+                   duplicateChild->characterController->height == 1.8f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
@@ -396,6 +453,14 @@ int main() {
                "Invalid direct BoxCollider replacement was accepted.")) {
         return 133;
     }
+    std::vector<WorldEntity> invalidControllerEntities(1u);
+    invalidControllerEntities[0].id = EntityId::New();
+    invalidControllerEntities[0].characterController = CharacterControllerComponent{};
+    invalidControllerEntities[0].characterController->height = 0.5f;
+    if (!Check(!restored.ReplaceEntities(std::move(invalidControllerEntities), &error),
+               "Invalid direct CharacterController replacement was accepted.")) {
+        return 136;
+    }
 
     if (!Check(restored.DestroyEntity(root) && restored.Empty(),
                "Recursive hierarchy deletion failed.")) {
@@ -432,6 +497,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidBoxCollider, rejected, &error),
                "Invalid BoxCollider data was accepted.")) {
         return 129;
+    }
+    const std::string invalidCharacterController =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Controller","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"CharacterController":{"enabled":true,"center":[0,0,0],"radius":1,"height":1,"slopeLimit":45,"stepOffset":0.3,"skinWidth":0.05,"minMoveDistance":0}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidCharacterController, rejected, &error),
+               "Invalid CharacterController data was accepted.")) {
+        return 137;
     }
     const std::string invalidMaterial =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Material","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,2],"metallic":-1,"roughness":0.5}}}]})";

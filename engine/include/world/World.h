@@ -110,6 +110,17 @@ struct BoxColliderComponent {
     bool isTrigger = false;
 };
 
+struct CharacterControllerComponent {
+    bool enabled = true;
+    DirectX::XMFLOAT3 center{0.0f, 0.0f, 0.0f};
+    float radius = 0.5f;
+    float height = 2.0f;
+    float slopeLimitDegrees = 45.0f;
+    float stepOffset = 0.3f;
+    float skinWidth = 0.05f;
+    float minMoveDistance = 0.0f;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
@@ -121,6 +132,7 @@ struct WorldEntity {
     std::optional<LightComponent> light;
     std::optional<BehaviorComponent> behavior;
     std::optional<BoxColliderComponent> boxCollider;
+    std::optional<CharacterControllerComponent> characterController;
 };
 
 class World {

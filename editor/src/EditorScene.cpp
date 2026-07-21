@@ -2732,7 +2732,8 @@ void EditorScene::DrawInspectorPanel() {
 
     ImGui::Separator();
     if (!entity->meshRenderer || !entity->materialOverride || !entity->camera ||
-        !entity->light || !entity->behavior || !entity->boxCollider) {
+        !entity->light || !entity->behavior || !entity->boxCollider ||
+        !entity->characterController) {
         if (ImGui::Button("Add Component")) {
             ImGui::OpenPopup("AddComponentMenu");
         }
@@ -2784,6 +2785,13 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Add BoxCollider", before, selectionBefore);
                 status_ = "Added BoxCollider.";
             }
+            if (!entity->characterController && ImGui::MenuItem("Character Controller")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->characterController = CharacterControllerComponent{};
+                RecordImmediateEdit("Add CharacterController", before, selectionBefore);
+                status_ = "Added CharacterController.";
+            }
             ImGui::EndPopup();
         }
     }
@@ -2818,6 +2826,10 @@ void EditorScene::DrawInspectorPanel() {
                     }
                 }
                 ImGui::EndCombo();
+            }
+            if (behavior.type == "FirstPersonController" && !entity->characterController) {
+                ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.25f, 1.0f),
+                                   "Character Controller is required for collision movement.");
             }
         }
     }
@@ -2868,6 +2880,66 @@ void EditorScene::DrawInspectorPanel() {
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
             }
+        }
+    }
+
+    if (entity->characterController) {
+        ImGui::SeparatorText("Character Controller");
+        if (ImGui::Button("Remove Character Controller")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->characterController.reset();
+            RecordImmediateEdit("Remove CharacterController", before, selectionBefore);
+            status_ = "Removed CharacterController.";
+        } else {
+            CharacterControllerComponent& controller = *entity->characterController;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##CharacterController", &controller.enabled)) {
+                RecordImmediateEdit("Toggle CharacterController", std::move(before),
+                                    selectionBefore);
+            }
+            if (ImGui::DragFloat3("Center##CharacterController", &controller.center.x,
+                                  0.02f)) {
+                RefreshDirty();
+                status_ = "Modified CharacterController.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify CharacterController Center");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            auto drawControllerFloat = [&](const char* label, float& value, float minimum,
+                                           float maximum) {
+                if (ImGui::DragFloat(label, &value, 0.01f, minimum, maximum, "%.3f",
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified CharacterController.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify CharacterController");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            };
+            drawControllerFloat("Radius##CharacterController", controller.radius, 0.001f,
+                                1000000.0f);
+            controller.height = (std::max)(controller.height, controller.radius * 2.0f);
+            controller.skinWidth =
+                (std::min)(controller.skinWidth, (std::max)(0.0f, controller.radius - 0.001f));
+            drawControllerFloat("Height##CharacterController", controller.height,
+                                controller.radius * 2.0f, 1000000.0f);
+            controller.stepOffset = (std::min)(controller.stepOffset, controller.height);
+            drawControllerFloat("Slope Limit##CharacterController",
+                                controller.slopeLimitDegrees, 0.0f, 90.0f);
+            drawControllerFloat("Step Offset##CharacterController", controller.stepOffset,
+                                0.0f, controller.height);
+            drawControllerFloat("Skin Width##CharacterController", controller.skinWidth,
+                                0.0f, (std::max)(0.0f, controller.radius - 0.001f));
+            drawControllerFloat("Min Move Distance##CharacterController",
+                                controller.minMoveDistance, 0.0f, 1000000.0f);
         }
     }
 
@@ -5230,7 +5302,8 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
     EntityId closestComponent{};
     float closestComponentDistanceSquared = 14.0f * 14.0f;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light && !entity.boxCollider) {
+        if (!entity.camera && !entity.light && !entity.boxCollider &&
+            !entity.characterController) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -5329,7 +5402,8 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
     };
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light && !entity.boxCollider) {
+        if (!entity.camera && !entity.light && !entity.boxCollider &&
+            !entity.characterController) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -5353,7 +5427,9 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
         const bool enabled = (entity.camera && entity.camera->enabled) ||
                              (entity.light && entity.light->enabled) ||
-                             (entity.boxCollider && entity.boxCollider->enabled);
+                             (entity.boxCollider && entity.boxCollider->enabled) ||
+                             (entity.characterController &&
+                              entity.characterController->enabled);
         if (!enabled) {
             color = (color & 0x00FFFFFFu) | (100u << 24u);
         }
@@ -5526,6 +5602,73 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                         drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor,
                                       1.5f);
                     }
+                }
+            }
+
+            if (entity.characterController) {
+                CharacterCapsule capsule{};
+                if (TryBuildWorldCharacterCapsule(world_, entity.id, capsule)) {
+                    const ImU32 guideColor = entity.characterController->enabled
+                                                 ? IM_COL32(70, 220, 210, 220)
+                                                 : IM_COL32(70, 220, 210, 80);
+                    const float segmentHalfHeight =
+                        (std::max)(0.0f, capsule.height * 0.5f - capsule.radius);
+                    auto capsulePoint = [&](float x, float y, float z) {
+                        return XMFLOAT3{capsule.center.x + x, capsule.center.y + y,
+                                       capsule.center.z + z};
+                    };
+                    constexpr int segments = 32;
+                    for (float y : {-segmentHalfHeight, segmentHalfHeight}) {
+                        XMFLOAT3 previous = capsulePoint(capsule.radius, y, 0.0f);
+                        for (int index = 1; index <= segments; ++index) {
+                            const float angle = XM_2PI * static_cast<float>(index) /
+                                                static_cast<float>(segments);
+                            const XMFLOAT3 point =
+                                capsulePoint(std::cos(angle) * capsule.radius, y,
+                                             std::sin(angle) * capsule.radius);
+                            drawWorldLine(previous, point, guideColor, 1.5f);
+                            previous = point;
+                        }
+                    }
+                    drawWorldLine(capsulePoint(capsule.radius, -segmentHalfHeight, 0.0f),
+                                  capsulePoint(capsule.radius, segmentHalfHeight, 0.0f),
+                                  guideColor, 1.5f);
+                    drawWorldLine(capsulePoint(-capsule.radius, -segmentHalfHeight, 0.0f),
+                                  capsulePoint(-capsule.radius, segmentHalfHeight, 0.0f),
+                                  guideColor, 1.5f);
+                    drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, capsule.radius),
+                                  capsulePoint(0.0f, segmentHalfHeight, capsule.radius),
+                                  guideColor, 1.5f);
+                    drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, -capsule.radius),
+                                  capsulePoint(0.0f, segmentHalfHeight, -capsule.radius),
+                                  guideColor, 1.5f);
+                    auto drawCapArc = [&](bool xPlane, bool top) {
+                        const float baseY = top ? segmentHalfHeight : -segmentHalfHeight;
+                        const float angleStart = top ? 0.0f : XM_PI;
+                        XMFLOAT3 previous = xPlane
+                                                ? capsulePoint(capsule.radius, baseY, 0.0f)
+                                                : capsulePoint(0.0f, baseY, capsule.radius);
+                        if (!top) {
+                            previous = xPlane
+                                           ? capsulePoint(-capsule.radius, baseY, 0.0f)
+                                           : capsulePoint(0.0f, baseY, -capsule.radius);
+                        }
+                        for (int index = 1; index <= segments; ++index) {
+                            const float angle = angleStart + XM_PI *
+                                static_cast<float>(index) / static_cast<float>(segments);
+                            const float horizontal = std::cos(angle) * capsule.radius;
+                            const float vertical = std::sin(angle) * capsule.radius;
+                            const XMFLOAT3 point =
+                                xPlane ? capsulePoint(horizontal, baseY + vertical, 0.0f)
+                                       : capsulePoint(0.0f, baseY + vertical, horizontal);
+                            drawWorldLine(previous, point, guideColor, 1.5f);
+                            previous = point;
+                        }
+                    };
+                    drawCapArc(true, true);
+                    drawCapArc(true, false);
+                    drawCapArc(false, true);
+                    drawCapArc(false, false);
                 }
             }
         }

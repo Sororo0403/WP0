@@ -65,6 +65,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->light = original.light;
         duplicate->behavior = original.behavior;
         duplicate->boxCollider = original.boxCollider;
+        duplicate->characterController = original.characterController;
         if (duplicate->camera) {
             duplicate->camera->primary = false;
         }
@@ -312,6 +313,23 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 collider.size.z < 0.001f || collider.size.x > 1000000.0f ||
                 collider.size.y > 1000000.0f || collider.size.z > 1000000.0f) {
                 SetError(error, "Scene contains an invalid BoxCollider component.");
+                return false;
+            }
+        }
+        if (entity.characterController) {
+            const CharacterControllerComponent& controller = *entity.characterController;
+            if (!IsFinite(controller.center) || !std::isfinite(controller.radius) ||
+                !std::isfinite(controller.height) ||
+                !std::isfinite(controller.slopeLimitDegrees) ||
+                !std::isfinite(controller.stepOffset) ||
+                !std::isfinite(controller.skinWidth) ||
+                !std::isfinite(controller.minMoveDistance) || controller.radius < 0.001f ||
+                controller.height < controller.radius * 2.0f ||
+                controller.slopeLimitDegrees < 0.0f ||
+                controller.slopeLimitDegrees > 90.0f || controller.stepOffset < 0.0f ||
+                controller.stepOffset > controller.height || controller.skinWidth < 0.0f ||
+                controller.skinWidth >= controller.radius || controller.minMoveDistance < 0.0f) {
+                SetError(error, "Scene contains an invalid CharacterController component.");
                 return false;
             }
         }

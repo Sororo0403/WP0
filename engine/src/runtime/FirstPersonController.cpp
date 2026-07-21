@@ -2,6 +2,7 @@
 
 #include "input/Input.h"
 #include "world/World.h"
+#include "world/WorldCollision.h"
 
 #include <DirectXMath.h>
 
@@ -59,8 +60,15 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
         input_->IsKeyPress(DIK_LSHIFT) || input_->IsKeyPress(DIK_RSHIFT);
     const float speed = sprinting ? 8.0f : 4.0f;
     const float distance = speed * deltaTime;
-    transform.position.x +=
-        (sinYaw * forwardInput + cosYaw * rightInput) * distance;
-    transform.position.z +=
-        (cosYaw * forwardInput - sinYaw * rightInput) * distance;
+    const DirectX::XMFLOAT3 displacement{
+        (sinYaw * forwardInput + cosYaw * rightInput) * distance,
+        0.0f,
+        (cosYaw * forwardInput - sinYaw * rightInput) * distance,
+    };
+    if (target->characterController && target->characterController->enabled) {
+        (void)MoveCharacterController(world, entity, displacement);
+    } else {
+        transform.position.x += displacement.x;
+        transform.position.z += displacement.z;
+    }
 }

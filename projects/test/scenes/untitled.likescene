@@ -14,7 +14,7 @@
         "Transform": {
           "position": [
             0.0,
-            0.0,
+            -2.9802322387695313e-08,
             0.0
           ],
           "rotation": [
@@ -30,8 +30,8 @@
         }
       },
       "id": "423e7470-bb1c-6a5f-c411-2b5ab0d64190",
-      "name": "Main Camera",
-      "parent": null
+      "name": "Camera",
+      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     },
     {
       "components": {
@@ -53,18 +53,19 @@
             1.0
           ]
         },
-        "Light": {
-          "color": [
+        "CharacterController": {
+          "center": [
             0.0,
-            0.08494234085083008,
-            1.0
+            0.0,
+            0.0
           ],
           "enabled": true,
-          "innerAngle": 25.0,
-          "intensity": 23.299999237060547,
-          "outerAngle": 45.0,
-          "range": 10.0,
-          "type": "Point"
+          "height": 2.0,
+          "minMoveDistance": 0.0,
+          "radius": 0.5,
+          "skinWidth": 0.05000000074505806,
+          "slopeLimit": 45.0,
+          "stepOffset": 0.30000001192092896
         },
         "MaterialOverride": {
           "alphaCutoff": 0.5,
@@ -96,7 +97,7 @@
         "Transform": {
           "position": [
             0.0,
-            0.0,
+            2.9802322387695313e-08,
             0.0
           ],
           "rotation": [
@@ -179,6 +180,43 @@
       "id": "49f2cf35-b61b-944d-caff-52d73e96bc8d",
       "name": "Box",
       "parent": null
+    },
+    {
+      "components": {
+        "Light": {
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "innerAngle": 0.0,
+          "intensity": 19.959999084472656,
+          "outerAngle": 18.100000381469727,
+          "range": 10.0,
+          "type": "Spot"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "43e2fb8b-be91-0671-239b-1296e85b9db0",
+      "name": "Light",
+      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     }
   ],
   "version": 1
