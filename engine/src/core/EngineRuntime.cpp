@@ -204,6 +204,10 @@ EngineFrameResult EngineRuntime::Tick() {
     if (systems_->winApp.ConsumeCloseRequest() && systems_->sceneManager.OnCloseRequested()) {
         systems_->winApp.RequestClose();
     }
+    for (FileDropEvent& event : systems_->winApp.ConsumeFileDrops()) {
+        systems_->sceneManager.OnFilesDropped(event.files, event.screenPosition.x,
+                                              event.screenPosition.y);
+    }
 
     systems_->frameTimer.Tick();
     const ResizeResult resizeResult = ResizeIfNeeded();

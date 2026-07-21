@@ -33,6 +33,8 @@ public:
     void Draw() override;
     void DrawPostProcessOverlay() override;
     bool OnCloseRequested() override;
+    void OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
+                        int screenY) override;
 
 private:
     void DrawMainMenu();
@@ -91,6 +93,7 @@ private:
     bool DuplicateAsset(const std::filesystem::path& relativePath);
     bool CreatePendingAssetFolder();
     bool ImportAssetFiles();
+    bool ImportAssetFiles(const std::vector<std::filesystem::path>& selectedFiles);
     bool RevealAssetInExplorer(const std::filesystem::path& relativePath);
     void SelectAssetReferences(const std::filesystem::path& relativePath, bool directory);
     [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
@@ -268,4 +271,8 @@ private:
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
     bool assetPreviewPostProcessInitializationAttempted_ = false;
+    float projectPanelMinX_ = 0.0f;
+    float projectPanelMinY_ = 0.0f;
+    float projectPanelMaxX_ = 0.0f;
+    float projectPanelMaxY_ = 0.0f;
 };

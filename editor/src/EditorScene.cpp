@@ -416,6 +416,19 @@ bool EditorScene::OnCloseRequested() {
     return false;
 }
 
+void EditorScene::OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
+                                 int screenY) {
+    const bool overProject = static_cast<float>(screenX) >= projectPanelMinX_ &&
+                             static_cast<float>(screenX) < projectPanelMaxX_ &&
+                             static_cast<float>(screenY) >= projectPanelMinY_ &&
+                             static_cast<float>(screenY) < projectPanelMaxY_;
+    if (!overProject) {
+        status_ = "Drop model files onto the Project panel to import them.";
+        return;
+    }
+    ImportAssetFiles(std::vector<std::filesystem::path>(files.begin(), files.end()));
+}
+
 void EditorScene::DrawMainMenu() {
     if (!ImGui::BeginMainMenuBar()) {
         return;
@@ -648,6 +661,10 @@ void EditorScene::DrawDockSpace() {
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
     assetPreviewSurface_.ReleaseCompletedFrameResources();
+    projectPanelMinX_ = 0.0f;
+    projectPanelMinY_ = 0.0f;
+    projectPanelMaxX_ = 0.0f;
+    projectPanelMaxY_ = 0.0f;
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
             DrawHierarchyPanel();
@@ -851,6 +868,12 @@ void EditorScene::DrawConsolePanel() {
 }
 
 void EditorScene::DrawProjectPanel() {
+    const ImVec2 panelPosition = ImGui::GetWindowPos();
+    const ImVec2 panelSize = ImGui::GetWindowSize();
+    projectPanelMinX_ = panelPosition.x;
+    projectPanelMinY_ = panelPosition.y;
+    projectPanelMaxX_ = panelPosition.x + panelSize.x;
+    projectPanelMaxY_ = panelPosition.y + panelSize.y;
     if (pendingAssetDirectory_) {
         currentAssetDirectory_ = std::move(*pendingAssetDirectory_);
         pendingAssetDirectory_.reset();
@@ -1452,6 +1475,11 @@ bool EditorScene::ImportAssetFiles() {
     if (selectedFiles.empty()) {
         return false;
     }
+    return ImportAssetFiles(selectedFiles);
+}
+
+bool EditorScene::ImportAssetFiles(
+    const std::vector<std::filesystem::path>& selectedFiles) {
     const bool containsModel =
         std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
             return AssetImport::IsModelFile(path);

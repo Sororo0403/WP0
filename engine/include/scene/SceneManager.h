@@ -4,6 +4,8 @@
 #include "scene/SceneContext.h"
 
 #include <memory>
+#include <filesystem>
+#include <span>
 #include <string>
 
 class FrameHistory;
@@ -133,6 +135,9 @@ public:
     /// 現在のシーンへOS終了要求を通知し、終了可能かを返す。
     /// </summary>
     bool OnCloseRequested();
+
+    void OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
+                        int screenY);
 
 private:
     /// <summary>

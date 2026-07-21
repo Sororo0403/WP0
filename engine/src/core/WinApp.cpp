@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <shellapi.h>
 
 #ifdef ENGINE_WITH_IMGUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam,
@@ -138,6 +139,39 @@ LRESULT CALLBACK WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         }
         return 0;
     }
+    if (msg == WM_DROPFILES && app != nullptr) {
+        const HDROP drop = reinterpret_cast<HDROP>(wParam);
+        FileDropEvent event{};
+        POINT point{};
+        if (!DragQueryPoint(drop, &point) || !ClientToScreen(hwnd, &point)) {
+            GetCursorPos(&point);
+        }
+        event.screenPosition = point;
+        try {
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFFu, nullptr, 0u);
+            if (count > 1024u) {
+                OutputDebugStringA("WinApp: rejected an oversized file drop\n");
+                DragFinish(drop);
+                return 0;
+            }
+            event.files.reserve(count);
+            for (UINT index = 0; index < count; ++index) {
+                const UINT length = DragQueryFileW(drop, index, nullptr, 0u);
+                std::wstring path(static_cast<size_t>(length) + 1u, L'\0');
+                if (DragQueryFileW(drop, index, path.data(), length + 1u) != 0u) {
+                    path.resize(length);
+                    event.files.emplace_back(std::move(path));
+                }
+            }
+            if (!event.files.empty()) {
+                app->fileDrops_.push_back(std::move(event));
+            }
+        } catch (...) {
+            OutputDebugStringA("WinApp: file drop collection failed\n");
+        }
+        DragFinish(drop);
+        return 0;
+    }
 #ifdef ENGINE_WITH_IMGUI
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) {
         return true;
@@ -161,6 +195,7 @@ void WinApp::Initialize(HINSTANCE hInstance, int nCmdShow, int width, int height
     fullscreen_ = false;
     closeRequested_ = false;
     allowClose_ = false;
+    fileDrops_.clear();
 
     WNDCLASS wc{};
     wc.lpfnWndProc = WindowProc;
@@ -240,6 +275,7 @@ void WinApp::Initialize(HINSTANCE hInstance, int nCmdShow, int width, int height
         return;
     }
     cursorWindow_ = hwnd_;
+    DragAcceptFiles(hwnd_, TRUE);
 
     ShowWindow(hwnd_, nCmdShow);
     UpdateClientSize();
@@ -269,6 +305,12 @@ bool WinApp::ConsumeCloseRequest() {
     const bool requested = closeRequested_;
     closeRequested_ = false;
     return requested;
+}
+
+std::vector<FileDropEvent> WinApp::ConsumeFileDrops() {
+    std::vector<FileDropEvent> result = std::move(fileDrops_);
+    fileDrops_.clear();
+    return result;
 }
 
 void WinApp::RequestClose() {

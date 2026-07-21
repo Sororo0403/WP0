@@ -1,6 +1,13 @@
 #pragma once
 #include <Windows.h>
+#include <filesystem>
 #include <string>
+#include <vector>
+
+struct FileDropEvent {
+    std::vector<std::filesystem::path> files;
+    POINT screenPosition{};
+};
 
 /// <summary>
 /// Win32ウィンドウの生成とメッセージ処理を管理する
@@ -34,6 +41,8 @@ public:
     /// OSから届いた未確認の終了要求を取得してクリアする。
     /// </summary>
     bool ConsumeCloseRequest();
+
+    std::vector<FileDropEvent> ConsumeFileDrops();
 
     /// <summary>
     /// 次のメッセージ処理でアプリケーションを終了するよう要求する。
@@ -126,4 +135,5 @@ private:
     HWND hwnd_ = nullptr;
     bool closeRequested_ = false;
     bool allowClose_ = false;
+    std::vector<FileDropEvent> fileDrops_;
 };

@@ -320,6 +320,15 @@ bool SceneManager::OnCloseRequested() {
            });
 }
 
+void SceneManager::OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
+                                  int screenY) {
+    if (currentScene_ && !files.empty()) {
+        RunSceneCallback("Drop files", [this, files, screenX, screenY]() {
+            currentScene_->OnFilesDropped(files, screenX, screenY);
+        });
+    }
+}
+
 void SceneManager::DrawShadow() {
     if (currentScene_) {
         BoolFlagScope drawing(isDrawing_);

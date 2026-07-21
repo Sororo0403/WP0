@@ -2,6 +2,8 @@
 #include "scene/SceneContext.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <span>
 #include <string>
 
 class FrameHistory;
@@ -136,6 +138,13 @@ public:
     /// </summary>
     virtual bool OnCloseRequested() {
         return true;
+    }
+
+    virtual void OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
+                                int screenY) {
+        (void)files;
+        (void)screenX;
+        (void)screenY;
     }
 
     /// <summary>
