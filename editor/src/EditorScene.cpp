@@ -46,6 +46,7 @@ constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
+constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
 
 bool ContainsCaseInsensitive(std::string value, std::string query) {
     std::ranges::transform(value, value.begin(), [](unsigned char character) {
@@ -750,6 +751,15 @@ void EditorScene::DrawMainMenu() {
         ImGui::PopStyleColor();
     }
     ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!paused);
+    if (ImGui::Button("Step")) {
+        StepRuntimeWorld();
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Advance the paused Runtime World by one 1/60-second update (F7).");
+    }
     ImGui::SameLine();
     ImGui::BeginDisabled(!IsInPlayMode());
     if (ImGui::Button("Stop")) {
@@ -3148,6 +3158,10 @@ void EditorScene::HandleEditorShortcuts() {
         }
         return;
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_F7, false)) {
+        StepRuntimeWorld();
+        return;
+    }
     if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_) {
         return;
     }
@@ -4935,6 +4949,14 @@ void EditorScene::TogglePlayPause() {
         playModeState_ = PlayModeState::Playing;
         status_ = "Resumed Play Mode.";
     }
+}
+
+void EditorScene::StepRuntimeWorld() {
+    if (playModeState_ != PlayModeState::Paused) {
+        return;
+    }
+    UpdateRuntimeWorld(kRuntimeStepDeltaTime);
+    status_ = "Advanced the paused Runtime World by one frame.";
 }
 
 void EditorScene::BeginRuntimeWorld() {

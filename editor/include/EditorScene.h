@@ -42,6 +42,7 @@ private:
     void EnterPlayMode();
     void StopPlayMode();
     void TogglePlayPause();
+    void StepRuntimeWorld();
     void BeginRuntimeWorld();
     void UpdateRuntimeWorld(float deltaTime);
     void EndRuntimeWorld();
