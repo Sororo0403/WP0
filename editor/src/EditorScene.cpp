@@ -2724,6 +2724,45 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Toggle Material Override", std::move(before),
                                     selectionBefore);
             }
+            int blendMode = static_cast<int>(material.blendMode);
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Combo("Blend Mode##MaterialOverride", &blendMode,
+                             "Opaque\0Cutout\0Transparent\0")) {
+                material.blendMode = static_cast<MaterialSurfaceBlendMode>(blendMode);
+                RecordImmediateEdit("Change Material Blend Mode", std::move(before),
+                                    selectionBefore);
+            }
+            if (material.blendMode == MaterialSurfaceBlendMode::Cutout) {
+                if (ImGui::DragFloat("Alpha Cutoff##MaterialOverride", &material.alphaCutoff,
+                                     0.01f, 0.0f, 1.0f, "%.3f",
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified Material Override.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify Alpha Cutoff");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            }
+            int cullMode = static_cast<int>(material.cullMode);
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Combo("Cull Mode##MaterialOverride", &cullMode,
+                             "None (Double-Sided)\0Front\0Back\0")) {
+                material.cullMode = static_cast<MaterialSurfaceCullMode>(cullMode);
+                RecordImmediateEdit("Change Material Cull Mode", std::move(before),
+                                    selectionBefore);
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Depth Write##MaterialOverride", &material.depthWrite)) {
+                RecordImmediateEdit("Toggle Material Depth Write", std::move(before),
+                                    selectionBefore);
+            }
+            if (material.blendMode == MaterialSurfaceBlendMode::Transparent &&
+                ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Transparent materials always disable depth writes at draw time.");
+            }
             if (ImGui::ColorEdit4("Base Color##MaterialOverride", &material.baseColor.x,
                                   ImGuiColorEditFlags_Float)) {
                 RefreshDirty();
@@ -4603,6 +4642,30 @@ void EditorScene::BuildRenderScene() {
                 item.material.metallic = entity.materialOverride->metallic;
                 item.material.roughness = entity.materialOverride->roughness;
                 item.material.normalStrength = entity.materialOverride->normalStrength;
+                switch (entity.materialOverride->blendMode) {
+                case MaterialSurfaceBlendMode::Opaque:
+                    item.material.blendMode = static_cast<int32_t>(BlendMode::Opaque);
+                    break;
+                case MaterialSurfaceBlendMode::Cutout:
+                    item.material.blendMode = static_cast<int32_t>(BlendMode::Cutout);
+                    break;
+                case MaterialSurfaceBlendMode::Transparent:
+                    item.material.blendMode = static_cast<int32_t>(BlendMode::Transparent);
+                    break;
+                }
+                item.material.alphaCutoff = entity.materialOverride->alphaCutoff;
+                switch (entity.materialOverride->cullMode) {
+                case MaterialSurfaceCullMode::None:
+                    item.material.cullMode = static_cast<int32_t>(MaterialCullMode::None);
+                    break;
+                case MaterialSurfaceCullMode::Front:
+                    item.material.cullMode = static_cast<int32_t>(MaterialCullMode::Front);
+                    break;
+                case MaterialSurfaceCullMode::Back:
+                    item.material.cullMode = static_cast<int32_t>(MaterialCullMode::Back);
+                    break;
+                }
+                item.material.depthWrite = entity.materialOverride->depthWrite ? 1 : 0;
                 const TextureHandle overrideTexture =
                     ResolveBaseColorTexture(*entity.materialOverride);
                 if (overrideTexture.IsValid()) {

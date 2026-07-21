@@ -103,6 +103,30 @@ std::string WorldSerializer::Serialize(const World& world) {
                 encodedMaterial["pbrTexturePacking"] = "MetallicRoughness";
                 break;
             }
+            switch (material.blendMode) {
+            case MaterialSurfaceBlendMode::Opaque:
+                encodedMaterial["blendMode"] = "Opaque";
+                break;
+            case MaterialSurfaceBlendMode::Cutout:
+                encodedMaterial["blendMode"] = "Cutout";
+                break;
+            case MaterialSurfaceBlendMode::Transparent:
+                encodedMaterial["blendMode"] = "Transparent";
+                break;
+            }
+            encodedMaterial["alphaCutoff"] = material.alphaCutoff;
+            switch (material.cullMode) {
+            case MaterialSurfaceCullMode::None:
+                encodedMaterial["cullMode"] = "None";
+                break;
+            case MaterialSurfaceCullMode::Front:
+                encodedMaterial["cullMode"] = "Front";
+                break;
+            case MaterialSurfaceCullMode::Back:
+                encodedMaterial["cullMode"] = "Back";
+                break;
+            }
+            encodedMaterial["depthWrite"] = material.depthWrite;
             encoded["components"]["MaterialOverride"] = std::move(encodedMaterial);
         }
         if (entity.camera) {
@@ -247,7 +271,11 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 (material.contains("metallicTexture") &&
                  !material["metallicTexture"].is_string()) ||
                 (material.contains("pbrTexturePacking") &&
-                 !material["pbrTexturePacking"].is_string())) {
+                 !material["pbrTexturePacking"].is_string()) ||
+                (material.contains("blendMode") && !material["blendMode"].is_string()) ||
+                (material.contains("alphaCutoff") && !material["alphaCutoff"].is_number()) ||
+                (material.contains("cullMode") && !material["cullMode"].is_string()) ||
+                (material.contains("depthWrite") && !material["depthWrite"].is_boolean())) {
                 SetError(error, "Scene MaterialOverride component is invalid.");
                 return false;
             }
@@ -288,6 +316,38 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                     return false;
                 }
             }
+            if (material.contains("blendMode")) {
+                const std::string blendMode = material["blendMode"].get<std::string>();
+                if (blendMode == "Opaque") {
+                    component.blendMode = MaterialSurfaceBlendMode::Opaque;
+                } else if (blendMode == "Cutout") {
+                    component.blendMode = MaterialSurfaceBlendMode::Cutout;
+                } else if (blendMode == "Transparent") {
+                    component.blendMode = MaterialSurfaceBlendMode::Transparent;
+                } else {
+                    SetError(error, "Scene MaterialOverride blend mode is invalid.");
+                    return false;
+                }
+            }
+            if (material.contains("alphaCutoff")) {
+                component.alphaCutoff = material["alphaCutoff"].get<float>();
+            }
+            if (material.contains("cullMode")) {
+                const std::string cullMode = material["cullMode"].get<std::string>();
+                if (cullMode == "None") {
+                    component.cullMode = MaterialSurfaceCullMode::None;
+                } else if (cullMode == "Front") {
+                    component.cullMode = MaterialSurfaceCullMode::Front;
+                } else if (cullMode == "Back") {
+                    component.cullMode = MaterialSurfaceCullMode::Back;
+                } else {
+                    SetError(error, "Scene MaterialOverride cull mode is invalid.");
+                    return false;
+                }
+            }
+            if (material.contains("depthWrite")) {
+                component.depthWrite = material["depthWrite"].get<bool>();
+            }
             if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
                 component.baseColor.x < 0.0f || component.baseColor.y < 0.0f ||
                 component.baseColor.z < 0.0f || component.baseColor.w < 0.0f ||
@@ -302,7 +362,9 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 component.roughnessTexturePath.size() > 1024u ||
                 component.roughnessTexturePath.find('\0') != std::string::npos ||
                 component.metallicTexturePath.size() > 1024u ||
-                component.metallicTexturePath.find('\0') != std::string::npos) {
+                component.metallicTexturePath.find('\0') != std::string::npos ||
+                !std::isfinite(component.alphaCutoff) || component.alphaCutoff < 0.0f ||
+                component.alphaCutoff > 1.0f) {
                 SetError(error, "Scene MaterialOverride settings are invalid.");
                 return false;
             }

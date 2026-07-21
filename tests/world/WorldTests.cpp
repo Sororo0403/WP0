@@ -83,6 +83,10 @@ int main() {
     childEntity->materialOverride->metallicTexturePath = "asset://textures/test_orm.png";
     childEntity->materialOverride->pbrTexturePacking =
         MaterialPbrTexturePacking::OcclusionRoughnessMetallic;
+    childEntity->materialOverride->blendMode = MaterialSurfaceBlendMode::Transparent;
+    childEntity->materialOverride->alphaCutoff = 0.35f;
+    childEntity->materialOverride->cullMode = MaterialSurfaceCullMode::None;
+    childEntity->materialOverride->depthWrite = false;
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
@@ -129,6 +133,12 @@ int main() {
                        "asset://textures/test_orm.png" &&
                    restoredChild->materialOverride->pbrTexturePacking ==
                        MaterialPbrTexturePacking::OcclusionRoughnessMetallic &&
+                   restoredChild->materialOverride->blendMode ==
+                       MaterialSurfaceBlendMode::Transparent &&
+                   restoredChild->materialOverride->alphaCutoff == 0.35f &&
+                   restoredChild->materialOverride->cullMode ==
+                       MaterialSurfaceCullMode::None &&
+                   !restoredChild->materialOverride->depthWrite &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
@@ -158,6 +168,10 @@ int main() {
                        "asset://textures/test_orm.png" &&
                    duplicateChild->materialOverride->pbrTexturePacking ==
                        MaterialPbrTexturePacking::OcclusionRoughnessMetallic &&
+                   duplicateChild->materialOverride->blendMode ==
+                       MaterialSurfaceBlendMode::Transparent &&
+                   duplicateChild->materialOverride->cullMode ==
+                       MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
@@ -235,6 +249,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidPbrPacking, rejected, &error),
                "Invalid PBR texture packing was accepted.")) {
         return 121;
+    }
+    const std::string invalidMaterialSurface =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Surface","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,1],"metallic":0,"roughness":0.5,"blendMode":"Additive","alphaCutoff":2,"cullMode":"Sideways","depthWrite":true}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidMaterialSurface, rejected, &error),
+               "Invalid Material surface settings were accepted.")) {
+        return 122;
     }
     const std::filesystem::path projectAssets =
         std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";

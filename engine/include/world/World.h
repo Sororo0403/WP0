@@ -38,6 +38,18 @@ enum class MaterialPbrTexturePacking : uint8_t {
     MetallicRoughness = 2,
 };
 
+enum class MaterialSurfaceBlendMode : uint8_t {
+    Opaque = 0,
+    Cutout = 1,
+    Transparent = 2,
+};
+
+enum class MaterialSurfaceCullMode : uint8_t {
+    None = 0,
+    Front = 1,
+    Back = 2,
+};
+
 struct MaterialOverrideComponent {
     bool enabled = true;
     DirectX::XMFLOAT4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
@@ -49,6 +61,10 @@ struct MaterialOverrideComponent {
     std::string roughnessTexturePath;
     std::string metallicTexturePath;
     MaterialPbrTexturePacking pbrTexturePacking = MaterialPbrTexturePacking::Separate;
+    MaterialSurfaceBlendMode blendMode = MaterialSurfaceBlendMode::Opaque;
+    float alphaCutoff = 0.5f;
+    MaterialSurfaceCullMode cullMode = MaterialSurfaceCullMode::Back;
+    bool depthWrite = true;
 };
 
 enum class CameraProjection : uint8_t {

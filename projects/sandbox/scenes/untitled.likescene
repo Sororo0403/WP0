@@ -13,8 +13,8 @@
         },
         "Transform": {
           "position": [
-            -2.700000047683716,
-            2.0,
+            0.0,
+            0.0,
             -5.0
           ],
           "rotation": [
@@ -35,16 +35,33 @@
     },
     {
       "components": {
+        "MaterialOverride": {
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://models/PBR/ScatteredLeaves009.png",
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 1.0,
+          "normalTexture": "asset://models/PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": ""
+        },
         "MeshRenderer": {
           "enabled": true,
           "model": "",
-          "primitive": 2,
+          "primitive": 1,
           "source": "Primitive"
         },
         "Transform": {
           "position": [
             0.05000000074505806,
-            0.44999998807907104,
+            1.0499999523162842,
             0.0
           ],
           "rotation": [
@@ -61,43 +78,6 @@
       },
       "id": "43fcd97e-a2f5-1474-0d8e-b089ae4b988b",
       "name": "Box",
-      "parent": null
-    },
-    {
-      "components": {
-        "Light": {
-          "color": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "enabled": true,
-          "innerAngle": 25.0,
-          "intensity": 1.0,
-          "outerAngle": 45.0,
-          "range": 10.0,
-          "type": "Directional"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "id": "438bd46d-9127-1934-6123-033581d701b5",
-      "name": "Entity",
       "parent": null
     }
   ],

@@ -287,7 +287,12 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 material.metallicTexturePath.size() > 1024u ||
                 material.metallicTexturePath.find('\0') != std::string::npos ||
                 material.pbrTexturePacking < MaterialPbrTexturePacking::Separate ||
-                material.pbrTexturePacking > MaterialPbrTexturePacking::MetallicRoughness) {
+                material.pbrTexturePacking > MaterialPbrTexturePacking::MetallicRoughness ||
+                material.blendMode < MaterialSurfaceBlendMode::Opaque ||
+                material.blendMode > MaterialSurfaceBlendMode::Transparent ||
+                !std::isfinite(material.alphaCutoff) || material.alphaCutoff < 0.0f ||
+                material.alphaCutoff > 1.0f || material.cullMode < MaterialSurfaceCullMode::None ||
+                material.cullMode > MaterialSurfaceCullMode::Back) {
                 SetError(error, "Scene contains an invalid MaterialOverride component.");
                 return false;
             }
