@@ -267,6 +267,31 @@ bool BuildSceneRay(const Camera& camera, const ImVec2& imageMin, const ImVec2& i
            std::isfinite(direction.z);
 }
 
+bool ProjectScenePoint(const Camera& camera, const DirectX::XMFLOAT3& worldPosition,
+                       const ImVec2& imageMin, const ImVec2& imageMax, ImVec2& screenPosition) {
+    const float width = imageMax.x - imageMin.x;
+    const float height = imageMax.y - imageMin.y;
+    if (width <= 0.0f || height <= 0.0f) {
+        return false;
+    }
+    const DirectX::XMVECTOR clip = DirectX::XMVector4Transform(
+        DirectX::XMVectorSet(worldPosition.x, worldPosition.y, worldPosition.z, 1.0f),
+        camera.GetViewProjection());
+    const float clipW = DirectX::XMVectorGetW(clip);
+    if (!std::isfinite(clipW) || clipW <= 1.0e-5f) {
+        return false;
+    }
+    const float ndcX = DirectX::XMVectorGetX(clip) / clipW;
+    const float ndcY = DirectX::XMVectorGetY(clip) / clipW;
+    if (!std::isfinite(ndcX) || !std::isfinite(ndcY)) {
+        return false;
+    }
+    screenPosition = {imageMin.x + (ndcX * 0.5f + 0.5f) * width,
+                      imageMin.y + (0.5f - ndcY * 0.5f) * height};
+    return screenPosition.x >= imageMin.x && screenPosition.x <= imageMax.x &&
+           screenPosition.y >= imageMin.y && screenPosition.y <= imageMax.y;
+}
+
 DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
                                                   const ImVec2& imageMin,
                                                   const ImVec2& imageMax,
@@ -833,6 +858,7 @@ void EditorScene::DrawPanels() {
                 HandleSceneAssetDrop(imageMin, imageMax);
                 HandleSceneContextMenu(imageMin, imageMax, imageHovered);
                 DrawSceneGrid(imageMin, imageMax);
+                DrawSceneComponentGizmos(imageMin, imageMax);
                 DrawSceneSelectionOutline(imageMin, imageMax);
                 if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
                     PickSceneEntity(imageMin, imageMax, imageHovered);
@@ -3895,8 +3921,45 @@ void EditorScene::BuildRenderScene() {
 
 void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax,
                                   bool imageHovered) {
-    if (!imageHovered || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
-        ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+    if (!imageHovered || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        return;
+    }
+    const ImVec2 mouse = ImGui::GetMousePos();
+    EntityId closestComponent{};
+    float closestComponentDistanceSquared = 14.0f * 14.0f;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.camera && !entity.light) {
+            continue;
+        }
+        DirectX::XMFLOAT4X4 worldMatrix{};
+        ImVec2 screenPosition{};
+        if (!world_.TryGetWorldMatrix(entity.id, worldMatrix) ||
+            !ProjectScenePoint(sceneViewCamera_,
+                               {worldMatrix._41, worldMatrix._42, worldMatrix._43}, imageMin,
+                               imageMax, screenPosition)) {
+            continue;
+        }
+        const float deltaX = mouse.x - screenPosition.x;
+        const float deltaY = mouse.y - screenPosition.y;
+        const float distanceSquared = deltaX * deltaX + deltaY * deltaY;
+        if (distanceSquared <= closestComponentDistanceSquared) {
+            closestComponent = entity.id;
+            closestComponentDistanceSquared = distanceSquared;
+        }
+    }
+    if (closestComponent.IsValid()) {
+        const ImGuiIO& io = ImGui::GetIO();
+        SelectHierarchyEntity(closestComponent, io.KeyCtrl, false);
+        if (selection_ == closestComponent &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            FocusSceneCameraOnSelection();
+        }
+        return;
+    }
+    if (ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+        if (!ImGui::GetIO().KeyCtrl) {
+            ClearHierarchySelection();
+        }
         return;
     }
     using namespace DirectX;
@@ -3948,6 +4011,63 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         FocusSceneCameraOnSelection();
     }
+}
+
+void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
+                                           const ImVec2& imageMax) const {
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->PushClipRect(imageMin, imageMax, true);
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.camera && !entity.light) {
+            continue;
+        }
+        DirectX::XMFLOAT4X4 worldMatrix{};
+        ImVec2 center{};
+        if (!world_.TryGetWorldMatrix(entity.id, worldMatrix) ||
+            !ProjectScenePoint(sceneViewCamera_,
+                               {worldMatrix._41, worldMatrix._42, worldMatrix._43}, imageMin,
+                               imageMax, center)) {
+            continue;
+        }
+        const bool active = entity.id == selection_;
+        const bool selected = hierarchySelection_.contains(entity.id);
+        ImU32 color = entity.camera ? IM_COL32(90, 185, 255, 230)
+                                    : IM_COL32(255, 215, 80, 230);
+        if (active) {
+            color = IM_COL32(255, 184, 56, 255);
+        } else if (selected) {
+            color = IM_COL32(90, 190, 255, 255);
+        }
+        const bool enabled = (entity.camera && entity.camera->enabled) ||
+                             (entity.light && entity.light->enabled);
+        if (!enabled) {
+            color = (color & 0x00FFFFFFu) | (100u << 24u);
+        }
+
+        if (entity.camera) {
+            drawList->AddRect({center.x - 8.0f, center.y - 6.0f},
+                              {center.x + 5.0f, center.y + 6.0f}, color, 2.0f, 0, 1.8f);
+            drawList->AddTriangle({center.x + 5.0f, center.y - 5.0f},
+                                  {center.x + 12.0f, center.y - 9.0f},
+                                  {center.x + 12.0f, center.y + 1.0f}, color, 1.8f);
+        } else {
+            drawList->AddCircle(center, 5.0f, color, 16, 1.8f);
+            for (int index = 0; index < 8; ++index) {
+                const float angle = DirectX::XM_2PI * static_cast<float>(index) / 8.0f;
+                const ImVec2 direction{std::cos(angle), std::sin(angle)};
+                drawList->AddLine({center.x + direction.x * 7.0f,
+                                   center.y + direction.y * 7.0f},
+                                  {center.x + direction.x * 11.0f,
+                                   center.y + direction.y * 11.0f},
+                                  color, 1.5f);
+            }
+        }
+        if (active && (!entity.meshRenderer || !entity.meshRenderer->enabled)) {
+            drawList->AddText({center.x + 14.0f, center.y - ImGui::GetTextLineHeight() * 0.5f},
+                              color, entity.name.c_str());
+        }
+    }
+    drawList->PopClipRect();
 }
 
 void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,

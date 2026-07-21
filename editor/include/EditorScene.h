@@ -120,6 +120,7 @@ private:
     void BuildAssetPreviewScene();
     bool UpdateGameViewCamera();
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
+    void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
     void DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const;
