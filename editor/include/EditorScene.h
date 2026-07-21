@@ -89,6 +89,8 @@ private:
     bool DuplicateAsset(const std::filesystem::path& relativePath);
     bool CreatePendingAssetFolder();
     bool ImportAssetFiles();
+    bool RevealAssetInExplorer(const std::filesystem::path& relativePath);
+    void SelectAssetReferences(const std::filesystem::path& relativePath, bool directory);
     [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
                                          bool directory) const;
     [[nodiscard]] size_t CountAssetReferences(const std::filesystem::path& relativePath,

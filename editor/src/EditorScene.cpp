@@ -18,6 +18,7 @@
 
 #include <Windows.h>
 #include <commdlg.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <array>
@@ -960,6 +961,15 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         if (ImGui::MenuItem("Delete")) {
             RequestAssetDelete(relativePath, directory);
         }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Show in Explorer")) {
+            RevealAssetInExplorer(relativePath);
+        }
+        const size_t references = CountAssetReferences(relativePath, directory);
+        if (ImGui::MenuItem("Select Referencing Entities", nullptr, false,
+                            references != 0u)) {
+            SelectAssetReferences(relativePath, directory);
+        }
         if (!directory) {
             ImGui::Separator();
             const std::string uri =
@@ -1016,6 +1026,19 @@ void EditorScene::DrawSelectedAssetDetails() {
     }
     const size_t references = CountAssetReferences(relative, directory);
     ImGui::TextDisabled("Scene references: %zu", references);
+    if (ImGui::SmallButton("Show in Explorer")) {
+        RevealAssetInExplorer(relative);
+    }
+    ImGui::SameLine();
+    if (references == 0u) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::SmallButton("Select References")) {
+        SelectAssetReferences(relative, directory);
+    }
+    if (references == 0u) {
+        ImGui::EndDisabled();
+    }
     if (!regularFile || !AssetImport::IsModelFile(physical)) {
         return;
     }
@@ -1456,6 +1479,60 @@ bool EditorScene::ImportAssetFiles() {
         status_ += " (kept " + std::to_string(alreadyPresent) + " identical file(s)).";
     }
     return true;
+}
+
+bool EditorScene::RevealAssetInExplorer(const std::filesystem::path& relativePath) {
+    const std::filesystem::path relative = relativePath.lexically_normal();
+    const std::filesystem::path physical = assetRoot_ / relative;
+    std::error_code error;
+    if (relative.empty() || relative.is_absolute() || HasParentTraversal(relative) ||
+        !std::filesystem::exists(physical, error) || error ||
+        !IsPathWithinRoot(assetRoot_, physical)) {
+        status_ = "Could not reveal an invalid or missing asset path.";
+        return false;
+    }
+    HINSTANCE result = nullptr;
+    if (std::filesystem::is_directory(physical, error) && !error) {
+        result = ShellExecuteW(nullptr, L"open", physical.c_str(), nullptr, nullptr,
+                               SW_SHOWNORMAL);
+    } else {
+        const std::wstring arguments = L"/select,\"" + physical.wstring() + L"\"";
+        result = ShellExecuteW(nullptr, L"open", L"explorer.exe", arguments.c_str(), nullptr,
+                               SW_SHOWNORMAL);
+    }
+    if (reinterpret_cast<INT_PTR>(result) <= 32) {
+        status_ = "Could not open the asset location in Explorer.";
+        return false;
+    }
+    status_ = "Opened asset location: assets/" + relative.generic_string();
+    return true;
+}
+
+void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePath,
+                                        bool directory) {
+    hierarchySelection_.clear();
+    selection_ = {};
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model) {
+            continue;
+        }
+        const std::optional<std::filesystem::path> referenced =
+            AssetRelativeFromReference(entity.meshRenderer->modelPath);
+        if (!referenced || !AssetPathMatches(*referenced, relativePath, directory)) {
+            continue;
+        }
+        hierarchySelection_.insert(entity.id);
+        if (!selection_.IsValid()) {
+            selection_ = entity.id;
+        }
+    }
+    hierarchySelectionAnchor_ = selection_;
+    showHierarchyPanel_ = true;
+    status_ = hierarchySelection_.empty()
+                  ? "No scene entities reference the selected asset."
+                  : "Selected " + std::to_string(hierarchySelection_.size()) +
+                        " entity reference(s) to assets/" +
+                        relativePath.lexically_normal().generic_string();
 }
 
 bool EditorScene::IsAssetReferenced(const std::filesystem::path& relativePath,
