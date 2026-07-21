@@ -295,6 +295,21 @@ bool ProjectScenePoint(const Camera& camera, const DirectX::XMFLOAT3& worldPosit
             screenPosition.y >= imageMin.y && screenPosition.y <= imageMax.y);
 }
 
+bool TryGetCameraPreviewRect(const ImVec2& imageMin, const ImVec2& imageMax,
+                             ImVec2& previewMin, ImVec2& previewMax) {
+    const float availableWidth = imageMax.x - imageMin.x;
+    const float availableHeight = imageMax.y - imageMin.y;
+    if (availableWidth < 360.0f || availableHeight < 240.0f) {
+        return false;
+    }
+    constexpr float margin = 12.0f;
+    const float width = (std::min)(240.0f, availableWidth * 0.36f);
+    const float height = width * 9.0f / 16.0f;
+    previewMax = {imageMax.x - margin, imageMin.y + margin + height};
+    previewMin = {previewMax.x - width, imageMin.y + margin};
+    return true;
+}
+
 DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
                                                   const ImVec2& imageMin,
                                                   const ImVec2& imageMax,
@@ -361,6 +376,9 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     if (!gameViewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 960, 540)) {
         status_ = "Game View RenderSurface initialization failed.";
     }
+    if (!cameraPreviewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 320, 180)) {
+        status_ = "Camera Preview RenderSurface initialization failed.";
+    }
     if (!assetPreviewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 320, 320)) {
         status_ = "Asset Preview RenderSurface initialization failed.";
     }
@@ -385,6 +403,7 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     sceneViewCamera_.SetRotation({0.08f, 0.0f, 0.0f});
     sceneViewCamera_.Initialize(960.0f / 540.0f);
     gameViewCamera_.Initialize(960.0f / 540.0f);
+    cameraPreviewCamera_.Initialize(16.0f / 9.0f);
     assetPreviewCamera_.SetPosition({0.0f, 0.0f, -4.0f});
     assetPreviewCamera_.SetRotation({0.0f, 0.0f, 0.0f});
     assetPreviewCamera_.Initialize(1.0f);
@@ -441,6 +460,18 @@ void EditorScene::Update() {
                                         gameViewSurface_.GetHeight());
         if (!gameViewPostProcess_.IsReady()) {
             status_ = "Game View PostProcess initialization failed.";
+        }
+    }
+    if (!cameraPreviewPostProcessInitializationAttempted_ && cameraPreviewSurface_.IsReady() &&
+        ctx_ != nullptr && ctx_->rendering.dxCommon != nullptr &&
+        ctx_->rendering.srv != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording()) {
+        cameraPreviewPostProcessInitializationAttempted_ = true;
+        cameraPreviewPostProcess_.Initialize(ctx_->rendering.dxCommon, ctx_->rendering.srv,
+                                             cameraPreviewSurface_.GetWidth(),
+                                             cameraPreviewSurface_.GetHeight());
+        if (!cameraPreviewPostProcess_.IsReady()) {
+            status_ = "Camera Preview PostProcess initialization failed.";
         }
     }
     if (!assetPreviewPostProcessInitializationAttempted_ && assetPreviewSurface_.IsReady() &&
@@ -798,6 +829,7 @@ void EditorScene::DrawDockSpace() {
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
     gameViewSurface_.ReleaseCompletedFrameResources();
+    cameraPreviewSurface_.ReleaseCompletedFrameResources();
     assetPreviewSurface_.ReleaseCompletedFrameResources();
     projectPanelMinX_ = 0.0f;
     projectPanelMinY_ = 0.0f;
@@ -830,9 +862,19 @@ void EditorScene::DrawPanels() {
                 const ImVec2 expectedImageMax = {
                     expectedImageMin.x + static_cast<float>(requestedSceneWidth_),
                     expectedImageMin.y + static_cast<float>(requestedSceneHeight_)};
+                ImVec2 expectedPreviewMin{};
+                ImVec2 expectedPreviewMax{};
+                const WorldEntity* previewEntity = world_.Find(selection_);
+                const bool cameraPreviewHovered =
+                    previewEntity != nullptr && previewEntity->camera &&
+                    cameraPreviewSurface_.IsReady() && cameraPreviewPostProcess_.IsReady() &&
+                    TryGetCameraPreviewRect(expectedImageMin, expectedImageMax,
+                                            expectedPreviewMin, expectedPreviewMax) &&
+                    ImGui::IsMouseHoveringRect(expectedPreviewMin, expectedPreviewMax);
                 const bool expectedImageHovered =
                     ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-                    ImGui::IsMouseHoveringRect(expectedImageMin, expectedImageMax);
+                    ImGui::IsMouseHoveringRect(expectedImageMin, expectedImageMax) &&
+                    !cameraPreviewHovered;
                 HandleSceneCameraControls(expectedImageMin, expectedImageMax,
                                           expectedImageHovered);
                 BuildRenderScene();
@@ -857,7 +899,7 @@ void EditorScene::DrawPanels() {
                                     static_cast<float>(requestedSceneHeight_)));
                 const ImVec2 imageMin = ImGui::GetItemRectMin();
                 const ImVec2 imageMax = ImGui::GetItemRectMax();
-                const bool imageHovered = ImGui::IsItemHovered();
+                const bool imageHovered = ImGui::IsItemHovered() && !cameraPreviewHovered;
                 HandleSceneAssetDrop(imageMin, imageMax);
                 HandleSceneContextMenu(imageMin, imageMax, imageHovered);
                 DrawSceneGrid(imageMin, imageMax);
@@ -879,6 +921,7 @@ void EditorScene::DrawPanels() {
                                             IM_COL32(20, 24, 32, 190), 3.0f);
                     drawList->AddText(hintMin, IM_COL32(220, 225, 235, 230), cameraHint);
                 }
+                DrawSelectedCameraPreview(imageMin, imageMax);
             } else {
                 ImGui::TextDisabled("Scene View RenderSurface is not ready.");
             }
@@ -3850,28 +3893,87 @@ bool EditorScene::UpdateGameViewCamera() {
         return false;
     }
 
+    return UpdateCameraFromEntity(primaryCamera->id, gameViewCamera_,
+                                  gameViewSurface_.GetWidth(), gameViewSurface_.GetHeight());
+}
+
+bool EditorScene::UpdateCameraFromEntity(EntityId entityId, Camera& targetCamera, int width,
+                                         int height) const {
+    const WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !entity->camera) {
+        return false;
+    }
+
     DirectX::XMFLOAT4X4 worldMatrix{};
     TransformComponent worldTransform{};
-    if (!world_.TryGetWorldMatrix(primaryCamera->id, worldMatrix) ||
+    if (!world_.TryGetWorldMatrix(entity->id, worldMatrix) ||
         !TryDecomposeTransformComponent(DirectX::XMLoadFloat4x4(&worldMatrix),
                                         worldTransform)) {
         return false;
     }
-    gameViewCamera_.SetPosition(worldTransform.position);
-    gameViewCamera_.SetRotation(
+    targetCamera.SetPosition(worldTransform.position);
+    targetCamera.SetRotation(
         {DirectX::XMConvertToRadians(worldTransform.rotationDegrees.x),
          DirectX::XMConvertToRadians(worldTransform.rotationDegrees.y),
          DirectX::XMConvertToRadians(worldTransform.rotationDegrees.z)});
-    const CameraComponent& camera = *primaryCamera->camera;
-    gameViewCamera_.SetAspect(static_cast<float>(gameViewSurface_.GetWidth()) /
-                              static_cast<float>((std::max)(1, gameViewSurface_.GetHeight())));
-    if (camera.projection == CameraProjection::Perspective) {
-        gameViewCamera_.SetPerspectiveFovDeg(camera.fieldOfViewDegrees);
+    const CameraComponent& component = *entity->camera;
+    targetCamera.SetAspect(static_cast<float>((std::max)(1, width)) /
+                           static_cast<float>((std::max)(1, height)));
+    if (component.projection == CameraProjection::Perspective) {
+        targetCamera.SetPerspectiveFovDeg(component.fieldOfViewDegrees);
     } else {
-        gameViewCamera_.SetOrthographicHeight(camera.orthographicHeight);
+        targetCamera.SetOrthographicHeight(component.orthographicHeight);
     }
-    gameViewCamera_.SetClipRange(camera.nearClip, camera.farClip);
+    targetCamera.SetClipRange(component.nearClip, component.farClip);
     return true;
+}
+
+bool EditorScene::DrawSelectedCameraPreview(const ImVec2& imageMin,
+                                            const ImVec2& imageMax) {
+    const WorldEntity* entity = world_.Find(selection_);
+    ImVec2 previewMin{};
+    ImVec2 previewMax{};
+    if (entity == nullptr || !entity->camera || !cameraPreviewSurface_.IsReady() ||
+        !cameraPreviewPostProcess_.IsReady() || ctx_ == nullptr ||
+        ctx_->rendering.dxCommon == nullptr || ctx_->rendering.model == nullptr ||
+        !TryGetCameraPreviewRect(imageMin, imageMax, previewMin, previewMax) ||
+        !UpdateCameraFromEntity(entity->id, cameraPreviewCamera_,
+                                cameraPreviewSurface_.GetWidth(),
+                                cameraPreviewSurface_.GetHeight())) {
+        return false;
+    }
+
+    sceneRenderer_.Render(renderScene_, cameraPreviewCamera_, cameraPreviewSurface_,
+                          {0.025f, 0.035f, 0.055f, 1.0f});
+    cameraPreviewSurface_.TransitionDepthToShaderResource();
+    cameraPreviewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+    const PostProcessOutputTarget target{
+        cameraPreviewSurface_.GetOutputRtvHandle(),
+        static_cast<uint32_t>(cameraPreviewSurface_.GetWidth()),
+        static_cast<uint32_t>(cameraPreviewSurface_.GetHeight()),
+        DirectXCommon::kBackBufferFormat,
+    };
+    cameraPreviewPostProcess_.DrawToTarget(cameraPreviewSurface_.GetSceneColorGpuHandle(),
+                                           cameraPreviewSurface_.GetDepthGpuHandle(), target);
+    cameraPreviewSurface_.EndOutputPass();
+    cameraPreviewSurface_.TransitionDepthToWrite();
+    ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const D3D12_GPU_DESCRIPTOR_HANDLE output = cameraPreviewSurface_.GetOutputGpuHandle();
+    drawList->AddImage(static_cast<ImTextureID>(output.ptr), previewMin, previewMax);
+    drawList->AddRect(previewMin, previewMax, IM_COL32(255, 184, 56, 255), 3.0f, 0, 2.0f);
+    const std::string label = "Camera Preview  |  " + entity->name;
+    const ImVec2 textSize = ImGui::CalcTextSize(label.c_str());
+    drawList->AddRectFilled(previewMin,
+                            {previewMin.x + (std::min)(previewMax.x - previewMin.x,
+                                                      textSize.x + 12.0f),
+                             previewMin.y + textSize.y + 8.0f},
+                            IM_COL32(18, 22, 30, 220), 3.0f,
+                            ImDrawFlags_RoundCornersTopLeft);
+    drawList->AddText({previewMin.x + 6.0f, previewMin.y + 4.0f},
+                      IM_COL32(240, 242, 248, 255), label.c_str());
+    return ImGui::IsMouseHoveringRect(previewMin, previewMax);
 }
 
 void EditorScene::UpdateAssetPreview() {

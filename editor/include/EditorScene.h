@@ -121,6 +121,8 @@ private:
     void UpdateAssetPreview();
     void BuildAssetPreviewScene();
     bool UpdateGameViewCamera();
+    bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
+    bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
@@ -230,6 +232,9 @@ private:
     RenderSurface gameViewSurface_{};
     PostProcessSystem gameViewPostProcess_{};
     Camera gameViewCamera_{};
+    RenderSurface cameraPreviewSurface_{};
+    PostProcessSystem cameraPreviewPostProcess_{};
+    Camera cameraPreviewCamera_{};
     RenderSurface assetPreviewSurface_{};
     PostProcessSystem assetPreviewPostProcess_{};
     RenderScene assetPreviewScene_{};
@@ -297,6 +302,7 @@ private:
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
     bool gamePostProcessInitializationAttempted_ = false;
+    bool cameraPreviewPostProcessInitializationAttempted_ = false;
     bool assetPreviewPostProcessInitializationAttempted_ = false;
     float projectPanelMinX_ = 0.0f;
     float projectPanelMinY_ = 0.0f;
