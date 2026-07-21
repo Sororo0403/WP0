@@ -14,4 +14,5 @@
 #include "scene/SceneManager.h"
 #include "world/EntityId.h"
 #include "world/World.h"
+#include "world/WorldCollision.h"
 #include "world/WorldSerializer.h"

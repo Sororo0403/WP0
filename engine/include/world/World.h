@@ -103,6 +103,13 @@ struct BehaviorComponent {
     std::string type;
 };
 
+struct BoxColliderComponent {
+    bool enabled = true;
+    DirectX::XMFLOAT3 center{0.0f, 0.0f, 0.0f};
+    DirectX::XMFLOAT3 size{1.0f, 1.0f, 1.0f};
+    bool isTrigger = false;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
@@ -113,6 +120,7 @@ struct WorldEntity {
     std::optional<CameraComponent> camera;
     std::optional<LightComponent> light;
     std::optional<BehaviorComponent> behavior;
+    std::optional<BoxColliderComponent> boxCollider;
 };
 
 class World {

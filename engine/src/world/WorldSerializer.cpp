@@ -169,6 +169,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             encoded["components"]["Behavior"]["enabled"] = entity.behavior->enabled;
             encoded["components"]["Behavior"]["type"] = entity.behavior->type;
         }
+        if (entity.boxCollider) {
+            encoded["components"]["BoxCollider"]["enabled"] =
+                entity.boxCollider->enabled;
+            encoded["components"]["BoxCollider"]["center"] =
+                EncodeFloat3(entity.boxCollider->center);
+            encoded["components"]["BoxCollider"]["size"] =
+                EncodeFloat3(entity.boxCollider->size);
+            encoded["components"]["BoxCollider"]["isTrigger"] =
+                entity.boxCollider->isTrigger;
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -480,6 +490,28 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.behavior = std::move(component);
+        }
+        if (encoded["components"].contains("BoxCollider")) {
+            const Json& collider = encoded["components"]["BoxCollider"];
+            BoxColliderComponent component{};
+            if (!collider.is_object() || !collider.contains("enabled") ||
+                !collider["enabled"].is_boolean() || !collider.contains("center") ||
+                !collider.contains("size") || !collider.contains("isTrigger") ||
+                !collider["isTrigger"].is_boolean() ||
+                !DecodeFloat3(collider["center"], component.center) ||
+                !DecodeFloat3(collider["size"], component.size)) {
+                SetError(error, "Scene BoxCollider component is invalid.");
+                return false;
+            }
+            component.enabled = collider["enabled"].get<bool>();
+            component.isTrigger = collider["isTrigger"].get<bool>();
+            if (component.size.x < 0.001f || component.size.y < 0.001f ||
+                component.size.z < 0.001f || component.size.x > 1000000.0f ||
+                component.size.y > 1000000.0f || component.size.z > 1000000.0f) {
+                SetError(error, "Scene BoxCollider size is invalid.");
+                return false;
+            }
+            entity.boxCollider = component;
         }
         entities.push_back(std::move(entity));
     }

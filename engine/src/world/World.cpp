@@ -64,6 +64,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->camera = original.camera;
         duplicate->light = original.light;
         duplicate->behavior = original.behavior;
+        duplicate->boxCollider = original.boxCollider;
         if (duplicate->camera) {
             duplicate->camera->primary = false;
         }
@@ -295,6 +296,22 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 material.alphaCutoff > 1.0f || material.cullMode < MaterialSurfaceCullMode::None ||
                 material.cullMode > MaterialSurfaceCullMode::Back) {
                 SetError(error, "Scene contains an invalid MaterialOverride component.");
+                return false;
+            }
+        }
+        if (entity.behavior &&
+            (entity.behavior->type.empty() || entity.behavior->type.size() > 128u ||
+             entity.behavior->type.find('\0') != std::string::npos)) {
+            SetError(error, "Scene contains an invalid Behavior component.");
+            return false;
+        }
+        if (entity.boxCollider) {
+            const BoxColliderComponent& collider = *entity.boxCollider;
+            if (!IsFinite(collider.center) || !IsFinite(collider.size) ||
+                collider.size.x < 0.001f || collider.size.y < 0.001f ||
+                collider.size.z < 0.001f || collider.size.x > 1000000.0f ||
+                collider.size.y > 1000000.0f || collider.size.z > 1000000.0f) {
+                SetError(error, "Scene contains an invalid BoxCollider component.");
                 return false;
             }
         }

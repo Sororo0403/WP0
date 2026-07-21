@@ -1,11 +1,13 @@
 #include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
 #include "RecentScenesStore.h"
+#include "collision/CollisionUtil.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
 #include "world/World.h"
+#include "world/WorldCollision.h"
 #include "world/WorldSerializer.h"
 #include "../../engine/src/model/internal/ModelPrimitiveFactory.h"
 
@@ -238,6 +240,9 @@ int main() {
     childEntity->light->intensity = 2.0f;
     childEntity->behavior = BehaviorComponent{};
     childEntity->behavior->type = "Rotator";
+    childEntity->boxCollider = BoxColliderComponent{};
+    childEntity->boxCollider->center = {0.25f, 0.5f, -0.25f};
+    childEntity->boxCollider->size = {1.0f, 2.0f, 3.0f};
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -251,6 +256,25 @@ int main() {
                    std::abs(childWorld._42 - 2.0f) < 0.001f,
                "Parent and child transforms were not composed.")) {
         return 5;
+    }
+    OBB childCollider{};
+    if (!Check(TryBuildWorldBoxCollider(source, child, childCollider) &&
+                   std::abs(childCollider.size.x - 1.0f) < 0.001f &&
+                   std::abs(childCollider.size.y - 2.0f) < 0.001f &&
+                   std::abs(childCollider.size.z - 3.0f) < 0.001f,
+               "World BoxCollider did not follow the entity transform.")) {
+        return 130;
+    }
+    OBB overlappingCollider = childCollider;
+    overlappingCollider.center.x += 0.25f;
+    if (!Check(CollisionUtil::CheckOBB(childCollider, overlappingCollider),
+               "Overlapping World BoxColliders were not detected.")) {
+        return 131;
+    }
+    overlappingCollider.center.x += 100.0f;
+    if (!Check(!CollisionUtil::CheckOBB(childCollider, overlappingCollider),
+               "Separated World BoxColliders reported a collision.")) {
+        return 132;
     }
 
     const std::string serialized = WorldSerializer::Serialize(source);
@@ -291,6 +315,9 @@ int main() {
                    restoredChild->light->intensity == 2.0f &&
                    restoredChild->behavior && restoredChild->behavior->enabled &&
                    restoredChild->behavior->type == "Rotator" &&
+                   restoredChild->boxCollider && !restoredChild->boxCollider->isTrigger &&
+                   restoredChild->boxCollider->center.y == 0.5f &&
+                   restoredChild->boxCollider->size.z == 3.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
@@ -324,6 +351,9 @@ int main() {
                        MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateChild->behavior && duplicateChild->behavior->type == "Rotator" &&
+                   duplicateChild->boxCollider &&
+                   duplicateChild->boxCollider->center.x == 0.25f &&
+                   duplicateChild->boxCollider->size.y == 2.0f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
@@ -358,6 +388,14 @@ int main() {
                "Failed replacement modified the existing world.")) {
         return 12;
     }
+    std::vector<WorldEntity> invalidColliderEntities(1u);
+    invalidColliderEntities[0].id = EntityId::New();
+    invalidColliderEntities[0].boxCollider = BoxColliderComponent{};
+    invalidColliderEntities[0].boxCollider->size.y = 0.0f;
+    if (!Check(!restored.ReplaceEntities(std::move(invalidColliderEntities), &error),
+               "Invalid direct BoxCollider replacement was accepted.")) {
+        return 133;
+    }
 
     if (!Check(restored.DestroyEntity(root) && restored.Empty(),
                "Recursive hierarchy deletion failed.")) {
@@ -388,6 +426,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidBehavior, rejected, &error),
                "Invalid Behavior data was accepted.")) {
         return 128;
+    }
+    const std::string invalidBoxCollider =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Collider","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"BoxCollider":{"enabled":true,"center":[0,0,0],"size":[1,0,1],"isTrigger":false}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidBoxCollider, rejected, &error),
+               "Invalid BoxCollider data was accepted.")) {
+        return 129;
     }
     const std::string invalidMaterial =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Material","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,2],"metallic":-1,"roughness":0.5}}}]})";

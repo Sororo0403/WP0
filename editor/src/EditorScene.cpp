@@ -20,6 +20,7 @@
 #include "runtime/FirstPersonController.h"
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
+#include "world/WorldCollision.h"
 
 #include <Windows.h>
 #include <commdlg.h>
@@ -2731,7 +2732,7 @@ void EditorScene::DrawInspectorPanel() {
 
     ImGui::Separator();
     if (!entity->meshRenderer || !entity->materialOverride || !entity->camera ||
-        !entity->light || !entity->behavior) {
+        !entity->light || !entity->behavior || !entity->boxCollider) {
         if (ImGui::Button("Add Component")) {
             ImGui::OpenPopup("AddComponentMenu");
         }
@@ -2776,6 +2777,13 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Add Behavior", before, selectionBefore);
                 status_ = "Added Behavior.";
             }
+            if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->boxCollider = BoxColliderComponent{};
+                RecordImmediateEdit("Add BoxCollider", before, selectionBefore);
+                status_ = "Added BoxCollider.";
+            }
             ImGui::EndPopup();
         }
     }
@@ -2810,6 +2818,55 @@ void EditorScene::DrawInspectorPanel() {
                     }
                 }
                 ImGui::EndCombo();
+            }
+        }
+    }
+
+    if (entity->boxCollider) {
+        ImGui::SeparatorText("Box Collider");
+        if (ImGui::Button("Remove Box Collider")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->boxCollider.reset();
+            RecordImmediateEdit("Remove BoxCollider", before, selectionBefore);
+            status_ = "Removed BoxCollider.";
+        } else {
+            BoxColliderComponent& collider = *entity->boxCollider;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##BoxCollider", &collider.enabled)) {
+                RecordImmediateEdit("Toggle BoxCollider", std::move(before),
+                                    selectionBefore);
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Is Trigger##BoxCollider", &collider.isTrigger)) {
+                RecordImmediateEdit("Toggle BoxCollider Trigger", std::move(before),
+                                    selectionBefore);
+            }
+            if (ImGui::DragFloat3("Center##BoxCollider", &collider.center.x, 0.02f)) {
+                RefreshDirty();
+                status_ = "Modified BoxCollider.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify BoxCollider Center");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat3("Size##BoxCollider", &collider.size.x, 0.02f, 0.001f,
+                                  1000000.0f, "%.3f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                collider.size.x = (std::max)(0.001f, collider.size.x);
+                collider.size.y = (std::max)(0.001f, collider.size.y);
+                collider.size.z = (std::max)(0.001f, collider.size.z);
+                RefreshDirty();
+                status_ = "Modified BoxCollider.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify BoxCollider Size");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
             }
         }
     }
@@ -5173,7 +5230,7 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
     EntityId closestComponent{};
     float closestComponentDistanceSquared = 14.0f * 14.0f;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light) {
+        if (!entity.camera && !entity.light && !entity.boxCollider) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -5272,7 +5329,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
     };
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light) {
+        if (!entity.camera && !entity.light && !entity.boxCollider) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -5285,15 +5342,18 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
         const bool active = entity.id == selection_;
         const bool selected = hierarchySelection_.contains(entity.id);
-        ImU32 color = entity.camera ? IM_COL32(90, 185, 255, 230)
-                                    : IM_COL32(255, 215, 80, 230);
+        ImU32 color = entity.camera
+                          ? IM_COL32(90, 185, 255, 230)
+                          : (entity.light ? IM_COL32(255, 215, 80, 230)
+                                          : IM_COL32(80, 230, 130, 230));
         if (active) {
             color = IM_COL32(255, 184, 56, 255);
         } else if (selected) {
             color = IM_COL32(90, 190, 255, 255);
         }
         const bool enabled = (entity.camera && entity.camera->enabled) ||
-                             (entity.light && entity.light->enabled);
+                             (entity.light && entity.light->enabled) ||
+                             (entity.boxCollider && entity.boxCollider->enabled);
         if (!enabled) {
             color = (color & 0x00FFFFFFu) | (100u << 24u);
         }
@@ -5304,7 +5364,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
             drawList->AddTriangle({center.x + 5.0f, center.y - 5.0f},
                                   {center.x + 12.0f, center.y - 9.0f},
                                   {center.x + 12.0f, center.y + 1.0f}, color, 1.8f);
-        } else {
+        } else if (entity.light) {
             drawList->AddCircle(center, 5.0f, color, 16, 1.8f);
             for (int index = 0; index < 8; ++index) {
                 const float angle = DirectX::XM_2PI * static_cast<float>(index) / 8.0f;
@@ -5315,6 +5375,10 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                    center.y + direction.y * 11.0f},
                                   color, 1.5f);
             }
+        } else {
+            drawList->AddRect({center.x - 6.0f, center.y - 6.0f},
+                              {center.x + 6.0f, center.y + 6.0f}, color, 1.0f, 0,
+                              1.8f);
         }
         if (active) {
             using namespace DirectX;
@@ -5420,6 +5484,47 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                               right * (std::cos(angle) * coneRadius) +
                                               up * (std::sin(angle) * coneRadius));
                         drawWorldLine(worldOrigin, rim, guideColor);
+                    }
+                }
+            }
+
+            if (entity.boxCollider) {
+                OBB collider{};
+                if (TryBuildWorldBoxCollider(world_, entity.id, collider)) {
+                    const XMVECTOR colliderCenter = XMLoadFloat3(&collider.center);
+                    const XMVECTOR colliderRotation = XMLoadFloat4(&collider.rotation);
+                    const XMVECTOR colliderRight = XMVector3Rotate(g_XMIdentityR0,
+                                                                    colliderRotation);
+                    const XMVECTOR colliderUp = XMVector3Rotate(g_XMIdentityR1,
+                                                                 colliderRotation);
+                    const XMVECTOR colliderForward = XMVector3Rotate(g_XMIdentityR2,
+                                                                      colliderRotation);
+                    const float halfX = collider.size.x * 0.5f;
+                    const float halfY = collider.size.y * 0.5f;
+                    const float halfZ = collider.size.z * 0.5f;
+                    std::array<XMFLOAT3, 8> corners{};
+                    size_t cornerIndex = 0;
+                    for (int z = -1; z <= 1; z += 2) {
+                        for (int y = -1; y <= 1; y += 2) {
+                            for (int x = -1; x <= 1; x += 2) {
+                                XMStoreFloat3(
+                                    &corners[cornerIndex++],
+                                    colliderCenter + colliderRight * (halfX * x) +
+                                        colliderUp * (halfY * y) +
+                                        colliderForward * (halfZ * z));
+                            }
+                        }
+                    }
+                    constexpr size_t colliderEdges[][2] = {
+                        {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
+                        {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+                    };
+                    const ImU32 guideColor = entity.boxCollider->enabled
+                                                 ? IM_COL32(80, 230, 130, 210)
+                                                 : IM_COL32(80, 230, 130, 80);
+                    for (const auto& edge : colliderEdges) {
+                        drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor,
+                                      1.5f);
                     }
                 }
             }

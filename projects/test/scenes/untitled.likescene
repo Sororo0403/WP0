@@ -14,11 +14,11 @@
         "Transform": {
           "position": [
             0.0,
-            4.0,
-            -2.9382290840148926
+            0.0,
+            0.0
           ],
           "rotation": [
-            36.500003814697266,
+            0.0,
             0.0,
             0.0
           ],
@@ -35,46 +35,36 @@
     },
     {
       "components": {
-        "Light": {
-          "color": [
-            1.0,
-            0.23166024684906006,
-            0.0
-          ],
-          "enabled": true,
-          "innerAngle": 25.0,
-          "intensity": 33.31999969482422,
-          "outerAngle": 45.0,
-          "range": 10.0,
-          "type": "Spot"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            1.9959744215011597,
-            -4.4957122802734375
-          ],
-          "rotation": [
-            38.538734436035156,
-            -0.0,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            0.9999991059303284,
-            0.9999991059303284
-          ]
-        }
-      },
-      "id": "43cf6350-f14d-e8e1-5709-765fa365109c",
-      "name": "Directional Light",
-      "parent": null
-    },
-    {
-      "components": {
         "Behavior": {
           "enabled": true,
           "type": "FirstPersonController"
+        },
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Light": {
+          "color": [
+            0.0,
+            0.08494234085083008,
+            1.0
+          ],
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 23.299999237060547,
+          "outerAngle": 45.0,
+          "range": 10.0,
+          "type": "Point"
         },
         "MaterialOverride": {
           "alphaCutoff": 0.5,
@@ -106,7 +96,7 @@
         "Transform": {
           "position": [
             0.0,
-            1.7296074628829956,
+            0.0,
             0.0
           ],
           "rotation": [
@@ -123,6 +113,71 @@
       },
       "id": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497",
       "name": "Cube",
+      "parent": null
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 1.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            4.9150919914245605
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.699999809265137,
+            2.180000066757202,
+            1.5800000429153442
+          ]
+        }
+      },
+      "id": "49f2cf35-b61b-944d-caff-52d73e96bc8d",
+      "name": "Box",
       "parent": null
     }
   ],
