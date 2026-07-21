@@ -27,6 +27,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <limits>
@@ -423,6 +424,9 @@ void EditorScene::Initialize(const SceneContext& ctx) {
 }
 
 void EditorScene::Update() {
+    if (playModeState_ == PlayModeState::Playing && ctx_ != nullptr) {
+        UpdateRuntimeWorld(ctx_->frame.deltaTime);
+    }
     ResolveMeshResources();
     if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
         ctx_->rendering.dxCommon != nullptr &&
@@ -757,10 +761,19 @@ void EditorScene::DrawMainMenu() {
     if (dirty_) {
         editorLabel += " *";
     }
-    if (playing) {
+    const bool titlePlaying = playModeState_ == PlayModeState::Playing;
+    const bool titlePaused = playModeState_ == PlayModeState::Paused;
+    if (titlePlaying) {
         editorLabel += "  [PLAYING]";
-    } else if (paused) {
+    } else if (titlePaused) {
         editorLabel += "  [PAUSED]";
+    }
+    if (IsInPlayMode()) {
+        char runtimeStatus[64]{};
+        sprintf_s(runtimeStatus, "  Frame %llu | %.2fs",
+                  static_cast<unsigned long long>(runtimeFrameCount_),
+                  runtimeElapsedSeconds_);
+        editorLabel += runtimeStatus;
     }
     ImGui::TextUnformatted(editorLabel.c_str());
     ImGui::EndMainMenuBar();
@@ -4879,6 +4892,7 @@ void EditorScene::EnterPlayMode() {
     playModeDirtySnapshot_ = dirty_;
     editModeWorld_.emplace(std::move(world_));
     world_ = std::move(runtimeWorld);
+    BeginRuntimeWorld();
     playModeState_ = PlayModeState::Playing;
     showGamePanel_ = true;
     focusGamePanelRequested_ = true;
@@ -4893,6 +4907,7 @@ void EditorScene::StopPlayMode() {
         status_ = "Could not stop Play Mode: Edit World is unavailable.";
         return;
     }
+    EndRuntimeWorld();
     world_ = std::move(*editModeWorld_);
     editModeWorld_.reset();
     selection_ = world_.Contains(playModeSelectionSnapshot_) ? playModeSelectionSnapshot_
@@ -4920,6 +4935,23 @@ void EditorScene::TogglePlayPause() {
         playModeState_ = PlayModeState::Playing;
         status_ = "Resumed Play Mode.";
     }
+}
+
+void EditorScene::BeginRuntimeWorld() {
+    runtimeFrameCount_ = 0;
+    runtimeElapsedSeconds_ = 0.0;
+}
+
+void EditorScene::UpdateRuntimeWorld(float deltaTime) {
+    const float safeDeltaTime =
+        std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+    ++runtimeFrameCount_;
+    runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
+}
+
+void EditorScene::EndRuntimeWorld() {
+    runtimeFrameCount_ = 0;
+    runtimeElapsedSeconds_ = 0.0;
 }
 
 void EditorScene::BuildEditorOverlayScene() {

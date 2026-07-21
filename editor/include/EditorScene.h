@@ -42,6 +42,9 @@ private:
     void EnterPlayMode();
     void StopPlayMode();
     void TogglePlayPause();
+    void BeginRuntimeWorld();
+    void UpdateRuntimeWorld(float deltaTime);
+    void EndRuntimeWorld();
     [[nodiscard]] bool IsInPlayMode() const;
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
@@ -206,6 +209,8 @@ private:
     EntityId playModeSelectionSnapshot_{};
     bool playModeDirtySnapshot_ = false;
     bool focusGamePanelRequested_ = false;
+    uint64_t runtimeFrameCount_ = 0;
+    double runtimeElapsedSeconds_ = 0.0;
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
