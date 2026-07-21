@@ -3,6 +3,7 @@
 #include "AssetImportPlanner.h"
 
 #include "core/AssetManager.h"
+#include "core/MathUtils.h"
 #include "graphics/DirectXCommon.h"
 #include "graphics/LightingScene.h"
 #include "graphics/RenderScene.h"
@@ -150,27 +151,33 @@ bool AssetPathMatches(const std::filesystem::path& candidate,
 
 bool TryDecomposeTransformComponent(const DirectX::XMMATRIX& matrix,
                                     TransformComponent& transform) {
-    DirectX::XMFLOAT4X4 stored{};
-    DirectX::XMStoreFloat4x4(&stored, matrix);
-    float translation[3]{};
-    float rotation[3]{};
-    float scale[3]{};
-    ImGuizmo::DecomposeMatrixToComponents(&stored._11, translation, rotation, scale);
-    const bool finite = std::ranges::all_of(translation, [](float value) {
-                            return std::isfinite(value);
-                        }) &&
-                        std::ranges::all_of(rotation, [](float value) {
-                            return std::isfinite(value);
-                        }) &&
-                        std::ranges::all_of(scale, [](float value) {
-                            return std::isfinite(value);
-                        });
+    using namespace DirectX;
+    XMVECTOR scale{};
+    XMVECTOR rotation{};
+    XMVECTOR translation{};
+    if (!XMMatrixDecompose(&scale, &rotation, &translation, matrix)) {
+        return false;
+    }
+    XMFLOAT3 decomposedScale{};
+    XMFLOAT3 decomposedTranslation{};
+    XMStoreFloat3(&decomposedScale, scale);
+    XMStoreFloat3(&decomposedTranslation, translation);
+    const XMFLOAT3 decomposedRotation =
+        MathUtils::RotationDegreesFromQuaternion(rotation, transform.rotationDegrees);
+    const float values[] = {
+        decomposedTranslation.x, decomposedTranslation.y, decomposedTranslation.z,
+        decomposedRotation.x, decomposedRotation.y, decomposedRotation.z,
+        decomposedScale.x, decomposedScale.y, decomposedScale.z,
+    };
+    const bool finite = std::ranges::all_of(values, [](float value) {
+        return std::isfinite(value);
+    });
     if (!finite) {
         return false;
     }
-    transform.position = {translation[0], translation[1], translation[2]};
-    transform.rotationDegrees = {rotation[0], rotation[1], rotation[2]};
-    transform.scale = {scale[0], scale[1], scale[2]};
+    transform.position = decomposedTranslation;
+    transform.rotationDegrees = decomposedRotation;
+    transform.scale = decomposedScale;
     return true;
 }
 
@@ -5253,7 +5260,7 @@ bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& 
                         }
                     }
                 }
-                TransformComponent localTransform{};
+                TransformComponent localTransform = transformed->transform;
                 if (canApply && TryDecomposeTransformComponent(localMatrix, localTransform)) {
                     transformed->transform = localTransform;
                     changed = true;

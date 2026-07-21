@@ -178,4 +178,54 @@ constexpr float SmoothStep(float edge0, float edge1, float value) {
     return SmoothStep01((value - edge0) / range);
 }
 
+inline float WrapDegreesNear(float value, float reference) {
+    if (!IsFinite(value) || !IsFinite(reference)) {
+        return value;
+    }
+    return value + std::round((reference - value) / 360.0f) * 360.0f;
+}
+
+/// Converts a DirectX RollPitchYaw quaternion back to degrees while selecting
+/// the equivalent Euler representation closest to the current editor value.
+inline DirectX::XMFLOAT3 RotationDegreesFromQuaternion(
+    DirectX::FXMVECTOR quaternion, const DirectX::XMFLOAT3& referenceDegrees = {}) {
+    DirectX::XMFLOAT4X4 rotation{};
+    DirectX::XMStoreFloat4x4(
+        &rotation,
+        DirectX::XMMatrixRotationQuaternion(DirectX::XMQuaternionNormalize(quaternion)));
+
+    const float pitch = std::asin(std::clamp(-rotation._32, -1.0f, 1.0f));
+    const float cosPitch = std::cos(pitch);
+    float yaw = 0.0f;
+    float roll = 0.0f;
+    if (std::abs(cosPitch) > 1.0e-5f) {
+        yaw = std::atan2(rotation._31, rotation._33);
+        roll = std::atan2(rotation._12, rotation._22);
+    } else {
+        yaw = std::atan2(-rotation._13, rotation._11);
+    }
+
+    DirectX::XMFLOAT3 primary{
+        WrapDegreesNear(pitch * kRadToDeg, referenceDegrees.x),
+        WrapDegreesNear(yaw * kRadToDeg, referenceDegrees.y),
+        WrapDegreesNear(roll * kRadToDeg, referenceDegrees.z),
+    };
+    if (std::abs(cosPitch) <= 1.0e-5f) {
+        return primary;
+    }
+
+    DirectX::XMFLOAT3 alternate{
+        WrapDegreesNear(180.0f - pitch * kRadToDeg, referenceDegrees.x),
+        WrapDegreesNear(yaw * kRadToDeg + 180.0f, referenceDegrees.y),
+        WrapDegreesNear(roll * kRadToDeg + 180.0f, referenceDegrees.z),
+    };
+    const auto distanceSquared = [&referenceDegrees](const DirectX::XMFLOAT3& value) {
+        const double x = static_cast<double>(value.x) - referenceDegrees.x;
+        const double y = static_cast<double>(value.y) - referenceDegrees.y;
+        const double z = static_cast<double>(value.z) - referenceDegrees.z;
+        return x * x + y * y + z * z;
+    };
+    return distanceSquared(alternate) < distanceSquared(primary) ? alternate : primary;
+}
+
 } // namespace MathUtils

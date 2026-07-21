@@ -2,6 +2,7 @@
 #include "ProjectDescriptor.h"
 #include "RecentScenesStore.h"
 #include "core/AssetManager.h"
+#include "core/MathUtils.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
 #include "../../engine/src/model/internal/ModelPrimitiveFactory.h"
@@ -58,9 +59,41 @@ bool HasOutwardWinding(const ModelPrimitiveFactory::PrimitiveMeshData& primitive
     }
     return true;
 }
+
+bool RotationRoundTrips(const DirectX::XMFLOAT3& degrees) {
+    using namespace DirectX;
+    const XMVECTOR quaternion = XMQuaternionRotationRollPitchYaw(
+        XMConvertToRadians(degrees.x), XMConvertToRadians(degrees.y),
+        XMConvertToRadians(degrees.z));
+    const XMFLOAT3 restored = MathUtils::RotationDegreesFromQuaternion(quaternion, degrees);
+    XMFLOAT4X4 expected{};
+    XMFLOAT4X4 actual{};
+    XMStoreFloat4x4(&expected, XMMatrixRotationRollPitchYaw(
+                                   XMConvertToRadians(degrees.x),
+                                   XMConvertToRadians(degrees.y),
+                                   XMConvertToRadians(degrees.z)));
+    XMStoreFloat4x4(&actual, XMMatrixRotationRollPitchYaw(
+                                 XMConvertToRadians(restored.x),
+                                 XMConvertToRadians(restored.y),
+                                 XMConvertToRadians(restored.z)));
+    const float* expectedValues = &expected._11;
+    const float* actualValues = &actual._11;
+    for (size_t index = 0; index < 16u; ++index) {
+        if (std::abs(expectedValues[index] - actualValues[index]) > 0.0001f) {
+            return false;
+        }
+    }
+    return true;
+}
 } // namespace
 
 int main() {
+    if (!Check(RotationRoundTrips({25.0f, -40.0f, 70.0f}) &&
+                   RotationRoundTrips({120.0f, 215.0f, -150.0f}) &&
+                   RotationRoundTrips({89.999f, 35.0f, -20.0f}),
+               "Editor Euler rotation conversion changed the rotation matrix.")) {
+        return 124;
+    }
     const auto boxPrimitive =
         ModelPrimitiveFactory::BuildBox(0u, Material{}, 1.0f, 2.0f, 1.0f);
     const auto cylinderPrimitive =
