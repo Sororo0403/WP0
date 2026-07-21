@@ -1105,7 +1105,7 @@ void EditorScene::DrawSelectedAssetDetails() {
 }
 
 void EditorScene::DrawAssetPreviewPopup() {
-    ImGui::SetNextWindowSize({360.0f, 390.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({360.0f, 460.0f}, ImGuiCond_FirstUseEver);
     if (!ImGui::BeginPopup("Model Preview")) {
         return;
     }
@@ -1118,6 +1118,36 @@ void EditorScene::DrawAssetPreviewPopup() {
         ImGui::TextDisabled("Model preview is not ready.");
         ImGui::EndPopup();
         return;
+    }
+
+    const Model* model = ctx_->rendering.model->GetModel(assetPreviewModel_);
+    uint64_t vertexCount = 0;
+    uint64_t triangleCount = 0;
+    std::unordered_set<uint32_t> materials;
+    if (model != nullptr) {
+        for (const ModelSubMesh& subMesh : model->subMeshes) {
+            vertexCount += subMesh.vertexCount;
+            if (IsValidResourceId(subMesh.meshId)) {
+                triangleCount += ctx_->rendering.model->GetMesh(subMesh.meshId).indexCount / 3u;
+            }
+            if (IsValidResourceId(subMesh.materialId)) {
+                materials.insert(subMesh.materialId);
+            }
+        }
+        if (model->subMeshes.empty() && IsValidResourceId(model->meshId)) {
+            const Mesh& mesh = ctx_->rendering.model->GetMesh(model->meshId);
+            vertexCount = mesh.vertexStride == 0u ? 0u : mesh.vertexBytes / mesh.vertexStride;
+            triangleCount = mesh.indexCount / 3u;
+            if (IsValidResourceId(model->materialId)) {
+                materials.insert(model->materialId);
+            }
+        }
+        ImGui::TextDisabled("Meshes: %zu   Vertices: %llu   Triangles: %llu",
+                            model->subMeshes.empty() ? size_t{1} : model->subMeshes.size(),
+                            static_cast<unsigned long long>(vertexCount),
+                            static_cast<unsigned long long>(triangleCount));
+        ImGui::TextDisabled("Materials: %zu   Animations: %zu   Bones: %zu", materials.size(),
+                            model->animations.size(), model->bones.size());
     }
 
     BuildAssetPreviewScene();
@@ -3079,6 +3109,7 @@ void EditorScene::UpdateAssetPreview() {
         return;
     }
     if (!AssetImport::BuildPlan({physical}, assetPreviewPlan_, assetPreviewError_)) {
+        status_ = "Asset preview dependency validation failed: " + assetPreviewError_;
         return;
     }
     assetPreviewModel_ = ctx_->rendering.model->LoadHandle(physical.wstring());
@@ -3087,6 +3118,8 @@ void EditorScene::UpdateAssetPreview() {
                              : nullptr;
     if (model == nullptr) {
         assetPreviewError_ = "The selected model could not be loaded for preview.";
+        status_ = "Asset preview failed for assets/" + relative.generic_string() +
+                  ": model loading failed.";
         return;
     }
 
