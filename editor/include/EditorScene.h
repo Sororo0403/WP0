@@ -79,6 +79,7 @@ private:
     void DrawAssetBrowserBreadcrumbs();
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                bool directory);
+    void DrawSelectedAssetDetails();
     void DrawAssetOperationDialogs();
     void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);
     void RequestAssetDelete(const std::filesystem::path& relativePath, bool directory);
@@ -90,6 +91,8 @@ private:
     bool ImportAssetFiles();
     [[nodiscard]] bool IsAssetReferenced(const std::filesystem::path& relativePath,
                                          bool directory) const;
+    [[nodiscard]] size_t CountAssetReferences(const std::filesystem::path& relativePath,
+                                              bool directory) const;
     size_t UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
                                  const std::filesystem::path& newRelativePath, bool directory);
     [[nodiscard]] std::optional<std::filesystem::path>

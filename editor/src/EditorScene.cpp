@@ -868,6 +868,9 @@ void EditorScene::DrawProjectPanel() {
                              assetSearch_.size());
     ImGui::Separator();
 
+    const float detailsHeight = selectedAsset_.empty() ? 0.0f : 190.0f;
+    if (ImGui::BeginChild("AssetBrowserEntries", {0.0f, -detailsHeight},
+                          ImGuiChildFlags_None)) {
     const std::string search(assetSearch_.data());
     if (!search.empty()) {
         bool found = false;
@@ -880,15 +883,17 @@ void EditorScene::DrawProjectPanel() {
         if (!found) {
             ImGui::TextDisabled("No matching model assets.");
         }
-        return;
-    }
-
-    if (assetBrowserEntries_.empty()) {
+    } else if (assetBrowserEntries_.empty()) {
         ImGui::TextDisabled("This folder contains no model assets or folders.");
-        return;
+    } else {
+        for (const AssetBrowserEntry& entry : assetBrowserEntries_) {
+            DrawAssetBrowserEntry(entry.relativePath, entry.directory);
+        }
     }
-    for (const AssetBrowserEntry& entry : assetBrowserEntries_) {
-        DrawAssetBrowserEntry(entry.relativePath, entry.directory);
+    }
+    ImGui::EndChild();
+    if (!selectedAsset_.empty()) {
+        DrawSelectedAssetDetails();
     }
 }
 
@@ -971,6 +976,84 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::EndPopup();
     }
     ImGui::PopID();
+}
+
+void EditorScene::DrawSelectedAssetDetails() {
+    ImGui::SeparatorText("Selected Asset");
+    const std::filesystem::path relative = selectedAsset_.lexically_normal();
+    const std::filesystem::path physical = assetRoot_ / relative;
+    const std::string logicalPath =
+        (std::filesystem::path("assets") / relative).lexically_normal().generic_string();
+    ImGui::TextWrapped("%s", logicalPath.c_str());
+
+    std::error_code error;
+    const bool directory = std::filesystem::is_directory(physical, error) && !error;
+    error.clear();
+    const bool regularFile = std::filesystem::is_regular_file(physical, error) && !error;
+    if (!directory && !regularFile) {
+        ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "Asset no longer exists.");
+        return;
+    }
+    const std::string extension = physical.extension().string();
+    std::string typeLabel = directory ? "Folder" : "Model";
+    if (regularFile && !extension.empty()) {
+        typeLabel += " (" + extension + ")";
+    }
+    ImGui::TextDisabled("Type: %s", typeLabel.c_str());
+    if (regularFile) {
+        const uintmax_t bytes = std::filesystem::file_size(physical, error);
+        if (!error) {
+            constexpr double kilobyte = 1024.0;
+            constexpr double megabyte = kilobyte * 1024.0;
+            if (bytes >= static_cast<uintmax_t>(megabyte)) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Size: %.2f MB", static_cast<double>(bytes) / megabyte);
+            } else {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Size: %.1f KB", static_cast<double>(bytes) / kilobyte);
+            }
+        }
+    }
+    const size_t references = CountAssetReferences(relative, directory);
+    ImGui::TextDisabled("Scene references: %zu", references);
+    if (!regularFile || !AssetImport::IsModelFile(physical)) {
+        return;
+    }
+
+    std::vector<AssetImport::File> plan;
+    std::string dependencyError;
+    const bool valid = AssetImport::BuildPlan({physical}, plan, dependencyError);
+    if (!valid) {
+        ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "Dependencies: Invalid");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Details##AssetDependencyError")) {
+            status_ = dependencyError;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", dependencyError.c_str());
+        }
+        return;
+    }
+    const size_t dependencyCount = plan.empty() ? 0u : plan.size() - 1u;
+    ImGui::TextDisabled("Dependencies: %zu", dependencyCount);
+    if (dependencyCount == 0u) {
+        return;
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Show##AssetDependencies")) {
+        ImGui::OpenPopup("AssetDependencies");
+    }
+    if (ImGui::BeginPopup("AssetDependencies")) {
+        for (size_t index = 1; index < plan.size(); ++index) {
+            const std::string dependency =
+                (std::filesystem::path("assets") / relative.parent_path() /
+                 plan[index].relativeDestination)
+                    .lexically_normal()
+                    .generic_string();
+            ImGui::BulletText("%s", dependency.c_str());
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void EditorScene::RequestAssetRename(const std::filesystem::path& relativePath,
@@ -1377,6 +1460,12 @@ bool EditorScene::ImportAssetFiles() {
 
 bool EditorScene::IsAssetReferenced(const std::filesystem::path& relativePath,
                                     bool directory) const {
+    return CountAssetReferences(relativePath, directory) != 0u;
+}
+
+size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePath,
+                                         bool directory) const {
+    size_t references = 0;
     for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model) {
             continue;
@@ -1384,10 +1473,10 @@ bool EditorScene::IsAssetReferenced(const std::filesystem::path& relativePath,
         const std::optional<std::filesystem::path> referenced =
             AssetRelativeFromReference(entity.meshRenderer->modelPath);
         if (referenced && AssetPathMatches(*referenced, relativePath, directory)) {
-            return true;
+            ++references;
         }
     }
-    return false;
+    return references;
 }
 
 size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelativePath,
