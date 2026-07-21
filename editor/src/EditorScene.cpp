@@ -2248,19 +2248,92 @@ void EditorScene::DrawInspectorPanel() {
     drawTransform("Scale", entity->transform.scale, 0.02f);
 
     ImGui::Separator();
-    if (!entity->meshRenderer) {
-        if (ImGui::Button("Add Mesh Renderer")) {
-            const std::string before = WorldSerializer::Serialize(world_);
-            const EntityId selectionBefore = selection_;
-            entity->meshRenderer = MeshRendererComponent{};
-            RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
-            status_ = "Added MeshRenderer.";
+    if (!entity->meshRenderer || !entity->camera) {
+        if (ImGui::Button("Add Component")) {
+            ImGui::OpenPopup("AddComponentMenu");
         }
-        return;
+        if (ImGui::BeginPopup("AddComponentMenu")) {
+            if (!entity->meshRenderer && ImGui::MenuItem("Mesh Renderer")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->meshRenderer = MeshRendererComponent{};
+                RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
+                status_ = "Added MeshRenderer.";
+            }
+            if (!entity->camera && ImGui::MenuItem("Camera")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->camera = CameraComponent{};
+                RecordImmediateEdit("Add Camera", before, selectionBefore);
+                status_ = "Added Camera.";
+            }
+            ImGui::EndPopup();
+        }
     }
 
+    if (entity->camera) {
+        ImGui::SeparatorText("Camera");
+        if (ImGui::Button("Remove Camera")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->camera.reset();
+            RecordImmediateEdit("Remove Camera", before, selectionBefore);
+            status_ = "Removed Camera.";
+        } else {
+            CameraComponent& camera = *entity->camera;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Camera", &camera.enabled)) {
+                RecordImmediateEdit("Toggle Camera", std::move(before), selectionBefore);
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Primary##Camera", &camera.primary)) {
+                if (camera.primary) {
+                    world_.SetPrimaryCamera(entity->id);
+                }
+                RecordImmediateEdit("Change Primary Camera", std::move(before), selectionBefore);
+            }
+            int projection = static_cast<int>(camera.projection);
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Combo("Projection##Camera", &projection,
+                             "Perspective\0Orthographic\0")) {
+                camera.projection = static_cast<CameraProjection>(projection);
+                RecordImmediateEdit("Change Camera Projection", std::move(before),
+                                    selectionBefore);
+            }
+            auto drawCameraFloat = [&](const char* label, float& value, float speed,
+                                       float minimum, float maximum, const char* format) {
+                if (ImGui::DragFloat(label, &value, speed, minimum, maximum, format,
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified Camera.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify Camera");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            };
+            if (camera.projection == CameraProjection::Perspective) {
+                drawCameraFloat("Field of View", camera.fieldOfViewDegrees, 0.25f, 1.0f,
+                                179.0f, "%.1f deg");
+            } else {
+                drawCameraFloat("Orthographic Height", camera.orthographicHeight, 0.05f,
+                                0.001f, 1000000.0f, "%.3f");
+            }
+            drawCameraFloat("Near Clip", camera.nearClip, 0.005f, 0.001f,
+                            (std::max)(0.001f, camera.farClip - 0.001f), "%.3f");
+            drawCameraFloat("Far Clip", camera.farClip, 0.5f,
+                            camera.nearClip + 0.001f, 1000000000.0f, "%.1f");
+        }
+    }
+
+    if (!entity->meshRenderer) {
+        return;
+    }
+    ImGui::SeparatorText("Mesh Renderer");
     MeshRendererComponent& renderer = *entity->meshRenderer;
-    ImGui::TextUnformatted("Mesh Renderer");
     if (ImGui::Button("Remove Mesh Renderer")) {
         const std::string before = WorldSerializer::Serialize(world_);
         const EntityId selectionBefore = selection_;
@@ -3911,6 +3984,8 @@ void EditorScene::NewScene(bool clearPath) {
     const EntityId camera = world_.CreateEntity("Main Camera");
     if (WorldEntity* cameraEntity = world_.Find(camera)) {
         cameraEntity->transform.position = {0.0f, 2.0f, -5.0f};
+        cameraEntity->camera = CameraComponent{};
+        cameraEntity->camera->primary = true;
     }
     selection_ = world_.CreateEntity("Cube");
     if (WorldEntity* cube = world_.Find(selection_)) {

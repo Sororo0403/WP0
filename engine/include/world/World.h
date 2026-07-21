@@ -32,12 +32,28 @@ struct MeshRendererComponent {
     std::string modelPath;
 };
 
+enum class CameraProjection : uint8_t {
+    Perspective = 0,
+    Orthographic = 1,
+};
+
+struct CameraComponent {
+    bool enabled = true;
+    bool primary = false;
+    CameraProjection projection = CameraProjection::Perspective;
+    float fieldOfViewDegrees = 45.0f;
+    float orthographicHeight = 10.0f;
+    float nearClip = 0.1f;
+    float farClip = 1000.0f;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
     std::string name = "Entity";
     TransformComponent transform{};
     std::optional<MeshRendererComponent> meshRenderer;
+    std::optional<CameraComponent> camera;
 };
 
 class World {
@@ -48,6 +64,7 @@ public:
     bool SetParent(EntityId child, EntityId parent);
     bool MoveEntityBefore(EntityId entity, EntityId sibling);
     bool MoveEntityAfter(EntityId entity, EntityId sibling);
+    bool SetPrimaryCamera(EntityId entity);
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;

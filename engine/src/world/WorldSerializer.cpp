@@ -62,6 +62,20 @@ std::string WorldSerializer::Serialize(const World& world) {
             meshRenderer["model"] = renderer.modelPath;
             encoded["components"]["MeshRenderer"] = std::move(meshRenderer);
         }
+        if (entity.camera) {
+            const CameraComponent& camera = *entity.camera;
+            Json encodedCamera;
+            encodedCamera["enabled"] = camera.enabled;
+            encodedCamera["primary"] = camera.primary;
+            encodedCamera["projection"] =
+                camera.projection == CameraProjection::Perspective ? "Perspective"
+                                                                   : "Orthographic";
+            encodedCamera["fieldOfView"] = camera.fieldOfViewDegrees;
+            encodedCamera["orthographicHeight"] = camera.orthographicHeight;
+            encodedCamera["nearClip"] = camera.nearClip;
+            encodedCamera["farClip"] = camera.farClip;
+            encoded["components"]["Camera"] = std::move(encodedCamera);
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -150,6 +164,49 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.meshRenderer = std::move(component);
+        }
+        if (encoded["components"].contains("Camera")) {
+            const Json& camera = encoded["components"]["Camera"];
+            if (!camera.is_object() || !camera.contains("enabled") ||
+                !camera["enabled"].is_boolean() || !camera.contains("primary") ||
+                !camera["primary"].is_boolean() || !camera.contains("projection") ||
+                !camera["projection"].is_string() || !camera.contains("fieldOfView") ||
+                !camera["fieldOfView"].is_number() ||
+                !camera.contains("orthographicHeight") ||
+                !camera["orthographicHeight"].is_number() || !camera.contains("nearClip") ||
+                !camera["nearClip"].is_number() || !camera.contains("farClip") ||
+                !camera["farClip"].is_number()) {
+                SetError(error, "Scene Camera component is invalid.");
+                return false;
+            }
+            CameraComponent component{};
+            component.enabled = camera["enabled"].get<bool>();
+            component.primary = camera["primary"].get<bool>();
+            const std::string projection = camera["projection"].get<std::string>();
+            if (projection == "Perspective") {
+                component.projection = CameraProjection::Perspective;
+            } else if (projection == "Orthographic") {
+                component.projection = CameraProjection::Orthographic;
+            } else {
+                SetError(error, "Scene Camera projection is invalid.");
+                return false;
+            }
+            component.fieldOfViewDegrees = camera["fieldOfView"].get<float>();
+            component.orthographicHeight = camera["orthographicHeight"].get<float>();
+            component.nearClip = camera["nearClip"].get<float>();
+            component.farClip = camera["farClip"].get<float>();
+            if (!std::isfinite(component.fieldOfViewDegrees) ||
+                component.fieldOfViewDegrees < 1.0f ||
+                component.fieldOfViewDegrees > 179.0f ||
+                !std::isfinite(component.orthographicHeight) ||
+                component.orthographicHeight < 0.001f ||
+                !std::isfinite(component.nearClip) || component.nearClip < 0.001f ||
+                !std::isfinite(component.farClip) ||
+                component.farClip <= component.nearClip) {
+                SetError(error, "Scene Camera settings are invalid.");
+                return false;
+            }
+            entity.camera = component;
         }
         entities.push_back(std::move(entity));
     }

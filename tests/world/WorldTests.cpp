@@ -49,6 +49,9 @@ int main() {
     childEntity->meshRenderer->primitive = MeshPrimitive::Sphere;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
+        rootEntity->camera = CameraComponent{};
+        rootEntity->camera->primary = true;
+        rootEntity->camera->fieldOfViewDegrees = 60.0f;
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -70,7 +73,9 @@ int main() {
                    restoredChild->parent == root && restoredChild->transform.position.x == 1.0f &&
                    restoredChild->transform.rotationDegrees.z == 30.0f &&
                    restoredChild->meshRenderer &&
-                   restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere,
+                   restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   restored.Find(root)->camera && restored.Find(root)->camera->primary &&
+                   restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
     }
@@ -84,7 +89,8 @@ int main() {
                    duplicateRootEntity->name == "Root Copy" && !duplicateRootEntity->parent.IsValid() &&
                    duplicateChild != nullptr && duplicateChild->id != child &&
                    duplicateChild->name == "Child" && duplicateChild->meshRenderer &&
-                   duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere,
+                   duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }
@@ -130,6 +136,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidRenderer, rejected, &error),
                "Invalid MeshRenderer data was accepted.")) {
         return 14;
+    }
+    const std::string invalidCamera =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Camera","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Camera":{"enabled":true,"primary":true,"projection":"Perspective","fieldOfView":180,"orthographicHeight":10,"nearClip":1,"farClip":0.5}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidCamera, rejected, &error),
+               "Invalid Camera data was accepted.")) {
+        return 114;
     }
     const std::filesystem::path projectAssets =
         std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";

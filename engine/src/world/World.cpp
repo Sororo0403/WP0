@@ -55,6 +55,10 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         WorldEntity* duplicate = Find(duplicateId);
         duplicate->transform = original.transform;
         duplicate->meshRenderer = original.meshRenderer;
+        duplicate->camera = original.camera;
+        if (duplicate->camera) {
+            duplicate->camera->primary = false;
+        }
     }
 
     for (const WorldEntity& original : originals) {
@@ -67,6 +71,19 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         }
     }
     return duplicateIds.at(source);
+}
+
+bool World::SetPrimaryCamera(EntityId id) {
+    WorldEntity* target = Find(id);
+    if (target == nullptr || !target->camera) {
+        return false;
+    }
+    for (WorldEntity& entity : entities_) {
+        if (entity.camera) {
+            entity.camera->primary = entity.id == id;
+        }
+    }
+    return true;
 }
 
 bool World::DestroyEntity(EntityId id) {
