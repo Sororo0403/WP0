@@ -239,6 +239,10 @@ private:
     std::optional<std::filesystem::path> pendingAssetDirectory_;
     std::filesystem::path selectedAsset_;
     std::array<char, 128> assetSearch_{};
+    enum class AssetSortMode { Name, Type, Size };
+    AssetSortMode assetSortMode_ = AssetSortMode::Name;
+    int assetFormatFilter_ = 0;
+    bool assetSortAscending_ = true;
     std::filesystem::path pendingAssetOperationPath_;
     std::array<char, 256> assetRenameBuffer_{};
     std::array<char, 256> assetFolderNameBuffer_{};

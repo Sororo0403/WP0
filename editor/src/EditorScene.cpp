@@ -52,6 +52,13 @@ bool ContainsCaseInsensitive(std::string value, std::string query) {
     return value.find(query) != std::string::npos;
 }
 
+std::string LowercaseAscii(std::string value) {
+    std::ranges::transform(value, value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
 bool HasParentTraversal(const std::filesystem::path& path) {
     return std::ranges::any_of(path, [](const std::filesystem::path& part) {
         return part == L"..";
@@ -909,30 +916,103 @@ void EditorScene::DrawProjectPanel() {
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##AssetSearch", "Search model assets...", assetSearch_.data(),
                              assetSearch_.size());
+
+    constexpr const char* formatLabels[] = {"All formats", "glTF", "GLB", "OBJ",
+                                             "FBX",         "DAE",  "3DS", "PLY"};
+    constexpr const char* formatExtensions[] = {"",     ".gltf", ".glb", ".obj",
+                                                 ".fbx", ".dae",  ".3ds", ".ply"};
+    constexpr const char* sortLabels[] = {"Name", "Type", "Size"};
+    ImGui::SetNextItemWidth(105.0f);
+    ImGui::Combo("##AssetFormat", &assetFormatFilter_, formatLabels,
+                 static_cast<int>(std::size(formatLabels)));
+    ImGui::SameLine();
+    int sortMode = static_cast<int>(assetSortMode_);
+    ImGui::SetNextItemWidth(75.0f);
+    if (ImGui::Combo("##AssetSort", &sortMode, sortLabels,
+                     static_cast<int>(std::size(sortLabels)))) {
+        assetSortMode_ = static_cast<AssetSortMode>(sortMode);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(assetSortAscending_ ? "Asc" : "Desc")) {
+        assetSortAscending_ = !assetSortAscending_;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Toggle sort direction");
+    }
     ImGui::Separator();
+
+    const auto matchesFormat = [&](const std::filesystem::path& relativePath) {
+        if (assetFormatFilter_ <= 0 ||
+            assetFormatFilter_ >= static_cast<int>(std::size(formatExtensions))) {
+            return true;
+        }
+        return LowercaseAscii(relativePath.extension().string()) ==
+               formatExtensions[assetFormatFilter_];
+    };
+    const auto fileSize = [&](const std::filesystem::path& relativePath) {
+        std::error_code error;
+        const uintmax_t size = std::filesystem::file_size(assetRoot_ / relativePath, error);
+        return error ? uintmax_t{0} : size;
+    };
+    const auto comparePaths = [&](const std::filesystem::path& left,
+                                  const std::filesystem::path& right) {
+        int result = 0;
+        if (assetSortMode_ == AssetSortMode::Type) {
+            result = LowercaseAscii(left.extension().string()).compare(
+                LowercaseAscii(right.extension().string()));
+        } else if (assetSortMode_ == AssetSortMode::Size) {
+            const uintmax_t leftSize = fileSize(left);
+            const uintmax_t rightSize = fileSize(right);
+            result = leftSize < rightSize ? -1 : (leftSize > rightSize ? 1 : 0);
+        }
+        if (result == 0) {
+            result = LowercaseAscii(left.filename().string())
+                         .compare(LowercaseAscii(right.filename().string()));
+        }
+        return assetSortAscending_ ? result < 0 : result > 0;
+    };
 
     const float detailsHeight = selectedAsset_.empty() ? 0.0f : 190.0f;
     if (ImGui::BeginChild("AssetBrowserEntries", {0.0f, -detailsHeight},
                           ImGuiChildFlags_None)) {
-    const std::string search(assetSearch_.data());
-    if (!search.empty()) {
-        bool found = false;
-        for (const std::filesystem::path& logicalPath : modelAssets_) {
-            if (ContainsCaseInsensitive(logicalPath.generic_string(), search)) {
-                DrawAssetBrowserEntry(logicalPath.lexically_relative("assets"), false);
-                found = true;
+        const std::string search(assetSearch_.data());
+        if (!search.empty()) {
+            std::vector<std::filesystem::path> matches;
+            for (const std::filesystem::path& logicalPath : modelAssets_) {
+                const std::filesystem::path relativePath =
+                    logicalPath.lexically_relative("assets");
+                if (ContainsCaseInsensitive(logicalPath.generic_string(), search) &&
+                    matchesFormat(relativePath)) {
+                    matches.push_back(relativePath);
+                }
+            }
+            std::ranges::sort(matches, comparePaths);
+            for (const std::filesystem::path& relativePath : matches) {
+                DrawAssetBrowserEntry(relativePath, false);
+            }
+            if (matches.empty()) {
+                ImGui::TextDisabled("No matching model assets.");
+            }
+        } else {
+            std::vector<AssetBrowserEntry> visibleEntries;
+            std::ranges::copy_if(assetBrowserEntries_, std::back_inserter(visibleEntries),
+                                 [&](const AssetBrowserEntry& entry) {
+                                     return entry.directory || matchesFormat(entry.relativePath);
+                                 });
+            std::ranges::sort(visibleEntries, [&](const AssetBrowserEntry& left,
+                                                  const AssetBrowserEntry& right) {
+                if (left.directory != right.directory) {
+                    return left.directory;
+                }
+                return comparePaths(left.relativePath, right.relativePath);
+            });
+            for (const AssetBrowserEntry& entry : visibleEntries) {
+                DrawAssetBrowserEntry(entry.relativePath, entry.directory);
+            }
+            if (visibleEntries.empty()) {
+                ImGui::TextDisabled("This folder contains no matching model assets or folders.");
             }
         }
-        if (!found) {
-            ImGui::TextDisabled("No matching model assets.");
-        }
-    } else if (assetBrowserEntries_.empty()) {
-        ImGui::TextDisabled("This folder contains no model assets or folders.");
-    } else {
-        for (const AssetBrowserEntry& entry : assetBrowserEntries_) {
-            DrawAssetBrowserEntry(entry.relativePath, entry.directory);
-        }
-    }
     }
     ImGui::EndChild();
     if (!selectedAsset_.empty()) {
