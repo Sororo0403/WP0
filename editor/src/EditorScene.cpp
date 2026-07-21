@@ -584,6 +584,9 @@ void EditorScene::DrawPostProcessOverlay() {
 }
 
 bool EditorScene::OnCloseRequested() {
+    if (IsInPlayMode()) {
+        StopPlayMode();
+    }
     if (!dirty_) {
         return true;
     }
@@ -593,6 +596,10 @@ bool EditorScene::OnCloseRequested() {
 
 void EditorScene::OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
                                  int screenY) {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before importing assets.";
+        return;
+    }
     const bool overProject = static_cast<float>(screenX) >= projectPanelMinX_ &&
                              static_cast<float>(screenX) < projectPanelMaxX_ &&
                              static_cast<float>(screenY) >= projectPanelMinY_ &&
@@ -609,19 +616,20 @@ void EditorScene::DrawMainMenu() {
         return;
     }
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
+        const bool editing = !IsInPlayMode();
+        if (ImGui::MenuItem("New Scene", "Ctrl+N", false, editing)) {
             RequestSceneAction(PendingSceneAction::NewScene);
         }
-        if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
+        if (ImGui::MenuItem("Open Scene...", "Ctrl+O", false, editing)) {
             RequestSceneAction(PendingSceneAction::OpenScene);
         }
-        if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
+        if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, editing)) {
             SaveScene();
         }
-        if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) {
+        if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S", false, editing)) {
             SaveSceneAs();
         }
-        if (ImGui::BeginMenu("Recent Scenes", !recentScenePaths_.empty())) {
+        if (ImGui::BeginMenu("Recent Scenes", editing && !recentScenePaths_.empty())) {
             for (const std::filesystem::path& path : recentScenePaths_) {
                 std::error_code error;
                 std::filesystem::path label =
@@ -636,7 +644,7 @@ void EditorScene::DrawMainMenu() {
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Reload Scene")) {
+        if (ImGui::MenuItem("Reload Scene", nullptr, false, editing)) {
             RequestSceneAction(PendingSceneAction::ReloadScene);
         }
         ImGui::Separator();
@@ -646,9 +654,10 @@ void EditorScene::DrawMainMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
-        const bool canUndo = !undoHistory_.empty();
-        const bool canRedo = !redoHistory_.empty();
-        const bool canDuplicate = world_.Contains(selection_);
+        const bool editing = !IsInPlayMode();
+        const bool canUndo = editing && !undoHistory_.empty();
+        const bool canRedo = editing && !redoHistory_.empty();
+        const bool canDuplicate = editing && world_.Contains(selection_);
         if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) {
             Undo();
         }
@@ -665,7 +674,8 @@ void EditorScene::DrawMainMenu() {
         if (ImGui::MenuItem("Cut", "Ctrl+X", false, canDuplicate)) {
             CutSelection();
         }
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !entityClipboard_.empty())) {
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false,
+                            editing && !entityClipboard_.empty())) {
             PasteEntityClipboard();
         }
         if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, canDuplicate)) {
@@ -706,10 +716,51 @@ void EditorScene::DrawMainMenu() {
         }
         ImGui::EndMenu();
     }
+    ImGui::Separator();
+    const bool playing = playModeState_ == PlayModeState::Playing;
+    const bool paused = playModeState_ == PlayModeState::Paused;
+    if (paused) {
+        ImGui::PushStyleColor(ImGuiCol_Button, {0.18f, 0.48f, 0.24f, 1.0f});
+    }
+    ImGui::BeginDisabled(playing);
+    if (ImGui::Button(paused ? "Resume" : "Play")) {
+        if (playModeState_ == PlayModeState::Edit) {
+            EnterPlayMode();
+        } else if (paused) {
+            TogglePlayPause();
+        }
+    }
+    ImGui::EndDisabled();
+    if (paused) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!playing);
+    if (paused) {
+        ImGui::PushStyleColor(ImGuiCol_Button, {0.58f, 0.40f, 0.12f, 1.0f});
+    }
+    if (ImGui::Button("Pause")) {
+        TogglePlayPause();
+    }
+    if (paused) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!IsInPlayMode());
+    if (ImGui::Button("Stop")) {
+        StopPlayMode();
+    }
+    ImGui::EndDisabled();
     std::string editorLabel = "LikeEngine Editor - ";
     editorLabel += scenePath_.empty() ? "Untitled" : scenePath_.filename().string();
     if (dirty_) {
         editorLabel += " *";
+    }
+    if (playing) {
+        editorLabel += "  [PLAYING]";
+    } else if (paused) {
+        editorLabel += "  [PAUSED]";
     }
     ImGui::TextUnformatted(editorLabel.c_str());
     ImGui::EndMainMenuBar();
@@ -848,21 +899,27 @@ void EditorScene::DrawPanels() {
     projectPanelMaxY_ = 0.0f;
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
+            ImGui::BeginDisabled(IsInPlayMode());
             DrawHierarchyPanel();
+            ImGui::EndDisabled();
         }
         ImGui::End();
     }
 
     if (showProjectPanel_) {
         if (ImGui::Begin("Project", &showProjectPanel_, kPanelFlags)) {
+            ImGui::BeginDisabled(IsInPlayMode());
             DrawProjectPanel();
+            ImGui::EndDisabled();
         }
         ImGui::End();
     }
 
     if (showScenePanel_) {
         if (ImGui::Begin("Scene", &showScenePanel_, kPanelFlags)) {
+            ImGui::BeginDisabled(IsInPlayMode());
             DrawSceneGizmoToolbar();
+            ImGui::EndDisabled();
             ImGui::Separator();
             const ImVec2 available = ImGui::GetContentRegionAvail();
             requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
@@ -913,11 +970,13 @@ void EditorScene::DrawPanels() {
                 const ImVec2 imageMin = ImGui::GetItemRectMin();
                 const ImVec2 imageMax = ImGui::GetItemRectMax();
                 const bool imageHovered = ImGui::IsItemHovered() && !cameraPreviewHovered;
-                HandleSceneAssetDrop(imageMin, imageMax);
-                HandleSceneContextMenu(imageMin, imageMax, imageHovered);
+                if (!IsInPlayMode()) {
+                    HandleSceneAssetDrop(imageMin, imageMax);
+                    HandleSceneContextMenu(imageMin, imageMax, imageHovered);
+                }
                 DrawSceneComponentGizmos(imageMin, imageMax);
                 DrawSceneSelectionOutline(imageMin, imageMax);
-                if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
+                if (IsInPlayMode() || !DrawSceneTransformGizmo(imageMin, imageMax)) {
                     PickSceneEntity(imageMin, imageMax, imageHovered);
                 }
                 if (imageHovered) {
@@ -942,6 +1001,10 @@ void EditorScene::DrawPanels() {
     }
 
     if (showGamePanel_) {
+        if (focusGamePanelRequested_) {
+            ImGui::SetNextWindowFocus();
+            focusGamePanelRequested_ = false;
+        }
         if (ImGui::Begin("Game", &showGamePanel_, kPanelFlags)) {
             const ImVec2 available = ImGui::GetContentRegionAvail();
             requestedGameWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
@@ -988,7 +1051,9 @@ void EditorScene::DrawPanels() {
 
     if (showInspectorPanel_) {
         if (ImGui::Begin("Inspector", &showInspectorPanel_, kPanelFlags)) {
+            ImGui::BeginDisabled(IsInPlayMode());
             DrawInspectorPanel();
+            ImGui::EndDisabled();
         }
         ImGui::End();
     }
@@ -3042,8 +3107,27 @@ void EditorScene::DrawInspectorPanel() {
 
 void EditorScene::HandleEditorShortcuts() {
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_ ||
-        pendingSceneAction_ != PendingSceneAction::None) {
+    if (pendingSceneAction_ != PendingSceneAction::None) {
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
+        if (IsInPlayMode()) {
+            StopPlayMode();
+        } else {
+            EnterPlayMode();
+        }
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) {
+        if (IsInPlayMode()) {
+            TogglePlayPause();
+        }
+        return;
+    }
+    if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_) {
+        return;
+    }
+    if (IsInPlayMode()) {
         return;
     }
     if (!io.KeyCtrl) {
@@ -4269,12 +4353,19 @@ bool EditorScene::RestoreHistoryState(const HistoryState& state) {
 }
 
 void EditorScene::BeginHistoryEdit(std::string label) {
+    if (IsInPlayMode()) {
+        return;
+    }
     if (!pendingHistoryEdit_) {
         pendingHistoryEdit_ = PendingHistoryEdit{std::move(label), CaptureHistoryState()};
     }
 }
 
 void EditorScene::CommitHistoryEdit() {
+    if (IsInPlayMode()) {
+        pendingHistoryEdit_.reset();
+        return;
+    }
     if (!pendingHistoryEdit_) {
         return;
     }
@@ -4295,6 +4386,10 @@ void EditorScene::CommitHistoryEdit() {
 
 void EditorScene::RecordImmediateEdit(std::string label, std::string before,
                                       EntityId selectionBefore) {
+    if (IsInPlayMode()) {
+        pendingHistoryEdit_.reset();
+        return;
+    }
     pendingHistoryEdit_.reset();
     HistoryState after = CaptureHistoryState();
     if (before == after.world && selectionBefore == after.selection) {
@@ -4310,6 +4405,9 @@ void EditorScene::RecordImmediateEdit(std::string label, std::string before,
 }
 
 void EditorScene::Undo() {
+    if (IsInPlayMode()) {
+        return;
+    }
     CommitHistoryEdit();
     if (undoHistory_.empty()) {
         return;
@@ -4325,6 +4423,9 @@ void EditorScene::Undo() {
 }
 
 void EditorScene::Redo() {
+    if (IsInPlayMode()) {
+        return;
+    }
     CommitHistoryEdit();
     if (redoHistory_.empty()) {
         return;
@@ -4348,6 +4449,9 @@ void EditorScene::ClearHistory(bool markClean) {
 }
 
 void EditorScene::RefreshDirty() {
+    if (IsInPlayMode()) {
+        return;
+    }
     dirty_ = WorldSerializer::Serialize(world_) != savedWorldSnapshot_;
 }
 
@@ -4734,6 +4838,67 @@ void EditorScene::BuildRenderScene() {
         } else {
             submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
         }
+    }
+}
+
+bool EditorScene::IsInPlayMode() const {
+    return playModeState_ != PlayModeState::Edit;
+}
+
+void EditorScene::EnterPlayMode() {
+    if (IsInPlayMode()) {
+        return;
+    }
+    CommitHistoryEdit();
+    playModeWorldSnapshot_ = WorldSerializer::Serialize(world_);
+    if (playModeWorldSnapshot_.empty()) {
+        status_ = "Could not enter Play Mode: scene snapshot failed.";
+        return;
+    }
+    playModeSelectionSnapshot_ = selection_;
+    playModeDirtySnapshot_ = dirty_;
+    playModeState_ = PlayModeState::Playing;
+    showGamePanel_ = true;
+    focusGamePanelRequested_ = true;
+    status_ = "Entered Play Mode. Runtime changes will be discarded on Stop.";
+}
+
+void EditorScene::StopPlayMode() {
+    if (!IsInPlayMode()) {
+        return;
+    }
+    World restored;
+    std::string error;
+    if (!WorldSerializer::Deserialize(playModeWorldSnapshot_, restored, &error)) {
+        status_ = "Could not stop Play Mode: " + error;
+        return;
+    }
+    world_ = std::move(restored);
+    selection_ = world_.Contains(playModeSelectionSnapshot_) ? playModeSelectionSnapshot_
+                                                              : EntityId{};
+    hierarchySelection_.clear();
+    if (selection_.IsValid()) {
+        hierarchySelection_.insert(selection_);
+    }
+    hierarchySelectionAnchor_ = selection_;
+    pendingHistoryEdit_.reset();
+    activeGizmoEntity_ = {};
+    activeGizmoWorldTransforms_.clear();
+    gizmoWasUsing_ = false;
+    dirty_ = playModeDirtySnapshot_;
+    playModeWorldSnapshot_.clear();
+    playModeSelectionSnapshot_ = {};
+    playModeState_ = PlayModeState::Edit;
+    status_ = "Stopped Play Mode and restored the Edit scene.";
+}
+
+void EditorScene::TogglePlayPause() {
+    if (playModeState_ == PlayModeState::Playing) {
+        playModeState_ = PlayModeState::Paused;
+        status_ = "Paused Play Mode.";
+    } else if (playModeState_ == PlayModeState::Paused) {
+        playModeState_ = PlayModeState::Playing;
+        status_ = "Resumed Play Mode.";
     }
 }
 
@@ -5307,6 +5472,14 @@ void EditorScene::RequestSceneAction(PendingSceneAction action,
     if (action == PendingSceneAction::None) {
         return;
     }
+    if (IsInPlayMode()) {
+        if (action == PendingSceneAction::Exit) {
+            StopPlayMode();
+        } else {
+            status_ = "Stop Play Mode before changing scenes.";
+            return;
+        }
+    }
     if (!dirty_) {
         ExecuteSceneAction(action, path);
         return;
@@ -5345,6 +5518,10 @@ void EditorScene::ExecuteSceneAction(PendingSceneAction action,
 }
 
 void EditorScene::NewScene(bool clearPath) {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before creating a scene.";
+        return;
+    }
     world_.Clear();
     const EntityId camera = world_.CreateEntity("Main Camera");
     if (WorldEntity* cameraEntity = world_.Find(camera)) {
@@ -5369,6 +5546,10 @@ void EditorScene::NewScene(bool clearPath) {
 }
 
 bool EditorScene::SaveScene() {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before saving the scene.";
+        return false;
+    }
     if (scenePath_.empty()) {
         return SaveSceneAs();
     }
@@ -5385,6 +5566,10 @@ bool EditorScene::SaveScene() {
 }
 
 bool EditorScene::SaveSceneAs() {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before saving the scene.";
+        return false;
+    }
     const std::optional<std::filesystem::path> selected = ShowSaveSceneDialog();
     if (!selected) {
         status_ = "Save cancelled.";
@@ -5400,6 +5585,10 @@ bool EditorScene::SaveSceneAs() {
 }
 
 bool EditorScene::LoadScene(const std::filesystem::path& path) {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before loading a scene.";
+        return false;
+    }
     if (path.extension() != L".likescene" || !IsPathWithinRoot(sceneRoot_, path)) {
         status_ = "Load failed: scene must be inside the project scenes directory.";
         return false;

@@ -39,6 +39,10 @@ public:
 
 private:
     void DrawMainMenu();
+    void EnterPlayMode();
+    void StopPlayMode();
+    void TogglePlayPause();
+    [[nodiscard]] bool IsInPlayMode() const;
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
     void DrawDockSpace();
@@ -192,6 +196,16 @@ private:
     bool showGamePanel_ = true;
     bool showConsolePanel_ = true;
     bool showInspectorPanel_ = true;
+    enum class PlayModeState : uint8_t {
+        Edit,
+        Playing,
+        Paused,
+    };
+    PlayModeState playModeState_ = PlayModeState::Edit;
+    std::string playModeWorldSnapshot_;
+    EntityId playModeSelectionSnapshot_{};
+    bool playModeDirtySnapshot_ = false;
+    bool focusGamePanelRequested_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     EntityId selection_{};
