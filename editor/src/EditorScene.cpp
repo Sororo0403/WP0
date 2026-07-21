@@ -2326,6 +2326,7 @@ void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
     entity->meshRenderer = MeshRendererComponent{};
     entity->meshRenderer->sourceType = MeshSourceType::Primitive;
     entity->meshRenderer->primitive = primitive;
+    entity->materialOverride = MaterialOverrideComponent{};
     if (parent.IsValid() && !world_.SetParent(entityId, parent)) {
         world_.DestroyEntity(entityId);
         status_ = "Could not parent the primitive entity.";
@@ -3734,6 +3735,9 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
         entity->meshRenderer ? entity->meshRenderer->modelPath : std::string{};
     if (!entity->meshRenderer) {
         entity->meshRenderer = MeshRendererComponent{};
+        if (!entity->materialOverride) {
+            entity->materialOverride = MaterialOverrideComponent{};
+        }
     }
     entity->meshRenderer->sourceType = MeshSourceType::Model;
     entity->meshRenderer->modelPath = assetPath;
@@ -4226,6 +4230,7 @@ void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
     entity->meshRenderer = MeshRendererComponent{};
     entity->meshRenderer->sourceType = MeshSourceType::Model;
     entity->meshRenderer->modelPath = assetPath;
+    entity->materialOverride = MaterialOverrideComponent{};
     loadedModels_.erase(assetPath);
     selection_ = entityId;
     RecordImmediateEdit("Create Model Entity", before, selectionBefore);
@@ -4742,7 +4747,8 @@ void EditorScene::BuildRenderScene() {
         return;
     }
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.meshRenderer || !entity.meshRenderer->enabled) {
+        if (!entity.meshRenderer || !entity.meshRenderer->enabled ||
+            !entity.materialOverride || !entity.materialOverride->enabled) {
             continue;
         }
         const ModelHandle handle = ResolveModel(*entity.meshRenderer);
@@ -5551,6 +5557,7 @@ void EditorScene::NewScene(bool clearPath) {
     selection_ = world_.CreateEntity("Cube");
     if (WorldEntity* cube = world_.Find(selection_)) {
         cube->meshRenderer = MeshRendererComponent{};
+        cube->materialOverride = MaterialOverrideComponent{};
     }
     if (clearPath) {
         scenePath_.clear();
