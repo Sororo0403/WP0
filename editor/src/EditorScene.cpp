@@ -322,6 +322,9 @@ void EditorScene::Initialize(const SceneContext& ctx) {
         status_ = "Scene View RenderSurface initialization failed.";
         return;
     }
+    if (!assetPreviewSurface_.Initialize(ctx.rendering.dxCommon, ctx.rendering.srv, 320, 320)) {
+        status_ = "Asset Preview RenderSurface initialization failed.";
+    }
     if (ctx.rendering.model == nullptr || ctx.rendering.meshRenderer == nullptr ||
         ctx.rendering.texture == nullptr) {
         status_ = "Scene View rendering services are unavailable.";
@@ -342,6 +345,9 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     sceneViewCamera_.SetPosition({0.0f, 0.35f, -4.0f});
     sceneViewCamera_.SetRotation({0.08f, 0.0f, 0.0f});
     sceneViewCamera_.Initialize(960.0f / 540.0f);
+    assetPreviewCamera_.SetPosition({0.0f, 0.0f, -4.0f});
+    assetPreviewCamera_.SetRotation({0.0f, 0.0f, 0.0f});
+    assetPreviewCamera_.Initialize(1.0f);
     RefreshAssetBrowser();
     ResolveMeshResources();
 }
@@ -373,6 +379,18 @@ void EditorScene::Update() {
             status_ = "Scene View PostProcess initialization failed.";
         }
     }
+    if (!assetPreviewPostProcessInitializationAttempted_ && assetPreviewSurface_.IsReady() &&
+        ctx_ != nullptr && ctx_->rendering.dxCommon != nullptr && ctx_->rendering.srv != nullptr &&
+        !ctx_->rendering.dxCommon->IsCommandListRecording()) {
+        assetPreviewPostProcessInitializationAttempted_ = true;
+        assetPreviewPostProcess_.Initialize(ctx_->rendering.dxCommon, ctx_->rendering.srv,
+                                            assetPreviewSurface_.GetWidth(),
+                                            assetPreviewSurface_.GetHeight());
+        if (!assetPreviewPostProcess_.IsReady()) {
+            status_ = "Asset Preview PostProcess initialization failed.";
+        }
+    }
+    UpdateAssetPreview();
 }
 
 void EditorScene::Draw() {}
@@ -629,6 +647,7 @@ void EditorScene::DrawDockSpace() {
 
 void EditorScene::DrawPanels() {
     sceneViewSurface_.ReleaseCompletedFrameResources();
+    assetPreviewSurface_.ReleaseCompletedFrameResources();
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
             DrawHierarchyPanel();
@@ -1043,40 +1062,83 @@ void EditorScene::DrawSelectedAssetDetails() {
         return;
     }
 
-    std::vector<AssetImport::File> plan;
-    std::string dependencyError;
-    const bool valid = AssetImport::BuildPlan({physical}, plan, dependencyError);
-    if (!valid) {
+    if (assetPreviewAsset_ != relative) {
+        ImGui::TextDisabled("Dependencies: Analyzing...");
+        return;
+    }
+    if (!assetPreviewError_.empty()) {
         ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "Dependencies: Invalid");
         ImGui::SameLine();
         if (ImGui::SmallButton("Details##AssetDependencyError")) {
-            status_ = dependencyError;
+            status_ = assetPreviewError_;
         }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", dependencyError.c_str());
+            ImGui::SetTooltip("%s", assetPreviewError_.c_str());
         }
         return;
     }
-    const size_t dependencyCount = plan.empty() ? 0u : plan.size() - 1u;
+    const size_t dependencyCount =
+        assetPreviewPlan_.empty() ? 0u : assetPreviewPlan_.size() - 1u;
     ImGui::TextDisabled("Dependencies: %zu", dependencyCount);
-    if (dependencyCount == 0u) {
-        return;
-    }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Show##AssetDependencies")) {
-        ImGui::OpenPopup("AssetDependencies");
+    if (ImGui::SmallButton("Preview##SelectedAsset")) {
+        ImGui::OpenPopup("Model Preview");
+    }
+    if (dependencyCount != 0u) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Show##AssetDependencies")) {
+            ImGui::OpenPopup("AssetDependencies");
+        }
     }
     if (ImGui::BeginPopup("AssetDependencies")) {
-        for (size_t index = 1; index < plan.size(); ++index) {
+        for (size_t index = 1; index < assetPreviewPlan_.size(); ++index) {
             const std::string dependency =
                 (std::filesystem::path("assets") / relative.parent_path() /
-                 plan[index].relativeDestination)
+                 assetPreviewPlan_[index].relativeDestination)
                     .lexically_normal()
                     .generic_string();
             ImGui::BulletText("%s", dependency.c_str());
         }
         ImGui::EndPopup();
     }
+    DrawAssetPreviewPopup();
+}
+
+void EditorScene::DrawAssetPreviewPopup() {
+    ImGui::SetNextWindowSize({360.0f, 390.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::BeginPopup("Model Preview")) {
+        return;
+    }
+    const std::string filename = assetPreviewAsset_.filename().string();
+    ImGui::TextUnformatted(filename.c_str());
+    ImGui::Separator();
+    if (!assetPreviewModel_.IsValid() || !assetPreviewSurface_.IsReady() ||
+        !assetPreviewPostProcess_.IsReady() || ctx_ == nullptr ||
+        ctx_->rendering.dxCommon == nullptr || ctx_->rendering.model == nullptr) {
+        ImGui::TextDisabled("Model preview is not ready.");
+        ImGui::EndPopup();
+        return;
+    }
+
+    BuildAssetPreviewScene();
+    sceneRenderer_.Render(assetPreviewScene_, assetPreviewCamera_, assetPreviewSurface_,
+                          {0.035f, 0.045f, 0.065f, 1.0f});
+    assetPreviewSurface_.TransitionDepthToShaderResource();
+    assetPreviewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
+    const PostProcessOutputTarget target{
+        assetPreviewSurface_.GetOutputRtvHandle(),
+        static_cast<uint32_t>(assetPreviewSurface_.GetWidth()),
+        static_cast<uint32_t>(assetPreviewSurface_.GetHeight()),
+        DirectXCommon::kBackBufferFormat,
+    };
+    assetPreviewPostProcess_.DrawToTarget(assetPreviewSurface_.GetSceneColorGpuHandle(),
+                                          assetPreviewSurface_.GetDepthGpuHandle(), target);
+    assetPreviewSurface_.EndOutputPass();
+    assetPreviewSurface_.TransitionDepthToWrite();
+    ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
+    const D3D12_GPU_DESCRIPTOR_HANDLE output = assetPreviewSurface_.GetOutputGpuHandle();
+    ImGui::Image(static_cast<ImTextureID>(output.ptr), {320.0f, 320.0f});
+    ImGui::EndPopup();
 }
 
 void EditorScene::RequestAssetRename(const std::filesystem::path& relativePath,
@@ -2763,6 +2825,10 @@ void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
 }
 
 void EditorScene::RefreshAssetBrowser() {
+    assetPreviewAsset_.clear();
+    assetPreviewModel_ = {};
+    assetPreviewPlan_.clear();
+    assetPreviewError_.clear();
     modelAssets_.clear();
     assetBrowserEntries_.clear();
     std::error_code error;
@@ -2990,6 +3056,97 @@ ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) co
     }
     const auto found = loadedModels_.find(component.modelPath);
     return found != loadedModels_.end() ? found->second : ModelHandle{};
+}
+
+void EditorScene::UpdateAssetPreview() {
+    const std::filesystem::path relative = selectedAsset_.lexically_normal();
+    if (relative == assetPreviewAsset_) {
+        return;
+    }
+    assetPreviewAsset_ = relative;
+    assetPreviewModel_ = {};
+    assetPreviewPlan_.clear();
+    assetPreviewError_.clear();
+    assetPreviewTransform_ = {};
+    if (relative.empty() || ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+        return;
+    }
+
+    const std::filesystem::path physical = assetRoot_ / relative;
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(physical, error) || error ||
+        !AssetImport::IsModelFile(physical)) {
+        return;
+    }
+    if (!AssetImport::BuildPlan({physical}, assetPreviewPlan_, assetPreviewError_)) {
+        return;
+    }
+    assetPreviewModel_ = ctx_->rendering.model->LoadHandle(physical.wstring());
+    const Model* model = assetPreviewModel_.IsValid()
+                             ? ctx_->rendering.model->GetModel(assetPreviewModel_)
+                             : nullptr;
+    if (model == nullptr) {
+        assetPreviewError_ = "The selected model could not be loaded for preview.";
+        return;
+    }
+
+    DirectX::XMFLOAT3 boundsMin{};
+    DirectX::XMFLOAT3 boundsMax{};
+    if (!TryGetModelBounds(*model, boundsMin, boundsMax)) {
+        assetPreviewCamera_.SetPosition({0.0f, 0.0f, -4.0f});
+        assetPreviewCamera_.SetClipRange(0.01f, 1000.0f);
+        return;
+    }
+    const DirectX::XMFLOAT3 center{
+        (boundsMin.x + boundsMax.x) * 0.5f,
+        (boundsMin.y + boundsMax.y) * 0.5f,
+        (boundsMin.z + boundsMax.z) * 0.5f,
+    };
+    const float extentX = (boundsMax.x - boundsMin.x) * 0.5f;
+    const float extentY = (boundsMax.y - boundsMin.y) * 0.5f;
+    const float extentZ = (boundsMax.z - boundsMin.z) * 0.5f;
+    const float radius = (std::max)(0.05f, std::sqrt(extentX * extentX + extentY * extentY +
+                                                     extentZ * extentZ));
+    const float distance =
+        (std::max)(0.25f, radius / std::tan(assetPreviewCamera_.GetFovY() * 0.5f) * 1.25f);
+    assetPreviewTransform_.position = {-center.x, -center.y, -center.z};
+    assetPreviewCamera_.SetPosition({0.0f, 0.0f, -distance});
+    assetPreviewCamera_.SetClipRange((std::max)(0.01f, distance - radius * 2.0f),
+                                     distance + radius * 4.0f);
+}
+
+void EditorScene::BuildAssetPreviewScene() {
+    assetPreviewScene_.BeginFrame();
+    ModelManager* models = ctx_ ? ctx_->rendering.model : nullptr;
+    const Model* model = models != nullptr && assetPreviewModel_.IsValid()
+                             ? models->GetModel(assetPreviewModel_)
+                             : nullptr;
+    if (model == nullptr || models == nullptr) {
+        return;
+    }
+    auto submit = [&](uint32_t meshId, uint32_t materialId, uint32_t textureId,
+                      uint32_t normalTextureId) {
+        if (!IsValidResourceId(meshId)) {
+            return;
+        }
+        RenderMeshItem item{};
+        item.mesh = &models->GetMesh(meshId);
+        if (IsValidResourceId(materialId)) {
+            item.material = models->GetMaterial(materialId);
+        }
+        item.transform = assetPreviewTransform_;
+        item.textureId = textureId;
+        item.normalTextureId = normalTextureId;
+        assetPreviewScene_.SubmitMesh(item);
+    };
+    if (!model->subMeshes.empty()) {
+        for (const ModelSubMesh& subMesh : model->subMeshes) {
+            submit(subMesh.meshId, subMesh.materialId, subMesh.textureId,
+                   subMesh.normalTextureId);
+        }
+    } else {
+        submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
+    }
 }
 
 void EditorScene::BuildRenderScene() {

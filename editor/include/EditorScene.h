@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AssetImportPlanner.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
 #include "graphics/PostProcessSystem.h"
@@ -80,6 +81,7 @@ private:
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                bool directory);
     void DrawSelectedAssetDetails();
+    void DrawAssetPreviewPopup();
     void DrawAssetOperationDialogs();
     void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);
     void RequestAssetDelete(const std::filesystem::path& relativePath, bool directory);
@@ -107,6 +109,8 @@ private:
     void ClearHistory(bool markClean);
     void RefreshDirty();
     void BuildRenderScene();
+    void UpdateAssetPreview();
+    void BuildAssetPreviewScene();
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
@@ -211,6 +215,15 @@ private:
     SceneRenderer sceneRenderer_{};
     RenderScene renderScene_{};
     Camera sceneViewCamera_{};
+    RenderSurface assetPreviewSurface_{};
+    PostProcessSystem assetPreviewPostProcess_{};
+    RenderScene assetPreviewScene_{};
+    Camera assetPreviewCamera_{};
+    ModelHandle assetPreviewModel_{};
+    Transform assetPreviewTransform_{};
+    std::filesystem::path assetPreviewAsset_;
+    std::vector<AssetImport::File> assetPreviewPlan_;
+    std::string assetPreviewError_;
     ModelHandle primitiveModels_[4]{};
     std::unordered_map<std::string, ModelHandle> loadedModels_;
     std::vector<std::filesystem::path> modelAssets_;
@@ -254,4 +267,5 @@ private:
     EntityId activeGizmoEntity_{};
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
+    bool assetPreviewPostProcessInitializationAttempted_ = false;
 };
