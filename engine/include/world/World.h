@@ -32,12 +32,23 @@ struct MeshRendererComponent {
     std::string modelPath;
 };
 
+enum class MaterialPbrTexturePacking : uint8_t {
+    Separate = 0,
+    OcclusionRoughnessMetallic = 1,
+    MetallicRoughness = 2,
+};
+
 struct MaterialOverrideComponent {
     bool enabled = true;
     DirectX::XMFLOAT4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
     std::string baseColorTexturePath;
+    std::string normalTexturePath;
+    float normalStrength = 1.0f;
+    std::string roughnessTexturePath;
+    std::string metallicTexturePath;
+    MaterialPbrTexturePacking pbrTexturePacking = MaterialPbrTexturePacking::Separate;
 };
 
 enum class CameraProjection : uint8_t {

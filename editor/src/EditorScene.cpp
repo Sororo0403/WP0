@@ -1322,9 +1322,21 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
             }
         } else if (!texture && ImGui::MenuItem("Create Entity")) {
             CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
-        } else if (texture && ImGui::MenuItem("Assign to Selected Material", nullptr, false,
-                                              selection_.IsValid())) {
-            AssignBaseColorTexture(selection_, logicalPath);
+        } else if (texture && ImGui::BeginMenu("Assign to Selected Material",
+                                               selection_.IsValid())) {
+            if (ImGui::MenuItem("Base Color")) {
+                AssignBaseColorTexture(selection_, logicalPath);
+            }
+            if (ImGui::MenuItem("Normal Map")) {
+                AssignNormalTexture(selection_, logicalPath);
+            }
+            if (ImGui::MenuItem("Roughness")) {
+                AssignRoughnessTexture(selection_, logicalPath);
+            }
+            if (ImGui::MenuItem("Metallic")) {
+                AssignMetallicTexture(selection_, logicalPath);
+            }
+            ImGui::EndMenu();
         }
         if (ImGui::MenuItem("Rename")) {
             RequestAssetRename(relativePath, directory);
@@ -1969,11 +1981,30 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
             entity.materialOverride
                 ? AssetRelativeFromReference(entity.materialOverride->baseColorTexturePath)
                 : std::nullopt;
+        const std::optional<std::filesystem::path> normalReference =
+            entity.materialOverride
+                ? AssetRelativeFromReference(entity.materialOverride->normalTexturePath)
+                : std::nullopt;
+        const std::optional<std::filesystem::path> roughnessReference =
+            entity.materialOverride
+                ? AssetRelativeFromReference(entity.materialOverride->roughnessTexturePath)
+                : std::nullopt;
+        const std::optional<std::filesystem::path> metallicReference =
+            entity.materialOverride
+                ? AssetRelativeFromReference(entity.materialOverride->metallicTexturePath)
+                : std::nullopt;
         const bool matchesModel =
             modelReference && AssetPathMatches(*modelReference, relativePath, directory);
         const bool matchesTexture =
             textureReference && AssetPathMatches(*textureReference, relativePath, directory);
-        if (!matchesModel && !matchesTexture) {
+        const bool matchesNormal =
+            normalReference && AssetPathMatches(*normalReference, relativePath, directory);
+        const bool matchesRoughness =
+            roughnessReference && AssetPathMatches(*roughnessReference, relativePath, directory);
+        const bool matchesMetallic =
+            metallicReference && AssetPathMatches(*metallicReference, relativePath, directory);
+        if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
+            !matchesMetallic) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -2012,6 +2043,24 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
             referencedByEntity =
                 referenced && AssetPathMatches(*referenced, relativePath, directory);
         }
+        if (!referencedByEntity && entity.materialOverride) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.materialOverride->roughnessTexturePath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
+        if (!referencedByEntity && entity.materialOverride) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.materialOverride->metallicTexturePath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
+        if (!referencedByEntity && entity.materialOverride) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.materialOverride->normalTexturePath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
         if (referencedByEntity) {
             ++references;
         }
@@ -2045,6 +2094,9 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
         }
         if (entity->materialOverride) {
             updateReference(entity->materialOverride->baseColorTexturePath);
+            updateReference(entity->materialOverride->normalTexturePath);
+            updateReference(entity->materialOverride->roughnessTexturePath);
+            updateReference(entity->materialOverride->metallicTexturePath);
         }
     }
     return updated;
@@ -2746,6 +2798,142 @@ void EditorScene::DrawInspectorPanel() {
                     ImGui::TextDisabled("Texture is loading or unavailable.");
                 }
             }
+            if (ImGui::DragFloat("Normal Strength##MaterialOverride", &material.normalStrength,
+                                 0.01f, 0.0f, 4.0f, "%.3f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Material Override.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Normal Strength");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            std::array<char, 512> normalPathBuffer{};
+            strncpy_s(normalPathBuffer.data(), normalPathBuffer.size(),
+                      material.normalTexturePath.c_str(), _TRUNCATE);
+            if (ImGui::InputText("Normal Texture", normalPathBuffer.data(),
+                                 normalPathBuffer.size(),
+                                 ImGuiInputTextFlags_EnterReturnsTrue)) {
+                if (normalPathBuffer[0] == '\0') {
+                    const std::string clearBefore = WorldSerializer::Serialize(world_);
+                    const std::string previousPath = material.normalTexturePath;
+                    material.normalTexturePath.clear();
+                    loadedLinearTextures_.erase(previousPath);
+                    RecordImmediateEdit("Clear Normal Texture", clearBefore, selectionBefore);
+                    status_ = "Cleared Normal texture.";
+                } else {
+                    AssignNormalTexture(selection_, normalPathBuffer.data());
+                }
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kTextureAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                    static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignNormalTexture(selection_, static_cast<const char*>(payload->Data));
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (!material.normalTexturePath.empty()) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear##NormalTexture")) {
+                    const std::string clearBefore = WorldSerializer::Serialize(world_);
+                    const std::string previousPath = material.normalTexturePath;
+                    material.normalTexturePath.clear();
+                    loadedLinearTextures_.erase(previousPath);
+                    RecordImmediateEdit("Clear Normal Texture", clearBefore, selectionBefore);
+                    status_ = "Cleared Normal texture.";
+                }
+                const TextureHandle texture = ResolveNormalTexture(material);
+                if (texture.IsValid() && ctx_ != nullptr && ctx_->rendering.texture != nullptr &&
+                    ctx_->rendering.texture->IsValidTexture(texture)) {
+                    const D3D12_GPU_DESCRIPTOR_HANDLE handle =
+                        ctx_->rendering.texture->GetGpuHandle(texture);
+                    ImGui::Image(static_cast<ImTextureID>(handle.ptr), {64.0f, 64.0f});
+                } else {
+                    ImGui::TextDisabled("Normal texture is loading or unavailable.");
+                }
+            }
+            int packing = static_cast<int>(material.pbrTexturePacking);
+            const std::string packingBefore = WorldSerializer::Serialize(world_);
+            if (ImGui::Combo("PBR Texture Packing", &packing,
+                             "Separate\0ORM (R=AO, G=Roughness, B=Metallic)\0Metallic-Roughness (G=Roughness, B=Metallic)\0")) {
+                material.pbrTexturePacking =
+                    static_cast<MaterialPbrTexturePacking>(packing);
+                RecordImmediateEdit("Change PBR Texture Packing", packingBefore,
+                                    selectionBefore);
+            }
+            using TextureAssignFunction =
+                void (EditorScene::*)(EntityId, const std::filesystem::path&);
+            auto drawLinearTextureSlot = [&](const char* label, const char* id,
+                                             std::string& path,
+                                             TextureAssignFunction assignTexture) {
+                std::array<char, 512> pathBuffer{};
+                strncpy_s(pathBuffer.data(), pathBuffer.size(), path.c_str(), _TRUNCATE);
+                const std::string inputLabel = std::string(label) + "##" + id;
+                if (ImGui::InputText(inputLabel.c_str(), pathBuffer.data(), pathBuffer.size(),
+                                     ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    if (pathBuffer[0] == '\0') {
+                        const std::string clearBefore = WorldSerializer::Serialize(world_);
+                        const std::string previousPath = path;
+                        path.clear();
+                        loadedLinearTextures_.erase(previousPath);
+                        RecordImmediateEdit(std::string("Clear ") + label, clearBefore,
+                                            selectionBefore);
+                        status_ = std::string("Cleared ") + label + ".";
+                    } else {
+                        (this->*assignTexture)(selection_, pathBuffer.data());
+                    }
+                }
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload =
+                            ImGui::AcceptDragDropPayload(kTextureAssetDragPayload);
+                        payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                        static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                        (this->*assignTexture)(selection_,
+                                               static_cast<const char*>(payload->Data));
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                if (path.empty()) {
+                    return;
+                }
+                ImGui::SameLine();
+                const std::string clearId = std::string("Clear##") + id;
+                if (ImGui::SmallButton(clearId.c_str())) {
+                    const std::string clearBefore = WorldSerializer::Serialize(world_);
+                    const std::string previousPath = path;
+                    path.clear();
+                    loadedLinearTextures_.erase(previousPath);
+                    RecordImmediateEdit(std::string("Clear ") + label, clearBefore,
+                                        selectionBefore);
+                    status_ = std::string("Cleared ") + label + ".";
+                    return;
+                }
+                const TextureHandle texture = ResolveLinearTexture(path);
+                if (texture.IsValid() && ctx_ != nullptr && ctx_->rendering.texture != nullptr &&
+                    ctx_->rendering.texture->IsValidTexture(texture)) {
+                    const D3D12_GPU_DESCRIPTOR_HANDLE handle =
+                        ctx_->rendering.texture->GetGpuHandle(texture);
+                    ImGui::Image(static_cast<ImTextureID>(handle.ptr), {64.0f, 64.0f});
+                } else {
+                    ImGui::TextDisabled("Texture is loading or unavailable.");
+                }
+            };
+            drawLinearTextureSlot("Roughness Texture", "RoughnessTexture",
+                                  material.roughnessTexturePath,
+                                  &EditorScene::AssignRoughnessTexture);
+            drawLinearTextureSlot("Metallic Texture", "MetallicTexture",
+                                  material.metallicTexturePath,
+                                  &EditorScene::AssignMetallicTexture);
+            if (material.pbrTexturePacking != MaterialPbrTexturePacking::Separate &&
+                (material.roughnessTexturePath.empty() ||
+                 material.roughnessTexturePath != material.metallicTexturePath)) {
+                ImGui::TextColored({1.0f, 0.7f, 0.25f, 1.0f},
+                                   "Packed PBR textures must use the same asset in both slots.");
+            }
             if (!entity->meshRenderer) {
                 ImGui::TextDisabled("Add a Mesh Renderer to display this material.");
             }
@@ -3439,6 +3627,79 @@ void EditorScene::AssignBaseColorTexture(EntityId entityId,
     status_ = "Assigned Base Color texture: " + assetPath;
 }
 
+void EditorScene::AssignNormalTexture(EntityId entityId,
+                                      const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeTextureAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const std::string previousPath = entity->materialOverride
+                                         ? entity->materialOverride->normalTexturePath
+                                         : std::string{};
+    if (!entity->materialOverride) {
+        entity->materialOverride = MaterialOverrideComponent{};
+    }
+    entity->materialOverride->normalTexturePath = assetPath;
+    loadedLinearTextures_.erase(previousPath);
+    loadedLinearTextures_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Normal Texture", before, selectionBefore);
+    status_ = "Assigned Normal texture: " + assetPath;
+}
+
+void EditorScene::AssignRoughnessTexture(EntityId entityId,
+                                         const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeTextureAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (!entity->materialOverride) {
+        entity->materialOverride = MaterialOverrideComponent{};
+    }
+    entity->materialOverride->roughnessTexturePath = assetPath;
+    loadedLinearTextures_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Roughness Texture", before, selectionBefore);
+    status_ = "Assigned Roughness texture: " + assetPath;
+}
+
+void EditorScene::AssignMetallicTexture(EntityId entityId,
+                                        const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeTextureAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (!entity->materialOverride) {
+        entity->materialOverride = MaterialOverrideComponent{};
+    }
+    entity->materialOverride->metallicTexturePath = assetPath;
+    loadedLinearTextures_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Metallic Texture", before, selectionBefore);
+    status_ = "Assigned Metallic texture: " + assetPath;
+}
+
 bool EditorScene::TryNormalizeModelAssetReference(const std::filesystem::path& path,
                                                   std::string& assetPath) {
     if (!AssetImport::IsModelFile(path)) {
@@ -4072,6 +4333,28 @@ void EditorScene::ResolveMeshResources() {
             entity.materialOverride->baseColorTexturePath,
             TextureHandle(ctx_->rendering.texture->LoadSrgb(resolved->wstring())));
     }
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.materialOverride) {
+            continue;
+        }
+        const std::string* paths[] = {
+            &entity.materialOverride->normalTexturePath,
+            &entity.materialOverride->roughnessTexturePath,
+            &entity.materialOverride->metallicTexturePath,
+        };
+        for (const std::string* path : paths) {
+            if (path->empty() || loadedLinearTextures_.contains(*path)) {
+                continue;
+            }
+            const std::optional<std::filesystem::path> resolved =
+                ResolveProjectAssetPath(*path);
+            if (!resolved || !AssetImport::IsTextureFile(*resolved)) {
+                continue;
+            }
+            loadedLinearTextures_.emplace(
+                *path, TextureHandle(ctx_->rendering.texture->LoadLinear(resolved->wstring())));
+        }
+    }
 }
 
 ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) const {
@@ -4087,6 +4370,16 @@ TextureHandle EditorScene::ResolveBaseColorTexture(
     const MaterialOverrideComponent& component) const {
     const auto found = loadedTextures_.find(component.baseColorTexturePath);
     return found != loadedTextures_.end() ? found->second : TextureHandle{};
+}
+
+TextureHandle EditorScene::ResolveNormalTexture(
+    const MaterialOverrideComponent& component) const {
+    return ResolveLinearTexture(component.normalTexturePath);
+}
+
+TextureHandle EditorScene::ResolveLinearTexture(const std::string& path) const {
+    const auto found = loadedLinearTextures_.find(path);
+    return found != loadedLinearTextures_.end() ? found->second : TextureHandle{};
 }
 
 bool EditorScene::UpdateGameViewCamera() {
@@ -4309,6 +4602,7 @@ void EditorScene::BuildRenderScene() {
                 item.material.color = entity.materialOverride->baseColor;
                 item.material.metallic = entity.materialOverride->metallic;
                 item.material.roughness = entity.materialOverride->roughness;
+                item.material.normalStrength = entity.materialOverride->normalStrength;
                 const TextureHandle overrideTexture =
                     ResolveBaseColorTexture(*entity.materialOverride);
                 if (overrideTexture.IsValid()) {
@@ -4316,12 +4610,45 @@ void EditorScene::BuildRenderScene() {
                     item.material.baseColorTextureId = overrideTexture.Get();
                     item.material.enableTexture = 1;
                 }
+                const TextureHandle normalTexture =
+                    ResolveNormalTexture(*entity.materialOverride);
+                if (normalTexture.IsValid()) {
+                    item.normalTextureId = normalTexture.Get();
+                    item.material.normalTextureId = normalTexture.Get();
+                    item.material.enableNormalMap = 1;
+                }
+                const TextureHandle roughnessTexture =
+                    ResolveLinearTexture(entity.materialOverride->roughnessTexturePath);
+                const TextureHandle metallicTexture =
+                    ResolveLinearTexture(entity.materialOverride->metallicTexturePath);
+                if (roughnessTexture.IsValid()) {
+                    item.material.roughnessTextureId = roughnessTexture.Get();
+                }
+                if (metallicTexture.IsValid()) {
+                    item.material.metallicTextureId = metallicTexture.Get();
+                }
+                switch (entity.materialOverride->pbrTexturePacking) {
+                case MaterialPbrTexturePacking::Separate:
+                    item.material.pbrTexturePacking =
+                        static_cast<int32_t>(PbrTexturePacking::Separate);
+                    break;
+                case MaterialPbrTexturePacking::OcclusionRoughnessMetallic:
+                    item.material.pbrTexturePacking =
+                        static_cast<int32_t>(PbrTexturePacking::OcclusionRoughnessMetallic);
+                    break;
+                case MaterialPbrTexturePacking::MetallicRoughness:
+                    item.material.pbrTexturePacking =
+                        static_cast<int32_t>(PbrTexturePacking::MetallicRoughness);
+                    break;
+                }
             }
             item.transform = transform;
             if (!IsValidResourceId(item.textureId)) {
                 item.textureId = textureId;
             }
-            item.normalTextureId = normalTextureId;
+            if (!IsValidResourceId(item.normalTextureId)) {
+                item.normalTextureId = normalTextureId;
+            }
             item.objectId = static_cast<uint32_t>(EntityIdHash{}(entity.id));
             renderScene_.SubmitMesh(item);
         };

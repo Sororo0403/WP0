@@ -88,6 +88,21 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedMaterial["metallic"] = material.metallic;
             encodedMaterial["roughness"] = material.roughness;
             encodedMaterial["baseColorTexture"] = material.baseColorTexturePath;
+            encodedMaterial["normalTexture"] = material.normalTexturePath;
+            encodedMaterial["normalStrength"] = material.normalStrength;
+            encodedMaterial["roughnessTexture"] = material.roughnessTexturePath;
+            encodedMaterial["metallicTexture"] = material.metallicTexturePath;
+            switch (material.pbrTexturePacking) {
+            case MaterialPbrTexturePacking::Separate:
+                encodedMaterial["pbrTexturePacking"] = "Separate";
+                break;
+            case MaterialPbrTexturePacking::OcclusionRoughnessMetallic:
+                encodedMaterial["pbrTexturePacking"] = "ORM";
+                break;
+            case MaterialPbrTexturePacking::MetallicRoughness:
+                encodedMaterial["pbrTexturePacking"] = "MetallicRoughness";
+                break;
+            }
             encoded["components"]["MaterialOverride"] = std::move(encodedMaterial);
         }
         if (entity.camera) {
@@ -222,7 +237,17 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 !material.contains("metallic") || !material["metallic"].is_number() ||
                 !material.contains("roughness") || !material["roughness"].is_number() ||
                 (material.contains("baseColorTexture") &&
-                 !material["baseColorTexture"].is_string())) {
+                 !material["baseColorTexture"].is_string()) ||
+                (material.contains("normalTexture") &&
+                 !material["normalTexture"].is_string()) ||
+                (material.contains("normalStrength") &&
+                 !material["normalStrength"].is_number()) ||
+                (material.contains("roughnessTexture") &&
+                 !material["roughnessTexture"].is_string()) ||
+                (material.contains("metallicTexture") &&
+                 !material["metallicTexture"].is_string()) ||
+                (material.contains("pbrTexturePacking") &&
+                 !material["pbrTexturePacking"].is_string())) {
                 SetError(error, "Scene MaterialOverride component is invalid.");
                 return false;
             }
@@ -234,6 +259,35 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 component.baseColorTexturePath =
                     material["baseColorTexture"].get<std::string>();
             }
+            if (material.contains("normalTexture")) {
+                component.normalTexturePath = material["normalTexture"].get<std::string>();
+            }
+            if (material.contains("normalStrength")) {
+                component.normalStrength = material["normalStrength"].get<float>();
+            }
+            if (material.contains("roughnessTexture")) {
+                component.roughnessTexturePath =
+                    material["roughnessTexture"].get<std::string>();
+            }
+            if (material.contains("metallicTexture")) {
+                component.metallicTexturePath =
+                    material["metallicTexture"].get<std::string>();
+            }
+            if (material.contains("pbrTexturePacking")) {
+                const std::string packing = material["pbrTexturePacking"].get<std::string>();
+                if (packing == "Separate") {
+                    component.pbrTexturePacking = MaterialPbrTexturePacking::Separate;
+                } else if (packing == "ORM") {
+                    component.pbrTexturePacking =
+                        MaterialPbrTexturePacking::OcclusionRoughnessMetallic;
+                } else if (packing == "MetallicRoughness") {
+                    component.pbrTexturePacking =
+                        MaterialPbrTexturePacking::MetallicRoughness;
+                } else {
+                    SetError(error, "Scene MaterialOverride PBR packing is invalid.");
+                    return false;
+                }
+            }
             if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
                 component.baseColor.x < 0.0f || component.baseColor.y < 0.0f ||
                 component.baseColor.z < 0.0f || component.baseColor.w < 0.0f ||
@@ -241,7 +295,14 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 component.metallic < 0.0f || component.metallic > 1.0f ||
                 !std::isfinite(component.roughness) || component.roughness < 0.0f ||
                 component.roughness > 1.0f || component.baseColorTexturePath.size() > 1024u ||
-                component.baseColorTexturePath.find('\0') != std::string::npos) {
+                component.baseColorTexturePath.find('\0') != std::string::npos ||
+                component.normalTexturePath.size() > 1024u ||
+                component.normalTexturePath.find('\0') != std::string::npos ||
+                !std::isfinite(component.normalStrength) || component.normalStrength < 0.0f ||
+                component.roughnessTexturePath.size() > 1024u ||
+                component.roughnessTexturePath.find('\0') != std::string::npos ||
+                component.metallicTexturePath.size() > 1024u ||
+                component.metallicTexturePath.find('\0') != std::string::npos) {
                 SetError(error, "Scene MaterialOverride settings are invalid.");
                 return false;
             }

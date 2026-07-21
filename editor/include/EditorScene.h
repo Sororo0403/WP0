@@ -68,6 +68,9 @@ private:
     void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void AssignBaseColorTexture(EntityId entity, const std::filesystem::path& path);
+    void AssignNormalTexture(EntityId entity, const std::filesystem::path& path);
+    void AssignRoughnessTexture(EntityId entity, const std::filesystem::path& path);
+    void AssignMetallicTexture(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);
@@ -135,6 +138,8 @@ private:
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
     TextureHandle ResolveBaseColorTexture(const MaterialOverrideComponent& component) const;
+    TextureHandle ResolveNormalTexture(const MaterialOverrideComponent& component) const;
+    TextureHandle ResolveLinearTexture(const std::string& path) const;
     enum class PendingSceneAction {
         None,
         NewScene,
@@ -251,6 +256,7 @@ private:
     ModelHandle primitiveModels_[4]{};
     std::unordered_map<std::string, ModelHandle> loadedModels_;
     std::unordered_map<std::string, TextureHandle> loadedTextures_;
+    std::unordered_map<std::string, TextureHandle> loadedLinearTextures_;
     std::vector<std::filesystem::path> modelAssets_;
     std::vector<std::filesystem::path> textureAssets_;
     struct AssetBrowserEntry {

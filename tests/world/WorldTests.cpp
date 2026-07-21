@@ -77,6 +77,12 @@ int main() {
     childEntity->materialOverride->metallic = 0.7f;
     childEntity->materialOverride->roughness = 0.2f;
     childEntity->materialOverride->baseColorTexturePath = "asset://textures/test.png";
+    childEntity->materialOverride->normalTexturePath = "asset://textures/test_normal.png";
+    childEntity->materialOverride->normalStrength = 1.5f;
+    childEntity->materialOverride->roughnessTexturePath = "asset://textures/test_orm.png";
+    childEntity->materialOverride->metallicTexturePath = "asset://textures/test_orm.png";
+    childEntity->materialOverride->pbrTexturePacking =
+        MaterialPbrTexturePacking::OcclusionRoughnessMetallic;
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
@@ -114,6 +120,15 @@ int main() {
                    restoredChild->materialOverride->roughness == 0.2f &&
                    restoredChild->materialOverride->baseColorTexturePath ==
                        "asset://textures/test.png" &&
+                   restoredChild->materialOverride->normalTexturePath ==
+                       "asset://textures/test_normal.png" &&
+                   restoredChild->materialOverride->normalStrength == 1.5f &&
+                   restoredChild->materialOverride->roughnessTexturePath ==
+                       "asset://textures/test_orm.png" &&
+                   restoredChild->materialOverride->metallicTexturePath ==
+                       "asset://textures/test_orm.png" &&
+                   restoredChild->materialOverride->pbrTexturePacking ==
+                       MaterialPbrTexturePacking::OcclusionRoughnessMetallic &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
@@ -136,6 +151,13 @@ int main() {
                    duplicateChild->materialOverride->metallic == 0.7f &&
                    duplicateChild->materialOverride->baseColorTexturePath ==
                        "asset://textures/test.png" &&
+                   duplicateChild->materialOverride->normalTexturePath ==
+                       "asset://textures/test_normal.png" &&
+                   duplicateChild->materialOverride->normalStrength == 1.5f &&
+                   duplicateChild->materialOverride->roughnessTexturePath ==
+                       "asset://textures/test_orm.png" &&
+                   duplicateChild->materialOverride->pbrTexturePacking ==
+                       MaterialPbrTexturePacking::OcclusionRoughnessMetallic &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
@@ -201,6 +223,18 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidMaterial, rejected, &error),
                "Invalid MaterialOverride data was accepted.")) {
         return 118;
+    }
+    const std::string invalidNormalMaterial =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Normal","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,1],"metallic":0,"roughness":0.5,"normalTexture":"asset://normal.png","normalStrength":-1}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidNormalMaterial, rejected, &error),
+               "Invalid Normal texture settings were accepted.")) {
+        return 120;
+    }
+    const std::string invalidPbrPacking =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Packing","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,1],"metallic":0,"roughness":0.5,"pbrTexturePacking":"Unknown"}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidPbrPacking, rejected, &error),
+               "Invalid PBR texture packing was accepted.")) {
+        return 121;
     }
     const std::filesystem::path projectAssets =
         std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";
