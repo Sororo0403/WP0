@@ -268,7 +268,8 @@ bool BuildSceneRay(const Camera& camera, const ImVec2& imageMin, const ImVec2& i
 }
 
 bool ProjectScenePoint(const Camera& camera, const DirectX::XMFLOAT3& worldPosition,
-                       const ImVec2& imageMin, const ImVec2& imageMax, ImVec2& screenPosition) {
+                       const ImVec2& imageMin, const ImVec2& imageMax, ImVec2& screenPosition,
+                       bool requireInside = true) {
     const float width = imageMax.x - imageMin.x;
     const float height = imageMax.y - imageMin.y;
     if (width <= 0.0f || height <= 0.0f) {
@@ -283,13 +284,15 @@ bool ProjectScenePoint(const Camera& camera, const DirectX::XMFLOAT3& worldPosit
     }
     const float ndcX = DirectX::XMVectorGetX(clip) / clipW;
     const float ndcY = DirectX::XMVectorGetY(clip) / clipW;
-    if (!std::isfinite(ndcX) || !std::isfinite(ndcY)) {
+    if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || std::abs(ndcX) > 10000.0f ||
+        std::abs(ndcY) > 10000.0f) {
         return false;
     }
     screenPosition = {imageMin.x + (ndcX * 0.5f + 0.5f) * width,
                       imageMin.y + (0.5f - ndcY * 0.5f) * height};
-    return screenPosition.x >= imageMin.x && screenPosition.x <= imageMax.x &&
-           screenPosition.y >= imageMin.y && screenPosition.y <= imageMax.y;
+    return !requireInside ||
+           (screenPosition.x >= imageMin.x && screenPosition.x <= imageMax.x &&
+            screenPosition.y >= imageMin.y && screenPosition.y <= imageMax.y);
 }
 
 DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
@@ -4017,6 +4020,15 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                            const ImVec2& imageMax) const {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(imageMin, imageMax, true);
+    auto drawWorldLine = [&](const DirectX::XMFLOAT3& from, const DirectX::XMFLOAT3& to,
+                             ImU32 color, float thickness = 1.25f) {
+        ImVec2 screenFrom{};
+        ImVec2 screenTo{};
+        if (ProjectScenePoint(sceneViewCamera_, from, imageMin, imageMax, screenFrom, false) &&
+            ProjectScenePoint(sceneViewCamera_, to, imageMin, imageMax, screenTo, false)) {
+            drawList->AddLine(screenFrom, screenTo, color, thickness);
+        }
+    };
     for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.camera && !entity.light) {
             continue;
@@ -4060,6 +4072,114 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                   {center.x + direction.x * 11.0f,
                                    center.y + direction.y * 11.0f},
                                   color, 1.5f);
+            }
+        }
+        if (active) {
+            using namespace DirectX;
+            const XMMATRIX world = XMLoadFloat4x4(&worldMatrix);
+            const XMVECTOR origin = XMVectorSet(worldMatrix._41, worldMatrix._42,
+                                                worldMatrix._43, 1.0f);
+            auto normalizedAxis = [&](float x, float y, float z) {
+                XMVECTOR axis = XMVector3TransformNormal(XMVectorSet(x, y, z, 0.0f), world);
+                return XMVectorGetX(XMVector3LengthSq(axis)) > 1.0e-8f
+                           ? XMVector3Normalize(axis)
+                           : XMVectorSet(x, y, z, 0.0f);
+            };
+            const XMVECTOR right = normalizedAxis(1.0f, 0.0f, 0.0f);
+            const XMVECTOR up = normalizedAxis(0.0f, 1.0f, 0.0f);
+            const XMVECTOR forward = normalizedAxis(0.0f, 0.0f, 1.0f);
+            auto worldPoint = [&](float x, float y, float z) {
+                XMFLOAT3 result{};
+                XMStoreFloat3(&result, origin + right * x + up * y + forward * z);
+                return result;
+            };
+
+            if (entity.camera) {
+                const CameraComponent& camera = *entity.camera;
+                const float aspect = static_cast<float>((std::max)(1, gameViewSurface_.GetWidth())) /
+                                     static_cast<float>((std::max)(1, gameViewSurface_.GetHeight()));
+                const float nearDepth = camera.nearClip;
+                const float farDepth =
+                    (std::min)(camera.farClip, (std::max)(20.0f, nearDepth + 0.001f));
+                float nearHalfHeight = camera.orthographicHeight * 0.5f;
+                float farHalfHeight = nearHalfHeight;
+                if (camera.projection == CameraProjection::Perspective) {
+                    const float tangent =
+                        std::tan(XMConvertToRadians(camera.fieldOfViewDegrees) * 0.5f);
+                    nearHalfHeight = tangent * nearDepth;
+                    farHalfHeight = tangent * farDepth;
+                }
+                const float nearHalfWidth = nearHalfHeight * aspect;
+                const float farHalfWidth = farHalfHeight * aspect;
+                const std::array<XMFLOAT3, 8> corners = {
+                    worldPoint(-nearHalfWidth, -nearHalfHeight, nearDepth),
+                    worldPoint(nearHalfWidth, -nearHalfHeight, nearDepth),
+                    worldPoint(nearHalfWidth, nearHalfHeight, nearDepth),
+                    worldPoint(-nearHalfWidth, nearHalfHeight, nearDepth),
+                    worldPoint(-farHalfWidth, -farHalfHeight, farDepth),
+                    worldPoint(farHalfWidth, -farHalfHeight, farDepth),
+                    worldPoint(farHalfWidth, farHalfHeight, farDepth),
+                    worldPoint(-farHalfWidth, farHalfHeight, farDepth),
+                };
+                constexpr size_t edges[][2] = {
+                    {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                    {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+                };
+                const ImU32 guideColor = camera.enabled ? IM_COL32(90, 185, 255, 190)
+                                                        : IM_COL32(90, 185, 255, 80);
+                for (const auto& edge : edges) {
+                    drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor);
+                }
+            }
+
+            if (entity.light) {
+                const LightComponent& light = *entity.light;
+                const ImU32 guideColor = light.enabled ? IM_COL32(255, 215, 80, 190)
+                                                       : IM_COL32(255, 215, 80, 80);
+                const XMFLOAT3 worldOrigin = worldPoint(0.0f, 0.0f, 0.0f);
+                auto drawCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB,
+                                      XMVECTOR circleCenter = DirectX::g_XMZero) {
+                    constexpr int segments = 32;
+                    XMFLOAT3 previous{};
+                    for (int index = 0; index <= segments; ++index) {
+                        const float angle = XM_2PI * static_cast<float>(index) /
+                                            static_cast<float>(segments);
+                        XMFLOAT3 point{};
+                        XMStoreFloat3(&point, origin + circleCenter +
+                                                 axisA * (std::cos(angle) * radius) +
+                                                 axisB * (std::sin(angle) * radius));
+                        if (index > 0) {
+                            drawWorldLine(previous, point, guideColor);
+                        }
+                        previous = point;
+                    }
+                };
+                if (light.type == LightType::Directional) {
+                    const XMFLOAT3 tip = worldPoint(0.0f, 0.0f, 3.0f);
+                    drawWorldLine(worldOrigin, tip, guideColor, 1.75f);
+                    drawWorldLine(tip, worldPoint(-0.3f, 0.0f, 2.5f), guideColor, 1.75f);
+                    drawWorldLine(tip, worldPoint(0.3f, 0.0f, 2.5f), guideColor, 1.75f);
+                    drawWorldLine(tip, worldPoint(0.0f, -0.3f, 2.5f), guideColor, 1.75f);
+                    drawWorldLine(tip, worldPoint(0.0f, 0.3f, 2.5f), guideColor, 1.75f);
+                } else if (light.type == LightType::Point) {
+                    drawCircle(light.range, right, up);
+                    drawCircle(light.range, right, forward);
+                    drawCircle(light.range, up, forward);
+                } else {
+                    const float guideAngle = (std::min)(light.outerAngleDegrees, 89.0f);
+                    const float coneRadius =
+                        light.range * std::tan(XMConvertToRadians(guideAngle));
+                    const XMVECTOR coneCenter = forward * light.range;
+                    drawCircle(coneRadius, right, up, coneCenter);
+                    for (int index = 0; index < 4; ++index) {
+                        const float angle = XM_PIDIV2 * static_cast<float>(index);
+                        XMFLOAT3 rim{};
+                        XMStoreFloat3(&rim, origin + coneCenter +
+                                              right * (std::cos(angle) * coneRadius) +
+                                              up * (std::sin(angle) * coneRadius));
+                        drawWorldLine(worldOrigin, rim, guideColor);
+                    }
+                }
             }
         }
         if (active && (!entity.meshRenderer || !entity.meshRenderer->enabled)) {
