@@ -931,6 +931,10 @@ void EditorScene::DrawPanels() {
     if (input != nullptr) {
         input->SetQueryEnabled(false, false, false);
     }
+    if (gameInputCaptured_ &&
+        (playModeState_ != PlayModeState::Playing || !showGamePanel_)) {
+        ReleaseGameInputCapture();
+    }
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
             DrawHierarchyPanel();
@@ -1040,14 +1044,20 @@ void EditorScene::DrawPanels() {
         if (ImGui::Begin("Game", &showGamePanel_, kPanelFlags)) {
             const bool gameViewFocused =
                 ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+            if (gameInputCaptured_ && !gameViewFocused) {
+                ReleaseGameInputCapture();
+                status_ = "Released Game input because the Game View lost focus.";
+            }
             const ImVec2 available = ImGui::GetContentRegionAvail();
             requestedGameWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
             requestedGameHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
             if (!gameViewSurface_.IsReady() || !gameViewPostProcess_.IsReady() ||
                 ctx_ == nullptr || ctx_->rendering.dxCommon == nullptr ||
                 ctx_->rendering.model == nullptr) {
+                ReleaseGameInputCapture();
                 ImGui::TextDisabled("Game View RenderSurface is not ready.");
             } else if (!UpdateGameViewCamera()) {
+                ReleaseGameInputCapture();
                 ImGui::TextDisabled("No enabled Primary Camera in the scene.");
             } else {
                 BuildRenderScene();
@@ -1071,11 +1081,47 @@ void EditorScene::DrawPanels() {
                 ImGui::Image(static_cast<ImTextureID>(output.ptr),
                              ImVec2(static_cast<float>(requestedGameWidth_),
                                     static_cast<float>(requestedGameHeight_)));
+                const ImVec2 gameImageMin = ImGui::GetItemRectMin();
+                const ImVec2 gameImageMax = ImGui::GetItemRectMax();
                 const bool gameImageHovered = ImGui::IsItemHovered();
+                if (playModeState_ == PlayModeState::Playing && gameImageHovered &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    !gameInputCaptured_) {
+                    POINT cursor{};
+                    if (GetCursorPos(&cursor)) {
+                        gameInputCursorRestoreX_ = cursor.x;
+                        gameInputCursorRestoreY_ = cursor.y;
+                    }
+                    gameInputCaptured_ = true;
+                    status_ = "Game input captured. Press Escape to release.";
+                }
+                if (gameInputCaptured_) {
+                    const int cursorCenterX = static_cast<int>(
+                        std::lround((gameImageMin.x + gameImageMax.x) * 0.5f));
+                    const int cursorCenterY = static_cast<int>(
+                        std::lround((gameImageMin.y + gameImageMax.y) * 0.5f));
+                    SetCursorPos(cursorCenterX, cursorCenterY);
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+                }
                 if (input != nullptr && playModeState_ == PlayModeState::Playing) {
                     input->SetQueryEnabled(gameViewFocused,
-                                           gameViewFocused && gameImageHovered,
+                                           gameViewFocused &&
+                                               (gameImageHovered || gameInputCaptured_),
                                            gameViewFocused);
+                }
+                if (playModeState_ == PlayModeState::Playing) {
+                    const char* captureHint = gameInputCaptured_
+                                                  ? "Input captured - Esc to release"
+                                                  : "Click Game View to capture input";
+                    const ImVec2 hintSize = ImGui::CalcTextSize(captureHint);
+                    const ImVec2 hintMin{gameImageMin.x + 10.0f, gameImageMin.y + 10.0f};
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    drawList->AddRectFilled({hintMin.x - 4.0f, hintMin.y - 2.0f},
+                                            {hintMin.x + hintSize.x + 4.0f,
+                                             hintMin.y + hintSize.y + 2.0f},
+                                            IM_COL32(20, 24, 32, 190), 3.0f);
+                    drawList->AddText(hintMin, IM_COL32(220, 225, 235, 230),
+                                      captureHint);
                 }
             }
         }
@@ -3157,6 +3203,11 @@ void EditorScene::HandleEditorShortcuts() {
     if (pendingSceneAction_ != PendingSceneAction::None) {
         return;
     }
+    if (gameInputCaptured_ && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        ReleaseGameInputCapture();
+        status_ = "Released Game input.";
+        return;
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
         if (IsInPlayMode()) {
             StopPlayMode();
@@ -4934,6 +4985,7 @@ void EditorScene::StopPlayMode() {
         status_ = "Could not stop Play Mode: Edit World is unavailable.";
         return;
     }
+    ReleaseGameInputCapture();
     EndRuntimeWorld();
     world_ = std::move(*editModeWorld_);
     editModeWorld_.reset();
@@ -4956,12 +5008,21 @@ void EditorScene::StopPlayMode() {
 
 void EditorScene::TogglePlayPause() {
     if (playModeState_ == PlayModeState::Playing) {
+        ReleaseGameInputCapture();
         playModeState_ = PlayModeState::Paused;
         status_ = "Paused Play Mode.";
     } else if (playModeState_ == PlayModeState::Paused) {
         playModeState_ = PlayModeState::Playing;
         status_ = "Resumed Play Mode.";
     }
+}
+
+void EditorScene::ReleaseGameInputCapture() {
+    if (!gameInputCaptured_) {
+        return;
+    }
+    SetCursorPos(gameInputCursorRestoreX_, gameInputCursorRestoreY_);
+    gameInputCaptured_ = false;
 }
 
 void EditorScene::StepRuntimeWorld() {

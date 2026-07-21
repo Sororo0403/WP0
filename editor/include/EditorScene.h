@@ -43,6 +43,7 @@ private:
     void StopPlayMode();
     void TogglePlayPause();
     void StepRuntimeWorld();
+    void ReleaseGameInputCapture();
     void BeginRuntimeWorld();
     void UpdateRuntimeWorld(float deltaTime);
     void EndRuntimeWorld();
@@ -210,6 +211,9 @@ private:
     EntityId playModeSelectionSnapshot_{};
     bool playModeDirtySnapshot_ = false;
     bool focusGamePanelRequested_ = false;
+    bool gameInputCaptured_ = false;
+    int gameInputCursorRestoreX_ = 0;
+    int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;
     double runtimeElapsedSeconds_ = 0.0;
     RecentScenesStore recentScenesStore_;
