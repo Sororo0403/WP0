@@ -67,6 +67,7 @@ private:
     void DuplicateSelection();
     void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
+    void AssignBaseColorTexture(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);
@@ -83,6 +84,8 @@ private:
                                     const DirectX::XMFLOAT3& position);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
                                          std::string& assetPath);
+    bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,
+                                           std::string& assetPath);
     void RefreshAssetBrowser();
     void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
     void DrawAssetBrowserBreadcrumbs();
@@ -131,6 +134,7 @@ private:
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
+    TextureHandle ResolveBaseColorTexture(const MaterialOverrideComponent& component) const;
     enum class PendingSceneAction {
         None,
         NewScene,
@@ -246,7 +250,9 @@ private:
     std::string assetPreviewError_;
     ModelHandle primitiveModels_[4]{};
     std::unordered_map<std::string, ModelHandle> loadedModels_;
+    std::unordered_map<std::string, TextureHandle> loadedTextures_;
     std::vector<std::filesystem::path> modelAssets_;
+    std::vector<std::filesystem::path> textureAssets_;
     struct AssetBrowserEntry {
         std::filesystem::path relativePath;
         bool directory = false;

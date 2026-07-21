@@ -48,6 +48,15 @@ bool IsModelAsset(const std::filesystem::path& path) {
     return std::ranges::find(extensions, extension) != std::end(extensions);
 }
 
+bool IsTextureAsset(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    constexpr std::string_view extensions[] = {
+        ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds", ".hdr", ".exr"};
+    return std::ranges::find(extensions, extension) != std::end(extensions);
+}
+
 bool IsImportableAssetFile(const std::filesystem::path& path) {
     if (IsModelAsset(path)) {
         return true;
@@ -451,6 +460,10 @@ bool IsModelFile(const std::filesystem::path& path) {
     return IsModelAsset(path);
 }
 
+bool IsTextureFile(const std::filesystem::path& path) {
+    return IsTextureAsset(path);
+}
+
 bool IsSelectableFile(const std::filesystem::path& path) {
     return IsImportableAssetFile(path);
 }
@@ -459,11 +472,16 @@ bool BuildPlan(const std::vector<std::filesystem::path>& selectedFiles,
                std::vector<File>& files, std::string& errorMessage) {
     files.clear();
     errorMessage.clear();
-    if (selectedFiles.empty() ||
-        !std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
+    const bool containsModel =
+        std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
             return IsModelAsset(path);
-        })) {
-        errorMessage = "Asset import requires at least one supported model file.";
+        });
+    const bool texturesOnly = !selectedFiles.empty() &&
+                              std::ranges::all_of(selectedFiles, [](const auto& path) {
+                                  return IsTextureAsset(path);
+                              });
+    if (selectedFiles.empty() || (!containsModel && !texturesOnly)) {
+        errorMessage = "Asset import requires a supported model or texture file.";
         return false;
     }
     for (const std::filesystem::path& source : selectedFiles) {

@@ -37,6 +37,7 @@ struct MaterialOverrideComponent {
     DirectX::XMFLOAT4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
     float metallic = 0.0f;
     float roughness = 0.5f;
+    std::string baseColorTexturePath;
 };
 
 enum class CameraProjection : uint8_t {

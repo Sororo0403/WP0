@@ -87,6 +87,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedMaterial["baseColor"] = EncodeFloat4(material.baseColor);
             encodedMaterial["metallic"] = material.metallic;
             encodedMaterial["roughness"] = material.roughness;
+            encodedMaterial["baseColorTexture"] = material.baseColorTexturePath;
             encoded["components"]["MaterialOverride"] = std::move(encodedMaterial);
         }
         if (entity.camera) {
@@ -219,7 +220,9 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             if (!material.is_object() || !material.contains("enabled") ||
                 !material["enabled"].is_boolean() || !material.contains("baseColor") ||
                 !material.contains("metallic") || !material["metallic"].is_number() ||
-                !material.contains("roughness") || !material["roughness"].is_number()) {
+                !material.contains("roughness") || !material["roughness"].is_number() ||
+                (material.contains("baseColorTexture") &&
+                 !material["baseColorTexture"].is_string())) {
                 SetError(error, "Scene MaterialOverride component is invalid.");
                 return false;
             }
@@ -227,13 +230,18 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             component.enabled = material["enabled"].get<bool>();
             component.metallic = material["metallic"].get<float>();
             component.roughness = material["roughness"].get<float>();
+            if (material.contains("baseColorTexture")) {
+                component.baseColorTexturePath =
+                    material["baseColorTexture"].get<std::string>();
+            }
             if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
                 component.baseColor.x < 0.0f || component.baseColor.y < 0.0f ||
                 component.baseColor.z < 0.0f || component.baseColor.w < 0.0f ||
                 component.baseColor.w > 1.0f || !std::isfinite(component.metallic) ||
                 component.metallic < 0.0f || component.metallic > 1.0f ||
                 !std::isfinite(component.roughness) || component.roughness < 0.0f ||
-                component.roughness > 1.0f) {
+                component.roughness > 1.0f || component.baseColorTexturePath.size() > 1024u ||
+                component.baseColorTexturePath.find('\0') != std::string::npos) {
                 SetError(error, "Scene MaterialOverride settings are invalid.");
                 return false;
             }

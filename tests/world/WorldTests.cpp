@@ -76,6 +76,7 @@ int main() {
     childEntity->materialOverride->baseColor = {0.25f, 0.5f, 0.75f, 0.8f};
     childEntity->materialOverride->metallic = 0.7f;
     childEntity->materialOverride->roughness = 0.2f;
+    childEntity->materialOverride->baseColorTexturePath = "asset://textures/test.png";
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
@@ -111,6 +112,8 @@ int main() {
                    restoredChild->materialOverride->baseColor.w == 0.8f &&
                    restoredChild->materialOverride->metallic == 0.7f &&
                    restoredChild->materialOverride->roughness == 0.2f &&
+                   restoredChild->materialOverride->baseColorTexturePath ==
+                       "asset://textures/test.png" &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
@@ -131,6 +134,8 @@ int main() {
                    duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
                    duplicateChild->materialOverride &&
                    duplicateChild->materialOverride->metallic == 0.7f &&
+                   duplicateChild->materialOverride->baseColorTexturePath ==
+                       "asset://textures/test.png" &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
@@ -350,6 +355,15 @@ int main() {
 
     std::vector<AssetImport::File> importPlan;
     std::string importError;
+    if (!Check(AssetImport::IsTextureFile(importDirectory / "gltf/textures/albedo.png") &&
+                   AssetImport::BuildPlan(
+                       {importDirectory / "gltf/textures/albedo.png"}, importPlan,
+                       importError) &&
+                   importPlan.size() == 1u,
+               "Standalone texture import plan failed.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 119;
+    }
     const bool gltfPlanBuilt = AssetImport::BuildPlan(
         {importDirectory / "gltf/model.gltf"}, importPlan, importError);
     if (!Check(gltfPlanBuilt, importError.c_str()) ||

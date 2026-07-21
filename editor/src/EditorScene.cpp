@@ -40,6 +40,7 @@ constexpr ImGuiWindowFlags kPanelFlags = ImGuiWindowFlags_NoCollapse;
 constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"};
 constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
+constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 
@@ -1129,7 +1130,7 @@ void EditorScene::DrawProjectPanel() {
         if (ImGui::MenuItem("Folder")) {
             RequestCreateAssetFolder();
         }
-        if (ImGui::MenuItem("Import Model Files...")) {
+        if (ImGui::MenuItem("Import Assets...")) {
             ImportAssetFiles();
         }
         ImGui::EndPopup();
@@ -1139,7 +1140,8 @@ void EditorScene::DrawProjectPanel() {
         RefreshAssetBrowser();
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu model(s)", modelAssets_.size());
+    ImGui::TextDisabled("%zu model(s), %zu texture(s)", modelAssets_.size(),
+                        textureAssets_.size());
     ImGui::Separator();
     if (!currentAssetDirectory_.empty()) {
         if (ImGui::Button("< Back")) {
@@ -1149,13 +1151,16 @@ void EditorScene::DrawProjectPanel() {
     }
     DrawAssetBrowserBreadcrumbs();
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##AssetSearch", "Search model assets...", assetSearch_.data(),
+    ImGui::InputTextWithHint("##AssetSearch", "Search assets...", assetSearch_.data(),
                              assetSearch_.size());
 
     constexpr const char* formatLabels[] = {"All formats", "glTF", "GLB", "OBJ",
-                                             "FBX",         "DAE",  "3DS", "PLY"};
+                                             "FBX", "DAE", "3DS", "PLY", "PNG", "JPG",
+                                             "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
     constexpr const char* formatExtensions[] = {"",     ".gltf", ".glb", ".obj",
-                                                 ".fbx", ".dae",  ".3ds", ".ply"};
+                                                 ".fbx", ".dae",  ".3ds", ".ply",
+                                                 ".png", ".jpg",  ".jpeg", ".tga",
+                                                 ".bmp", ".dds",  ".hdr", ".exr"};
     constexpr const char* sortLabels[] = {"Name", "Type", "Size"};
     ImGui::SetNextItemWidth(105.0f);
     ImGui::Combo("##AssetFormat", &assetFormatFilter_, formatLabels,
@@ -1213,20 +1218,24 @@ void EditorScene::DrawProjectPanel() {
         const std::string search(assetSearch_.data());
         if (!search.empty()) {
             std::vector<std::filesystem::path> matches;
-            for (const std::filesystem::path& logicalPath : modelAssets_) {
-                const std::filesystem::path relativePath =
-                    logicalPath.lexically_relative("assets");
-                if (ContainsCaseInsensitive(logicalPath.generic_string(), search) &&
-                    matchesFormat(relativePath)) {
-                    matches.push_back(relativePath);
+            auto appendMatches = [&](const auto& assets) {
+                for (const std::filesystem::path& logicalPath : assets) {
+                    const std::filesystem::path relativePath =
+                        logicalPath.lexically_relative("assets");
+                    if (ContainsCaseInsensitive(logicalPath.generic_string(), search) &&
+                        matchesFormat(relativePath)) {
+                        matches.push_back(relativePath);
+                    }
                 }
-            }
+            };
+            appendMatches(modelAssets_);
+            appendMatches(textureAssets_);
             std::ranges::sort(matches, comparePaths);
             for (const std::filesystem::path& relativePath : matches) {
                 DrawAssetBrowserEntry(relativePath, false);
             }
             if (matches.empty()) {
-                ImGui::TextDisabled("No matching model assets.");
+                ImGui::TextDisabled("No matching assets.");
             }
         } else {
             std::vector<AssetBrowserEntry> visibleEntries;
@@ -1245,7 +1254,7 @@ void EditorScene::DrawProjectPanel() {
                 DrawAssetBrowserEntry(entry.relativePath, entry.directory);
             }
             if (visibleEntries.empty()) {
-                ImGui::TextDisabled("This folder contains no matching model assets or folders.");
+                ImGui::TextDisabled("This folder contains no matching assets or folders.");
             }
         }
     }
@@ -1283,7 +1292,9 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const std::filesystem::path logicalPath =
         (std::filesystem::path("assets") / relativePath).lexically_normal();
     const std::string id = logicalPath.generic_string();
-    const std::string label = std::string(directory ? "[Folder] " : "[Model] ") +
+    const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
+    const std::string label = std::string(directory ? "[Folder] "
+                                                     : texture ? "[Texture] " : "[Model] ") +
                               relativePath.filename().string();
     ImGui::PushID(id.c_str());
     const bool selected = selectedAsset_ == relativePath;
@@ -1298,7 +1309,8 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::SetTooltip("%s", id.c_str());
     }
     if (!directory && ImGui::BeginDragDropSource()) {
-        ImGui::SetDragDropPayload(kModelAssetDragPayload, id.c_str(), id.size() + 1u);
+        ImGui::SetDragDropPayload(texture ? kTextureAssetDragPayload : kModelAssetDragPayload,
+                                  id.c_str(), id.size() + 1u);
         ImGui::TextUnformatted(id.c_str());
         ImGui::EndDragDropSource();
     }
@@ -1308,8 +1320,11 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
             if (ImGui::MenuItem("Open")) {
                 NavigateAssetBrowser(relativePath);
             }
-        } else if (ImGui::MenuItem("Create Entity")) {
+        } else if (!texture && ImGui::MenuItem("Create Entity")) {
             CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
+        } else if (texture && ImGui::MenuItem("Assign to Selected Material", nullptr, false,
+                                              selection_.IsValid())) {
+            AssignBaseColorTexture(selection_, logicalPath);
         }
         if (ImGui::MenuItem("Rename")) {
             RequestAssetRename(relativePath, directory);
@@ -1364,7 +1379,8 @@ void EditorScene::DrawSelectedAssetDetails() {
         return;
     }
     const std::string extension = physical.extension().string();
-    std::string typeLabel = directory ? "Folder" : "Model";
+    std::string typeLabel = directory ? "Folder"
+                                      : AssetImport::IsTextureFile(physical) ? "Texture" : "Model";
     if (regularFile && !extension.empty()) {
         typeLabel += " (" + extension + ")";
     }
@@ -1658,7 +1674,7 @@ bool EditorScene::RenamePendingAsset() {
         return static_cast<char>(std::tolower(character));
     });
     if (!pendingAssetOperationIsDirectory_ && newExtension != oldExtension) {
-        status_ = "Asset rename cannot change a model file extension.";
+        status_ = "Asset rename cannot change a file extension.";
         return false;
     }
     const std::filesystem::path newRelative =
@@ -1804,14 +1820,6 @@ bool EditorScene::ImportAssetFiles() {
 
 bool EditorScene::ImportAssetFiles(
     const std::vector<std::filesystem::path>& selectedFiles) {
-    const bool containsModel =
-        std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
-            return AssetImport::IsModelFile(path);
-        });
-    if (!containsModel) {
-        status_ = "Asset import requires at least one supported model file.";
-        return false;
-    }
     const std::filesystem::path destinationDirectory =
         assetRoot_ / currentAssetDirectory_;
     if (!IsPathAtOrWithinRoot(assetRoot_, destinationDirectory)) {
@@ -1910,12 +1918,8 @@ bool EditorScene::ImportAssetFiles(
         copiedFiles.push_back(destination);
     }
 
-    const auto firstModel =
-        std::ranges::find_if(selectedFiles, [](const std::filesystem::path& path) {
-            return AssetImport::IsModelFile(path);
-        });
     selectedAsset_ =
-        (currentAssetDirectory_ / firstModel->filename()).lexically_normal();
+        (currentAssetDirectory_ / selectedFiles.front().filename()).lexically_normal();
     RefreshAssetBrowser();
     status_ = "Imported " + std::to_string(copiedFiles.size()) +
               " new asset file(s) into assets/" + currentAssetDirectory_.generic_string();
@@ -1957,12 +1961,19 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
     hierarchySelection_.clear();
     selection_ = {};
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model) {
-            continue;
-        }
-        const std::optional<std::filesystem::path> referenced =
-            AssetRelativeFromReference(entity.meshRenderer->modelPath);
-        if (!referenced || !AssetPathMatches(*referenced, relativePath, directory)) {
+        const std::optional<std::filesystem::path> modelReference =
+            entity.meshRenderer && entity.meshRenderer->sourceType == MeshSourceType::Model
+                ? AssetRelativeFromReference(entity.meshRenderer->modelPath)
+                : std::nullopt;
+        const std::optional<std::filesystem::path> textureReference =
+            entity.materialOverride
+                ? AssetRelativeFromReference(entity.materialOverride->baseColorTexturePath)
+                : std::nullopt;
+        const bool matchesModel =
+            modelReference && AssetPathMatches(*modelReference, relativePath, directory);
+        const bool matchesTexture =
+            textureReference && AssetPathMatches(*textureReference, relativePath, directory);
+        if (!matchesModel && !matchesTexture) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -1988,12 +1999,20 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
                                          bool directory) const {
     size_t references = 0;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model) {
-            continue;
+        bool referencedByEntity = false;
+        if (entity.meshRenderer && entity.meshRenderer->sourceType == MeshSourceType::Model) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.meshRenderer->modelPath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
         }
-        const std::optional<std::filesystem::path> referenced =
-            AssetRelativeFromReference(entity.meshRenderer->modelPath);
-        if (referenced && AssetPathMatches(*referenced, relativePath, directory)) {
+        if (!referencedByEntity && entity.materialOverride) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.materialOverride->baseColorTexturePath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
+        if (referencedByEntity) {
             ++references;
         }
     }
@@ -2006,21 +2025,27 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
     size_t updated = 0;
     for (const WorldEntity& candidate : world_.Entities()) {
         WorldEntity* entity = world_.Find(candidate.id);
-        if (entity == nullptr || !entity->meshRenderer ||
-            entity->meshRenderer->sourceType != MeshSourceType::Model) {
+        if (entity == nullptr) {
             continue;
         }
-        const std::optional<std::filesystem::path> referenced =
-            AssetRelativeFromReference(entity->meshRenderer->modelPath);
-        if (!referenced || !AssetPathMatches(*referenced, oldRelativePath, directory)) {
-            continue;
+        auto updateReference = [&](std::string& reference) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(reference);
+            if (!referenced || !AssetPathMatches(*referenced, oldRelativePath, directory)) {
+                return;
+            }
+            const std::filesystem::path suffix = referenced->lexically_relative(oldRelativePath);
+            const std::filesystem::path replacement =
+                suffix.empty() || suffix == L"." ? newRelativePath : newRelativePath / suffix;
+            reference = "asset://" + replacement.lexically_normal().generic_string();
+            ++updated;
+        };
+        if (entity->meshRenderer && entity->meshRenderer->sourceType == MeshSourceType::Model) {
+            updateReference(entity->meshRenderer->modelPath);
         }
-        const std::filesystem::path suffix = referenced->lexically_relative(oldRelativePath);
-        const std::filesystem::path replacement =
-            suffix.empty() || suffix == L"." ? newRelativePath : newRelativePath / suffix;
-        entity->meshRenderer->modelPath =
-            "asset://" + replacement.lexically_normal().generic_string();
-        ++updated;
+        if (entity->materialOverride) {
+            updateReference(entity->materialOverride->baseColorTexturePath);
+        }
     }
     return updated;
 }
@@ -2673,6 +2698,54 @@ void EditorScene::DrawInspectorPanel() {
             };
             drawMaterialFloat("Metallic##MaterialOverride", material.metallic);
             drawMaterialFloat("Roughness##MaterialOverride", material.roughness);
+            std::array<char, 512> texturePathBuffer{};
+            strncpy_s(texturePathBuffer.data(), texturePathBuffer.size(),
+                      material.baseColorTexturePath.c_str(), _TRUNCATE);
+            if (ImGui::InputText("Base Color Texture", texturePathBuffer.data(),
+                                 texturePathBuffer.size(),
+                                 ImGuiInputTextFlags_EnterReturnsTrue)) {
+                if (texturePathBuffer[0] == '\0') {
+                    const std::string clearBefore = WorldSerializer::Serialize(world_);
+                    const std::string previousPath = material.baseColorTexturePath;
+                    material.baseColorTexturePath.clear();
+                    loadedTextures_.erase(previousPath);
+                    RecordImmediateEdit("Clear Base Color Texture", clearBefore,
+                                        selectionBefore);
+                    status_ = "Cleared Base Color texture.";
+                } else {
+                    AssignBaseColorTexture(selection_, texturePathBuffer.data());
+                }
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kTextureAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                    static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignBaseColorTexture(selection_, static_cast<const char*>(payload->Data));
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (!material.baseColorTexturePath.empty()) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear##BaseColorTexture")) {
+                    const std::string clearBefore = WorldSerializer::Serialize(world_);
+                    const std::string previousPath = material.baseColorTexturePath;
+                    material.baseColorTexturePath.clear();
+                    loadedTextures_.erase(previousPath);
+                    RecordImmediateEdit("Clear Base Color Texture", clearBefore,
+                                        selectionBefore);
+                    status_ = "Cleared Base Color texture.";
+                }
+                const TextureHandle texture = ResolveBaseColorTexture(material);
+                if (texture.IsValid() && ctx_ != nullptr && ctx_->rendering.texture != nullptr &&
+                    ctx_->rendering.texture->IsValidTexture(texture)) {
+                    const D3D12_GPU_DESCRIPTOR_HANDLE handle =
+                        ctx_->rendering.texture->GetGpuHandle(texture);
+                    ImGui::Image(static_cast<ImTextureID>(handle.ptr), {64.0f, 64.0f});
+                } else {
+                    ImGui::TextDisabled("Texture is loading or unavailable.");
+                }
+            }
             if (!entity->meshRenderer) {
                 ImGui::TextDisabled("Add a Mesh Renderer to display this material.");
             }
@@ -3339,6 +3412,33 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     status_ = "Assigned model asset: " + assetPath;
 }
 
+void EditorScene::AssignBaseColorTexture(EntityId entityId,
+                                         const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeTextureAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const std::string previousPath = entity->materialOverride
+                                         ? entity->materialOverride->baseColorTexturePath
+                                         : std::string{};
+    if (!entity->materialOverride) {
+        entity->materialOverride = MaterialOverrideComponent{};
+    }
+    entity->materialOverride->baseColorTexturePath = assetPath;
+    loadedTextures_.erase(previousPath);
+    loadedTextures_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Base Color Texture", before, selectionBefore);
+    status_ = "Assigned Base Color texture: " + assetPath;
+}
+
 bool EditorScene::TryNormalizeModelAssetReference(const std::filesystem::path& path,
                                                   std::string& assetPath) {
     if (!AssetImport::IsModelFile(path)) {
@@ -3358,6 +3458,30 @@ bool EditorScene::TryNormalizeModelAssetReference(const std::filesystem::path& p
     }
     if (assetPath.size() > 1024u) {
         status_ = "The dropped model asset path is too long.";
+        return false;
+    }
+    return true;
+}
+
+bool EditorScene::TryNormalizeTextureAssetReference(const std::filesystem::path& path,
+                                                    std::string& assetPath) {
+    if (!AssetImport::IsTextureFile(path)) {
+        status_ = "The dropped texture asset is invalid.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped texture asset no longer exists.";
+        return false;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
+        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped texture asset path is too long.";
         return false;
     }
     return true;
@@ -3709,6 +3833,7 @@ void EditorScene::RefreshAssetBrowser() {
     assetPreviewPlan_.clear();
     assetPreviewError_.clear();
     modelAssets_.clear();
+    textureAssets_.clear();
     assetBrowserEntries_.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(assetRoot_, error) || error) {
@@ -3738,7 +3863,8 @@ void EditorScene::RefreshAssetBrowser() {
                 assetBrowserEntries_.push_back({relative.lexically_normal(), true});
             }
         } else if (!error && entry.is_regular_file(error) && !error &&
-                   AssetImport::IsModelFile(entry.path())) {
+                   (AssetImport::IsModelFile(entry.path()) ||
+                    AssetImport::IsTextureFile(entry.path()))) {
             const std::filesystem::path relative =
                 std::filesystem::relative(entry.path(), assetRoot_, error);
             if (!error) {
@@ -3762,17 +3888,22 @@ void EditorScene::RefreshAssetBrowser() {
     const std::filesystem::recursive_directory_iterator end;
     while (!error && iterator != end) {
         if (iterator->is_regular_file(error) && !error &&
-            AssetImport::IsModelFile(iterator->path())) {
+            (AssetImport::IsModelFile(iterator->path()) ||
+             AssetImport::IsTextureFile(iterator->path()))) {
             std::filesystem::path relative =
                 std::filesystem::relative(iterator->path(), assetRoot_, error);
             if (!error) {
-                modelAssets_.push_back(
-                    (std::filesystem::path("assets") / relative).lexically_normal());
+                auto& assets = AssetImport::IsTextureFile(iterator->path()) ? textureAssets_
+                                                                            : modelAssets_;
+                assets.push_back((std::filesystem::path("assets") / relative).lexically_normal());
             }
         }
         iterator.increment(error);
     }
     std::ranges::sort(modelAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    std::ranges::sort(textureAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
 }
@@ -3910,7 +4041,8 @@ void EditorScene::RefreshDirty() {
 }
 
 void EditorScene::ResolveMeshResources() {
-    if (ctx_ == nullptr || ctx_->rendering.model == nullptr) {
+    if (ctx_ == nullptr || ctx_->rendering.model == nullptr ||
+        ctx_->rendering.texture == nullptr) {
         return;
     }
     for (const WorldEntity& entity : world_.Entities()) {
@@ -3926,6 +4058,20 @@ void EditorScene::ResolveMeshResources() {
                               ctx_->rendering.model->LoadHandle(
                                   std::filesystem::path(entity.meshRenderer->modelPath).wstring()));
     }
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.materialOverride || entity.materialOverride->baseColorTexturePath.empty() ||
+            loadedTextures_.contains(entity.materialOverride->baseColorTexturePath)) {
+            continue;
+        }
+        const std::optional<std::filesystem::path> resolved =
+            ResolveProjectAssetPath(entity.materialOverride->baseColorTexturePath);
+        if (!resolved || !AssetImport::IsTextureFile(*resolved)) {
+            continue;
+        }
+        loadedTextures_.emplace(
+            entity.materialOverride->baseColorTexturePath,
+            TextureHandle(ctx_->rendering.texture->LoadSrgb(resolved->wstring())));
+    }
 }
 
 ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) const {
@@ -3935,6 +4081,12 @@ ModelHandle EditorScene::ResolveModel(const MeshRendererComponent& component) co
     }
     const auto found = loadedModels_.find(component.modelPath);
     return found != loadedModels_.end() ? found->second : ModelHandle{};
+}
+
+TextureHandle EditorScene::ResolveBaseColorTexture(
+    const MaterialOverrideComponent& component) const {
+    const auto found = loadedTextures_.find(component.baseColorTexturePath);
+    return found != loadedTextures_.end() ? found->second : TextureHandle{};
 }
 
 bool EditorScene::UpdateGameViewCamera() {
@@ -4157,9 +4309,18 @@ void EditorScene::BuildRenderScene() {
                 item.material.color = entity.materialOverride->baseColor;
                 item.material.metallic = entity.materialOverride->metallic;
                 item.material.roughness = entity.materialOverride->roughness;
+                const TextureHandle overrideTexture =
+                    ResolveBaseColorTexture(*entity.materialOverride);
+                if (overrideTexture.IsValid()) {
+                    item.textureId = overrideTexture.Get();
+                    item.material.baseColorTextureId = overrideTexture.Get();
+                    item.material.enableTexture = 1;
+                }
             }
             item.transform = transform;
-            item.textureId = textureId;
+            if (!IsValidResourceId(item.textureId)) {
+                item.textureId = textureId;
+            }
             item.normalTextureId = normalTextureId;
             item.objectId = static_cast<uint32_t>(EntityIdHash{}(entity.id));
             renderScene_.SubmitMesh(item);
@@ -4918,7 +5079,7 @@ std::vector<std::filesystem::path> EditorScene::ShowImportAssetDialog() const {
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFilter =
-        L"Model and Dependency Files\0"
+        L"Model and Texture Assets\0"
         L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply;*.bin;*.mtl;*.png;*.jpg;*.jpeg;"
         L"*.tga;*.bmp;*.dds;*.hdr;*.exr\0";
     dialog.lpstrFile = buffer.data();
