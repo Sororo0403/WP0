@@ -4,6 +4,7 @@
 
 #include "core/AssetManager.h"
 #include "graphics/DirectXCommon.h"
+#include "graphics/LightingScene.h"
 #include "graphics/RenderScene.h"
 #include "graphics/SrvManager.h"
 #include "imgui/ImguiManager.h"
@@ -426,6 +427,75 @@ void EditorScene::Update() {
         }
     }
     UpdateAssetPreview();
+}
+
+void EditorScene::SubmitLighting(LightingScene& lightingScene) {
+    SceneLighting lighting{};
+    const bool hasWorldLights = std::ranges::any_of(world_.Entities(), [](const WorldEntity& entity) {
+        return entity.light && entity.light->enabled && entity.light->intensity > 0.0f;
+    });
+    if (!hasWorldLights) {
+        lightingScene.SetSceneLighting(lighting);
+        return;
+    }
+
+    lighting.keyLightColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    for (PointLight& pointLight : lighting.pointLights) {
+        pointLight.positionRange.w = 0.0f;
+        pointLight.colorIntensity.w = 0.0f;
+    }
+    lighting.spotLight.positionRange.w = 0.0f;
+    lighting.spotLight.colorIntensity.w = 0.0f;
+    lighting.spotLight.angleParams.w = 0.0f;
+
+    bool directionalAssigned = false;
+    size_t pointLightIndex = 0u;
+    bool spotAssigned = false;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.light || !entity.light->enabled || entity.light->intensity <= 0.0f) {
+            continue;
+        }
+        DirectX::XMFLOAT4X4 storedWorld{};
+        if (!world_.TryGetWorldMatrix(entity.id, storedWorld)) {
+            continue;
+        }
+        const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&storedWorld);
+        DirectX::XMVECTOR direction = DirectX::XMVector3TransformNormal(
+            DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), world);
+        if (DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(direction)) <= 1.0e-8f) {
+            continue;
+        }
+        direction = DirectX::XMVector3Normalize(direction);
+        DirectX::XMFLOAT3 storedDirection{};
+        DirectX::XMStoreFloat3(&storedDirection, direction);
+        const LightComponent& component = *entity.light;
+        if (component.type == LightType::Directional && !directionalAssigned) {
+            lighting.keyLightDirection = storedDirection;
+            lighting.keyLightColor = {component.color.x * component.intensity,
+                                      component.color.y * component.intensity,
+                                      component.color.z * component.intensity, 1.0f};
+            directionalAssigned = true;
+        } else if (component.type == LightType::Point &&
+                   pointLightIndex < lighting.pointLights.size()) {
+            PointLight& point = lighting.pointLights[pointLightIndex++];
+            point.positionRange = {storedWorld._41, storedWorld._42, storedWorld._43,
+                                   component.range};
+            point.colorIntensity = {component.color.x, component.color.y, component.color.z,
+                                    component.intensity};
+        } else if (component.type == LightType::Spot && !spotAssigned) {
+            SpotLight& spot = lighting.spotLight;
+            spot.positionRange = {storedWorld._41, storedWorld._42, storedWorld._43,
+                                  component.range};
+            spot.direction = {storedDirection.x, storedDirection.y, storedDirection.z, 0.0f};
+            spot.colorIntensity = {component.color.x, component.color.y, component.color.z,
+                                   component.intensity};
+            spot.angleParams = {
+                std::cos(DirectX::XMConvertToRadians(component.innerAngleDegrees)),
+                std::cos(DirectX::XMConvertToRadians(component.outerAngleDegrees)), 2.4f, 1.0f};
+            spotAssigned = true;
+        }
+    }
+    lightingScene.SetSceneLighting(lighting);
 }
 
 void EditorScene::Draw() {}
@@ -2319,7 +2389,7 @@ void EditorScene::DrawInspectorPanel() {
     drawTransform("Scale", entity->transform.scale, 0.02f);
 
     ImGui::Separator();
-    if (!entity->meshRenderer || !entity->camera) {
+    if (!entity->meshRenderer || !entity->camera || !entity->light) {
         if (ImGui::Button("Add Component")) {
             ImGui::OpenPopup("AddComponentMenu");
         }
@@ -2337,6 +2407,13 @@ void EditorScene::DrawInspectorPanel() {
                 entity->camera = CameraComponent{};
                 RecordImmediateEdit("Add Camera", before, selectionBefore);
                 status_ = "Added Camera.";
+            }
+            if (!entity->light && ImGui::MenuItem("Light")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->light = LightComponent{};
+                RecordImmediateEdit("Add Light", before, selectionBefore);
+                status_ = "Added Light.";
             }
             ImGui::EndPopup();
         }
@@ -2397,6 +2474,67 @@ void EditorScene::DrawInspectorPanel() {
                             (std::max)(0.001f, camera.farClip - 0.001f), "%.3f");
             drawCameraFloat("Far Clip", camera.farClip, 0.5f,
                             camera.nearClip + 0.001f, 1000000000.0f, "%.1f");
+        }
+    }
+
+    if (entity->light) {
+        ImGui::SeparatorText("Light");
+        if (ImGui::Button("Remove Light")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->light.reset();
+            RecordImmediateEdit("Remove Light", before, selectionBefore);
+            status_ = "Removed Light.";
+        } else {
+            LightComponent& light = *entity->light;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Light", &light.enabled)) {
+                RecordImmediateEdit("Toggle Light", std::move(before), selectionBefore);
+            }
+            int type = static_cast<int>(light.type);
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Combo("Type##Light", &type, "Directional\0Point\0Spot\0")) {
+                light.type = static_cast<LightType>(type);
+                RecordImmediateEdit("Change Light Type", std::move(before), selectionBefore);
+            }
+            if (ImGui::ColorEdit3("Color##Light", &light.color.x,
+                                  ImGuiColorEditFlags_Float)) {
+                RefreshDirty();
+                status_ = "Modified Light.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Light Color");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            auto drawLightFloat = [&](const char* label, float& value, float speed,
+                                      float minimum, float maximum, const char* format) {
+                if (ImGui::DragFloat(label, &value, speed, minimum, maximum, format,
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified Light.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify Light");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            };
+            drawLightFloat("Intensity##Light", light.intensity, 0.02f, 0.0f, 1000000.0f,
+                           "%.2f");
+            if (light.type != LightType::Directional) {
+                drawLightFloat("Range##Light", light.range, 0.05f, 0.001f, 1000000.0f,
+                               "%.2f");
+            }
+            if (light.type == LightType::Spot) {
+                drawLightFloat("Inner Angle##Light", light.innerAngleDegrees, 0.25f, 0.0f,
+                               (std::max)(0.0f, light.outerAngleDegrees - 0.1f), "%.1f deg");
+                drawLightFloat("Outer Angle##Light", light.outerAngleDegrees, 0.25f,
+                               light.innerAngleDegrees + 0.1f, 179.0f, "%.1f deg");
+            }
         }
     }
 
@@ -4093,6 +4231,11 @@ void EditorScene::NewScene(bool clearPath) {
         cameraEntity->transform.position = {0.0f, 2.0f, -5.0f};
         cameraEntity->camera = CameraComponent{};
         cameraEntity->camera->primary = true;
+    }
+    const EntityId light = world_.CreateEntity("Directional Light");
+    if (WorldEntity* lightEntity = world_.Find(light)) {
+        lightEntity->transform.rotationDegrees = {50.0f, -30.0f, 0.0f};
+        lightEntity->light = LightComponent{};
     }
     selection_ = world_.CreateEntity("Cube");
     if (WorldEntity* cube = world_.Find(selection_)) {

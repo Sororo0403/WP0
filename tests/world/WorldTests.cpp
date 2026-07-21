@@ -47,6 +47,9 @@ int main() {
     childEntity->transform.rotationDegrees = {10.0f, 20.0f, 30.0f};
     childEntity->meshRenderer = MeshRendererComponent{};
     childEntity->meshRenderer->primitive = MeshPrimitive::Sphere;
+    childEntity->light = LightComponent{};
+    childEntity->light->type = LightType::Point;
+    childEntity->light->intensity = 2.0f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -74,6 +77,8 @@ int main() {
                    restoredChild->transform.rotationDegrees.z == 30.0f &&
                    restoredChild->meshRenderer &&
                    restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   restoredChild->light && restoredChild->light->type == LightType::Point &&
+                   restoredChild->light->intensity == 2.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
@@ -90,6 +95,7 @@ int main() {
                    duplicateChild != nullptr && duplicateChild->id != child &&
                    duplicateChild->name == "Child" && duplicateChild->meshRenderer &&
                    duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
@@ -142,6 +148,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidCamera, rejected, &error),
                "Invalid Camera data was accepted.")) {
         return 114;
+    }
+    const std::string invalidLight =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Light","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Light":{"enabled":true,"type":"Spot","color":[1,1,1],"intensity":1,"range":10,"innerAngle":60,"outerAngle":30}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidLight, rejected, &error),
+               "Invalid Light data was accepted.")) {
+        return 115;
     }
     const std::filesystem::path projectAssets =
         std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";

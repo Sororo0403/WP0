@@ -76,6 +76,28 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedCamera["farClip"] = camera.farClip;
             encoded["components"]["Camera"] = std::move(encodedCamera);
         }
+        if (entity.light) {
+            const LightComponent& light = *entity.light;
+            Json encodedLight;
+            encodedLight["enabled"] = light.enabled;
+            switch (light.type) {
+            case LightType::Directional:
+                encodedLight["type"] = "Directional";
+                break;
+            case LightType::Point:
+                encodedLight["type"] = "Point";
+                break;
+            case LightType::Spot:
+                encodedLight["type"] = "Spot";
+                break;
+            }
+            encodedLight["color"] = EncodeFloat3(light.color);
+            encodedLight["intensity"] = light.intensity;
+            encodedLight["range"] = light.range;
+            encodedLight["innerAngle"] = light.innerAngleDegrees;
+            encodedLight["outerAngle"] = light.outerAngleDegrees;
+            encoded["components"]["Light"] = std::move(encodedLight);
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -207,6 +229,52 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.camera = component;
+        }
+        if (encoded["components"].contains("Light")) {
+            const Json& light = encoded["components"]["Light"];
+            if (!light.is_object() || !light.contains("enabled") ||
+                !light["enabled"].is_boolean() || !light.contains("type") ||
+                !light["type"].is_string() || !light.contains("color") ||
+                !light.contains("intensity") || !light["intensity"].is_number() ||
+                !light.contains("range") || !light["range"].is_number() ||
+                !light.contains("innerAngle") || !light["innerAngle"].is_number() ||
+                !light.contains("outerAngle") || !light["outerAngle"].is_number()) {
+                SetError(error, "Scene Light component is invalid.");
+                return false;
+            }
+            LightComponent component{};
+            const std::string type = light["type"].get<std::string>();
+            if (type == "Directional") {
+                component.type = LightType::Directional;
+            } else if (type == "Point") {
+                component.type = LightType::Point;
+            } else if (type == "Spot") {
+                component.type = LightType::Spot;
+            } else {
+                SetError(error, "Scene Light type is invalid.");
+                return false;
+            }
+            component.enabled = light["enabled"].get<bool>();
+            if (!DecodeFloat3(light["color"], component.color)) {
+                SetError(error, "Scene Light color is invalid.");
+                return false;
+            }
+            component.intensity = light["intensity"].get<float>();
+            component.range = light["range"].get<float>();
+            component.innerAngleDegrees = light["innerAngle"].get<float>();
+            component.outerAngleDegrees = light["outerAngle"].get<float>();
+            if (component.color.x < 0.0f || component.color.y < 0.0f ||
+                component.color.z < 0.0f || !std::isfinite(component.intensity) ||
+                component.intensity < 0.0f || !std::isfinite(component.range) ||
+                component.range < 0.001f || !std::isfinite(component.innerAngleDegrees) ||
+                component.innerAngleDegrees < 0.0f ||
+                !std::isfinite(component.outerAngleDegrees) ||
+                component.outerAngleDegrees <= component.innerAngleDegrees ||
+                component.outerAngleDegrees > 179.0f) {
+                SetError(error, "Scene Light settings are invalid.");
+                return false;
+            }
+            entity.light = component;
         }
         entities.push_back(std::move(entity));
     }

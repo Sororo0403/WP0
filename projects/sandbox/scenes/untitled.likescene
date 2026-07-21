@@ -2,6 +2,15 @@
   "entities": [
     {
       "components": {
+        "Camera": {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fieldOfView": 45.0,
+          "nearClip": 0.10000000149011612,
+          "orthographicHeight": 10.0,
+          "primary": true,
+          "projection": "Perspective"
+        },
         "Transform": {
           "position": [
             -2.700000047683716,
@@ -52,6 +61,43 @@
       },
       "id": "43fcd97e-a2f5-1474-0d8e-b089ae4b988b",
       "name": "Box",
+      "parent": null
+    },
+    {
+      "components": {
+        "Light": {
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 1.0,
+          "outerAngle": 45.0,
+          "range": 10.0,
+          "type": "Directional"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "438bd46d-9127-1934-6123-033581d701b5",
+      "name": "Entity",
       "parent": null
     }
   ],

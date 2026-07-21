@@ -47,6 +47,22 @@ struct CameraComponent {
     float farClip = 1000.0f;
 };
 
+enum class LightType : uint8_t {
+    Directional = 0,
+    Point = 1,
+    Spot = 2,
+};
+
+struct LightComponent {
+    bool enabled = true;
+    LightType type = LightType::Directional;
+    DirectX::XMFLOAT3 color{1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    float range = 10.0f;
+    float innerAngleDegrees = 25.0f;
+    float outerAngleDegrees = 45.0f;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
@@ -54,6 +70,7 @@ struct WorldEntity {
     TransformComponent transform{};
     std::optional<MeshRendererComponent> meshRenderer;
     std::optional<CameraComponent> camera;
+    std::optional<LightComponent> light;
 };
 
 class World {

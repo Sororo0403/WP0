@@ -30,6 +30,7 @@ public:
 
     void Initialize(const SceneContext& ctx) override;
     void Update() override;
+    void SubmitLighting(LightingScene& lightingScene) override;
     void Draw() override;
     void DrawPostProcessOverlay() override;
     bool OnCloseRequested() override;

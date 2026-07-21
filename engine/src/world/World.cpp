@@ -56,6 +56,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->transform = original.transform;
         duplicate->meshRenderer = original.meshRenderer;
         duplicate->camera = original.camera;
+        duplicate->light = original.light;
         if (duplicate->camera) {
             duplicate->camera->primary = false;
         }
