@@ -86,8 +86,8 @@ std::optional<PrimitiveMeshData> BuildBox(uint32_t textureId, const Material& ma
 
     const float hx = width * 0.5f;
     const float hz = depth * 0.5f;
-    const float y0 = 0.0f;
-    const float y1 = height;
+    const float y0 = -height * 0.5f;
+    const float y1 = height * 0.5f;
 
     auto addFace = [&](const XMFLOAT3& normal, const XMFLOAT3& bottomLeft, const XMFLOAT3& topLeft,
                        const XMFLOAT3& bottomRight, const XMFLOAT3& topRight) {

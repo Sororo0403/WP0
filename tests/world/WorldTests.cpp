@@ -4,11 +4,13 @@
 #include "core/AssetManager.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
+#include "../../engine/src/model/internal/ModelPrimitiveFactory.h"
 
 #include <filesystem>
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -19,9 +21,32 @@ bool Check(bool condition, const char* message) {
     }
     return condition;
 }
+
+bool IsVerticallyCentered(const ModelPrimitiveFactory::PrimitiveMeshData& primitive) {
+    float minimum = (std::numeric_limits<float>::max)();
+    float maximum = (std::numeric_limits<float>::lowest)();
+    for (const ModelVertex& vertex : primitive.vertices) {
+        minimum = (std::min)(minimum, vertex.position.y);
+        maximum = (std::max)(maximum, vertex.position.y);
+    }
+    return !primitive.vertices.empty() && std::abs(minimum + maximum) < 0.0001f;
+}
 } // namespace
 
 int main() {
+    const auto boxPrimitive =
+        ModelPrimitiveFactory::BuildBox(0u, Material{}, 1.0f, 2.0f, 1.0f);
+    const auto cylinderPrimitive =
+        ModelPrimitiveFactory::BuildCylinder(0u, Material{}, 16u, 0.5f, 0.5f, 2.0f);
+    if (!Check(boxPrimitive && IsVerticallyCentered(*boxPrimitive),
+               "Box primitive is not centered on its origin.")) {
+        return 116;
+    }
+    if (!Check(cylinderPrimitive && IsVerticallyCentered(*cylinderPrimitive),
+               "Cylinder primitive is not centered on its origin.")) {
+        return 117;
+    }
+
     World source;
     const EntityId root = source.CreateEntity("Root");
     const EntityId child = source.CreateEntity("Child");

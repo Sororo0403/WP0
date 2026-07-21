@@ -206,31 +206,33 @@ std::optional<PrimitiveMeshData> BuildCylinder(uint32_t textureId, const Materia
                                cylinderIndexCount)) {
         return std::nullopt;
     }
+    const float topY = height * 0.5f;
+    const float bottomY = -height * 0.5f;
 
     try {
         for (uint32_t index = 0; index < divide; ++index) {
             const uint32_t base = static_cast<uint32_t>(data.vertices.size());
             const CircleSegment segment = BuildCircleSegment(index, divide);
 
-            data.vertices.push_back({{-segment.sin0 * topRadius, height, segment.cos0 * topRadius},
+            data.vertices.push_back({{-segment.sin0 * topRadius, topY, segment.cos0 * topRadius},
                                      {-segment.sin0, 0.0f, segment.cos0},
                                      {segment.u0, 1.0f}});
-            data.vertices.push_back({{-segment.sin1 * topRadius, height, segment.cos1 * topRadius},
+            data.vertices.push_back({{-segment.sin1 * topRadius, topY, segment.cos1 * topRadius},
                                      {-segment.sin1, 0.0f, segment.cos1},
                                      {segment.u1, 1.0f}});
             data.vertices.push_back(
-                {{-segment.sin0 * bottomRadius, 0.0f, segment.cos0 * bottomRadius},
+                {{-segment.sin0 * bottomRadius, bottomY, segment.cos0 * bottomRadius},
                  {-segment.sin0, 0.0f, segment.cos0},
                  {segment.u0, 0.0f}});
             data.vertices.push_back(
-                {{-segment.sin0 * bottomRadius, 0.0f, segment.cos0 * bottomRadius},
+                {{-segment.sin0 * bottomRadius, bottomY, segment.cos0 * bottomRadius},
                  {-segment.sin0, 0.0f, segment.cos0},
                  {segment.u0, 0.0f}});
-            data.vertices.push_back({{-segment.sin1 * topRadius, height, segment.cos1 * topRadius},
+            data.vertices.push_back({{-segment.sin1 * topRadius, topY, segment.cos1 * topRadius},
                                      {-segment.sin1, 0.0f, segment.cos1},
                                      {segment.u1, 1.0f}});
             data.vertices.push_back(
-                {{-segment.sin1 * bottomRadius, 0.0f, segment.cos1 * bottomRadius},
+                {{-segment.sin1 * bottomRadius, bottomY, segment.cos1 * bottomRadius},
                  {-segment.sin1, 0.0f, segment.cos1},
                  {segment.u1, 0.0f}});
 
@@ -240,20 +242,20 @@ std::optional<PrimitiveMeshData> BuildCylinder(uint32_t textureId, const Materia
             PushTriangle(data.indices, base + 3, base + 4, base + 5, sideNormal, data.vertices);
 
             const uint32_t capBase = static_cast<uint32_t>(data.vertices.size());
-            data.vertices.push_back({{0.0f, height, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 0.5f}});
-            data.vertices.push_back({{-segment.sin0 * topRadius, height, segment.cos0 * topRadius},
+            data.vertices.push_back({{0.0f, topY, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 0.5f}});
+            data.vertices.push_back({{-segment.sin0 * topRadius, topY, segment.cos0 * topRadius},
                                      {0.0f, 1.0f, 0.0f},
                                      {segment.sin0 * 0.5f + 0.5f, -segment.cos0 * 0.5f + 0.5f}});
-            data.vertices.push_back({{-segment.sin1 * topRadius, height, segment.cos1 * topRadius},
+            data.vertices.push_back({{-segment.sin1 * topRadius, topY, segment.cos1 * topRadius},
                                      {0.0f, 1.0f, 0.0f},
                                      {segment.sin1 * 0.5f + 0.5f, -segment.cos1 * 0.5f + 0.5f}});
-            data.vertices.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}});
+            data.vertices.push_back({{0.0f, bottomY, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}});
             data.vertices.push_back(
-                {{-segment.sin0 * bottomRadius, 0.0f, segment.cos0 * bottomRadius},
+                {{-segment.sin0 * bottomRadius, bottomY, segment.cos0 * bottomRadius},
                  {0.0f, -1.0f, 0.0f},
                  {segment.sin0 * 0.5f + 0.5f, segment.cos0 * 0.5f + 0.5f}});
             data.vertices.push_back(
-                {{-segment.sin1 * bottomRadius, 0.0f, segment.cos1 * bottomRadius},
+                {{-segment.sin1 * bottomRadius, bottomY, segment.cos1 * bottomRadius},
                  {0.0f, -1.0f, 0.0f},
                  {segment.sin1 * 0.5f + 0.5f, segment.cos1 * 0.5f + 0.5f}});
 
