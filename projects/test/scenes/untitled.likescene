@@ -2,6 +2,10 @@
   "entities": [
     {
       "components": {
+        "Behavior": {
+          "enabled": true,
+          "type": "Rotator"
+        },
         "Camera": {
           "enabled": true,
           "farClip": 1000.0,
@@ -72,6 +76,10 @@
     },
     {
       "components": {
+        "Behavior": {
+          "enabled": false,
+          "type": "Rotator"
+        },
         "MaterialOverride": {
           "alphaCutoff": 0.5,
           "baseColor": [

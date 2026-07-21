@@ -3,6 +3,7 @@
 #include "RecentScenesStore.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
+#include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
@@ -130,12 +131,22 @@ int main() {
     int behaviorUpdateCount = 0;
     int behaviorStopCount = 0;
     float behaviorLastDeltaTime = 0.0f;
-    BehaviorSystem behaviors;
-    if (!Check(behaviors.Attach(
-                   behaviorEntity,
-                   std::make_unique<LifecycleBehavior>(
+    BehaviorRegistry behaviorRegistry;
+    if (!Check(behaviorRegistry.Register("Lifecycle", [&] {
+                   return std::make_unique<LifecycleBehavior>(
                        behaviorStartCount, behaviorUpdateCount, behaviorStopCount,
-                       behaviorLastDeltaTime)),
+                       behaviorLastDeltaTime);
+               }) &&
+                   !behaviorRegistry.Register("Lifecycle", [] {
+                       return std::unique_ptr<Behavior>{};
+                   }) &&
+                   behaviorRegistry.Create("Missing") == nullptr &&
+                   behaviorRegistry.Types().size() == 1u,
+               "Behavior type registration is invalid.")) {
+        return 127;
+    }
+    BehaviorSystem behaviors;
+    if (!Check(behaviors.Attach(behaviorEntity, behaviorRegistry.Create("Lifecycle")),
                "A valid Runtime Behavior could not be attached.")) {
         return 125;
     }
@@ -225,6 +236,8 @@ int main() {
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
+    childEntity->behavior = BehaviorComponent{};
+    childEntity->behavior->type = "Rotator";
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -276,6 +289,8 @@ int main() {
                    !restoredChild->materialOverride->depthWrite &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
+                   restoredChild->behavior && restoredChild->behavior->enabled &&
+                   restoredChild->behavior->type == "Rotator" &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
@@ -308,6 +323,7 @@ int main() {
                    duplicateChild->materialOverride->cullMode ==
                        MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
+                   duplicateChild->behavior && duplicateChild->behavior->type == "Rotator" &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
@@ -366,6 +382,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidLight, rejected, &error),
                "Invalid Light data was accepted.")) {
         return 115;
+    }
+    const std::string invalidBehavior =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Behavior","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Behavior":{"enabled":true,"type":""}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidBehavior, rejected, &error),
+               "Invalid Behavior data was accepted.")) {
+        return 128;
     }
     const std::string invalidMaterial =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Material","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,2],"metallic":-1,"roughness":0.5}}}]})";

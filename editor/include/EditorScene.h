@@ -7,6 +7,7 @@
 #include "graphics/RenderSurface.h"
 #include "graphics/SceneRenderer.h"
 #include "graphics/RenderScene.h"
+#include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
 #include "scene/BaseScene.h"
 #include "world/World.h"
@@ -219,6 +220,7 @@ private:
     double runtimeElapsedSeconds_ = 0.0;
     RecentScenesStore recentScenesStore_;
     World world_;
+    BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
     EntityId selection_{};
     std::unordered_set<EntityId, EntityIdHash> hierarchySelection_;

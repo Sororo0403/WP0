@@ -165,6 +165,10 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedLight["outerAngle"] = light.outerAngleDegrees;
             encoded["components"]["Light"] = std::move(encodedLight);
         }
+        if (entity.behavior) {
+            encoded["components"]["Behavior"]["enabled"] = entity.behavior->enabled;
+            encoded["components"]["Behavior"]["type"] = entity.behavior->type;
+        }
         root["entities"].push_back(std::move(encoded));
     }
     return root.dump(2);
@@ -458,6 +462,24 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.light = component;
+        }
+        if (encoded["components"].contains("Behavior")) {
+            const Json& behavior = encoded["components"]["Behavior"];
+            if (!behavior.is_object() || !behavior.contains("enabled") ||
+                !behavior["enabled"].is_boolean() || !behavior.contains("type") ||
+                !behavior["type"].is_string()) {
+                SetError(error, "Scene Behavior component is invalid.");
+                return false;
+            }
+            BehaviorComponent component{};
+            component.enabled = behavior["enabled"].get<bool>();
+            component.type = behavior["type"].get<std::string>();
+            if (component.type.empty() || component.type.size() > 128u ||
+                component.type.find('\0') != std::string::npos) {
+                SetError(error, "Scene Behavior type is invalid.");
+                return false;
+            }
+            entity.behavior = std::move(component);
         }
         entities.push_back(std::move(entity));
     }

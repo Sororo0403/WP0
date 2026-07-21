@@ -98,6 +98,11 @@ struct LightComponent {
     float outerAngleDegrees = 45.0f;
 };
 
+struct BehaviorComponent {
+    bool enabled = true;
+    std::string type;
+};
+
 struct WorldEntity {
     EntityId id{};
     EntityId parent{};
@@ -107,6 +112,7 @@ struct WorldEntity {
     std::optional<MaterialOverrideComponent> materialOverride;
     std::optional<CameraComponent> camera;
     std::optional<LightComponent> light;
+    std::optional<BehaviorComponent> behavior;
 };
 
 class World {

@@ -63,6 +63,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->materialOverride = original.materialOverride;
         duplicate->camera = original.camera;
         duplicate->light = original.light;
+        duplicate->behavior = original.behavior;
         if (duplicate->camera) {
             duplicate->camera->primary = false;
         }

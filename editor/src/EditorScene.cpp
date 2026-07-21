@@ -32,6 +32,7 @@
 #include <cstring>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
@@ -349,6 +350,18 @@ DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
     position.y = 0.0f;
     return position;
 }
+
+class RotatorBehavior final : public Behavior {
+public:
+    void OnUpdate(World& world, EntityId entity, float deltaTime) override {
+        WorldEntity* target = world.Find(entity);
+        if (target == nullptr) {
+            return;
+        }
+        target->transform.rotationDegrees.y =
+            std::fmod(target->transform.rotationDegrees.y + 45.0f * deltaTime, 360.0f);
+    }
+};
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -362,6 +375,9 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
       imguiSettingsPath_(std::move(imguiSettingsPath)),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
+    behaviorRegistry_.Register("Rotator", [] {
+        return std::make_unique<RotatorBehavior>();
+    });
     recentScenePaths_ = recentScenesStore_.Load();
     std::error_code error;
     if (std::filesystem::is_regular_file(scenePath_, error) && !error) {
@@ -2708,7 +2724,7 @@ void EditorScene::DrawInspectorPanel() {
 
     ImGui::Separator();
     if (!entity->meshRenderer || !entity->materialOverride || !entity->camera ||
-        !entity->light) {
+        !entity->light || !entity->behavior) {
         if (ImGui::Button("Add Component")) {
             ImGui::OpenPopup("AddComponentMenu");
         }
@@ -2741,7 +2757,53 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Add Light", before, selectionBefore);
                 status_ = "Added Light.";
             }
+            if (!entity->behavior && ImGui::MenuItem("Behavior")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                BehaviorComponent behavior{};
+                const std::vector<std::string_view> types = behaviorRegistry_.Types();
+                if (!types.empty()) {
+                    behavior.type = types.front();
+                }
+                entity->behavior = std::move(behavior);
+                RecordImmediateEdit("Add Behavior", before, selectionBefore);
+                status_ = "Added Behavior.";
+            }
             ImGui::EndPopup();
+        }
+    }
+
+    if (entity->behavior) {
+        ImGui::SeparatorText("Behavior");
+        if (ImGui::Button("Remove Behavior")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->behavior.reset();
+            RecordImmediateEdit("Remove Behavior", before, selectionBefore);
+            status_ = "Removed Behavior.";
+        } else {
+            BehaviorComponent& behavior = *entity->behavior;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Behavior", &behavior.enabled)) {
+                RecordImmediateEdit("Toggle Behavior", std::move(before), selectionBefore);
+            }
+            if (ImGui::BeginCombo("Type##Behavior", behavior.type.c_str())) {
+                for (const std::string_view type : behaviorRegistry_.Types()) {
+                    const bool selected = behavior.type == type;
+                    if (ImGui::Selectable(type.data(), selected)) {
+                        before = WorldSerializer::Serialize(world_);
+                        behavior.type = type;
+                        RecordImmediateEdit("Change Behavior Type", std::move(before),
+                                            selectionBefore);
+                        status_ = "Changed Behavior type.";
+                    }
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
         }
     }
 
@@ -5036,6 +5098,17 @@ void EditorScene::StepRuntimeWorld() {
 void EditorScene::BeginRuntimeWorld() {
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
+    runtimeBehaviors_.Clear();
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.behavior || !entity.behavior->enabled) {
+            continue;
+        }
+        std::unique_ptr<Behavior> behavior =
+            behaviorRegistry_.Create(entity.behavior->type);
+        if (behavior != nullptr) {
+            runtimeBehaviors_.Attach(entity.id, std::move(behavior));
+        }
+    }
     runtimeBehaviors_.Start(world_);
 }
 
@@ -5048,7 +5121,7 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
 }
 
 void EditorScene::EndRuntimeWorld() {
-    runtimeBehaviors_.Stop();
+    runtimeBehaviors_.Clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
 }
