@@ -46,7 +46,9 @@ private:
     void TogglePlayPause();
     void StepRuntimeWorld();
     void ReleaseGameInputCapture();
-    void BeginRuntimeWorld();
+    bool BeginRuntimeWorld(std::string* error = nullptr);
+    [[nodiscard]] bool ValidateWorldBehaviorRequirements(
+        std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
     void EndRuntimeWorld();
     [[nodiscard]] bool IsInPlayMode() const;

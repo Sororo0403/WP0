@@ -147,6 +147,29 @@ int main() {
                "Behavior type registration is invalid.")) {
         return 127;
     }
+    if (!Check(behaviorRegistry.Register(
+                   "ControllerDependency", [] { return std::make_unique<Behavior>(); },
+                   {.characterController = true}),
+               "Behavior requirements could not be registered.")) {
+        return 139;
+    }
+    WorldEntity* dependencyTarget = behaviorWorld.Find(behaviorEntity);
+    std::string dependencyError;
+    if (!Check(dependencyTarget != nullptr &&
+                   !behaviorRegistry.ValidateRequirements("ControllerDependency",
+                                                          *dependencyTarget,
+                                                          &dependencyError) &&
+                   dependencyError.find("CharacterController") != std::string::npos &&
+                   behaviorRegistry.EnsureRequirements("ControllerDependency",
+                                                       *dependencyTarget) &&
+                   dependencyTarget->characterController &&
+                   behaviorRegistry.ValidateRequirements("ControllerDependency",
+                                                          *dependencyTarget,
+                                                          &dependencyError) &&
+                   !behaviorRegistry.EnsureRequirements("Missing", *dependencyTarget),
+               "Behavior component requirements were not enforced.")) {
+        return 140;
+    }
     BehaviorSystem behaviors;
     if (!Check(behaviors.Attach(behaviorEntity, behaviorRegistry.Create("Lifecycle")),
                "A valid Runtime Behavior could not be attached.")) {

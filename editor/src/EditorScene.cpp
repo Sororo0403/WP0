@@ -398,7 +398,12 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     if (ctx.systems.input != nullptr) {
         behaviorRegistry_.Register("FirstPersonController", [input = ctx.systems.input] {
             return std::make_unique<FirstPersonController>(input);
-        });
+        }, {.characterController = true});
+    }
+    std::string behaviorRequirementError;
+    if (!ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {
+        status_ = "Error: Scene contains an invalid Behavior: " +
+                  behaviorRequirementError;
     }
     if (ctx.systems.imgui == nullptr ||
         !ctx.systems.imgui->ConfigureDocking(imguiSettingsPath_)) {
@@ -2775,6 +2780,7 @@ void EditorScene::DrawInspectorPanel() {
                     behavior.type = types.front();
                 }
                 entity->behavior = std::move(behavior);
+                (void)behaviorRegistry_.EnsureRequirements(entity->behavior->type, *entity);
                 RecordImmediateEdit("Add Behavior", before, selectionBefore);
                 status_ = "Added Behavior.";
             }
@@ -2817,6 +2823,7 @@ void EditorScene::DrawInspectorPanel() {
                     if (ImGui::Selectable(type.data(), selected)) {
                         before = WorldSerializer::Serialize(world_);
                         behavior.type = type;
+                        (void)behaviorRegistry_.EnsureRequirements(behavior.type, *entity);
                         RecordImmediateEdit("Change Behavior Type", std::move(before),
                                             selectionBefore);
                         status_ = "Changed Behavior type.";
@@ -2885,7 +2892,20 @@ void EditorScene::DrawInspectorPanel() {
 
     if (entity->characterController) {
         ImGui::SeparatorText("Character Controller");
-        if (ImGui::Button("Remove Character Controller")) {
+        const BehaviorRequirements* requirements =
+            entity->behavior
+                ? behaviorRegistry_.Requirements(entity->behavior->type)
+                : nullptr;
+        const bool requiredByBehavior =
+            requirements != nullptr && requirements->characterController;
+        ImGui::BeginDisabled(requiredByBehavior);
+        const bool removeRequested = ImGui::Button("Remove Character Controller");
+        ImGui::EndDisabled();
+        if (requiredByBehavior &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("Required by the assigned Behavior.");
+        }
+        if (removeRequested) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
             entity->characterController.reset();
@@ -5168,11 +5188,15 @@ void EditorScene::EnterPlayMode() {
     playModeDirtySnapshot_ = dirty_;
     editModeWorld_.emplace(std::move(world_));
     world_ = std::move(runtimeWorld);
-    BeginRuntimeWorld();
+    std::string runtimeError;
+    const bool allBehaviorsStarted = BeginRuntimeWorld(&runtimeError);
     playModeState_ = PlayModeState::Playing;
     showGamePanel_ = true;
     focusGamePanelRequested_ = true;
-    status_ = "Entered Play Mode. Runtime changes will be discarded on Stop.";
+    status_ = allBehaviorsStarted
+                  ? "Entered Play Mode. Runtime changes will be discarded on Stop."
+                  : "Error: Entered Play Mode with invalid Behavior(s) disabled: " +
+                        runtimeError;
 }
 
 void EditorScene::StopPlayMode() {
@@ -5231,21 +5255,62 @@ void EditorScene::StepRuntimeWorld() {
     status_ = "Advanced the paused Runtime World by one frame.";
 }
 
-void EditorScene::BeginRuntimeWorld() {
+bool EditorScene::BeginRuntimeWorld(std::string* error) {
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
     runtimeBehaviors_.Clear();
+    bool valid = true;
     for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.behavior || !entity.behavior->enabled) {
             continue;
         }
-        std::unique_ptr<Behavior> behavior =
-            behaviorRegistry_.Create(entity.behavior->type);
+        std::string requirementError;
+        if (!behaviorRegistry_.ValidateRequirements(entity.behavior->type, entity,
+                                                     &requirementError)) {
+            valid = false;
+            if (error != nullptr && error->empty()) {
+                *error = entity.name + " (" + entity.behavior->type + "): " +
+                         requirementError;
+            }
+            continue;
+        }
+        std::unique_ptr<Behavior> behavior = behaviorRegistry_.Create(entity.behavior->type);
         if (behavior != nullptr) {
             runtimeBehaviors_.Attach(entity.id, std::move(behavior));
+        } else {
+            valid = false;
+            if (error != nullptr && error->empty()) {
+                *error = entity.name + " (" + entity.behavior->type +
+                         "): Behavior creation failed.";
+            }
         }
     }
     runtimeBehaviors_.Start(world_);
+    if (valid && error != nullptr) {
+        error->clear();
+    }
+    return valid;
+}
+
+bool EditorScene::ValidateWorldBehaviorRequirements(std::string* error) const {
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.behavior || !entity.behavior->enabled) {
+            continue;
+        }
+        std::string requirementError;
+        if (!behaviorRegistry_.ValidateRequirements(entity.behavior->type, entity,
+                                                     &requirementError)) {
+            if (error != nullptr) {
+                *error = entity.name + " (" + entity.behavior->type + "): " +
+                         requirementError;
+            }
+            return false;
+        }
+    }
+    if (error != nullptr) {
+        error->clear();
+    }
+    return true;
 }
 
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
@@ -6085,7 +6150,14 @@ bool EditorScene::LoadScene(const std::filesystem::path& path) {
     dirty_ = false;
     ClearHistory(true);
     AddRecentScene(scenePath_);
-    status_ = "Loaded scene: " + scenePath_.string();
+    std::string behaviorRequirementError;
+    if (ctx_ != nullptr &&
+        !ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {
+        status_ = "Warning: Loaded scene with an invalid Behavior: " +
+                  behaviorRequirementError;
+    } else {
+        status_ = "Loaded scene: " + scenePath_.string();
+    }
     return true;
 }
 

@@ -65,10 +65,5 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
         0.0f,
         (cosYaw * forwardInput - sinYaw * rightInput) * distance,
     };
-    if (target->characterController && target->characterController->enabled) {
-        (void)MoveCharacterController(world, entity, displacement);
-    } else {
-        transform.position.x += displacement.x;
-        transform.position.z += displacement.z;
-    }
+    (void)MoveCharacterController(world, entity, displacement);
 }
