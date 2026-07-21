@@ -17,6 +17,7 @@
 #include "model/Model.h"
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
+#include "runtime/FirstPersonController.h"
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 
@@ -362,6 +363,7 @@ public:
             std::fmod(target->transform.rotationDegrees.y + 45.0f * deltaTime, 360.0f);
     }
 };
+
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -392,6 +394,11 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
 
 void EditorScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
+    if (ctx.systems.input != nullptr) {
+        behaviorRegistry_.Register("FirstPersonController", [input = ctx.systems.input] {
+            return std::make_unique<FirstPersonController>(input);
+        });
+    }
     if (ctx.systems.imgui == nullptr ||
         !ctx.systems.imgui->ConfigureDocking(imguiSettingsPath_)) {
         status_ = "Could not configure the Editor docking layout.";
