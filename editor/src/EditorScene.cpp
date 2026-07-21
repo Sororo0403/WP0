@@ -695,6 +695,14 @@ void EditorScene::DrawPanels() {
             requestedSceneHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
             if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
                 ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr) {
+                const ImVec2 expectedImageMin = ImGui::GetCursorScreenPos();
+                const ImVec2 expectedImageMax = {
+                    expectedImageMin.x + static_cast<float>(requestedSceneWidth_),
+                    expectedImageMin.y + static_cast<float>(requestedSceneHeight_)};
+                const bool expectedImageHovered =
+                    ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+                    ImGui::IsMouseHoveringRect(expectedImageMin, expectedImageMax);
+                HandleSceneCameraControls(expectedImageHovered);
                 BuildRenderScene();
                 sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
                                       {0.025f, 0.035f, 0.055f, 1.0f});
@@ -1073,6 +1081,8 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
             if (ImGui::MenuItem("Open")) {
                 NavigateAssetBrowser(relativePath);
             }
+        } else if (ImGui::MenuItem("Create Entity")) {
+            CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
         }
         if (ImGui::MenuItem("Rename")) {
             RequestAssetRename(relativePath, directory);
@@ -1183,6 +1193,13 @@ void EditorScene::DrawSelectedAssetDetails() {
     const size_t dependencyCount =
         assetPreviewPlan_.empty() ? 0u : assetPreviewPlan_.size() - 1u;
     ImGui::TextDisabled("Dependencies: %zu", dependencyCount);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Create Entity##SelectedAsset")) {
+        CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Create a model entity at the scene origin");
+    }
     ImGui::SameLine();
     if (ImGui::SmallButton("Preview##SelectedAsset")) {
         ImGui::OpenPopup("Model Preview");
@@ -2272,7 +2289,8 @@ void EditorScene::DrawInspectorPanel() {
 
 void EditorScene::HandleEditorShortcuts() {
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput || pendingSceneAction_ != PendingSceneAction::None) {
+    if (io.WantTextInput || sceneCameraNavigating_ ||
+        pendingSceneAction_ != PendingSceneAction::None) {
         return;
     }
     if (!io.KeyCtrl) {
@@ -2917,9 +2935,90 @@ void EditorScene::HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& ima
     ImGui::EndDragDropTarget();
 }
 
+void EditorScene::HandleSceneCameraControls(bool imageHovered) {
+    ImGuiIO& io = ImGui::GetIO();
+    if (imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        sceneCameraNavigating_ = true;
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        sceneCameraNavigating_ = false;
+    }
+
+    DirectX::XMFLOAT3 rotation = sceneViewCamera_.GetRotation();
+    bool rotationChanged = false;
+    if (sceneCameraNavigating_) {
+        constexpr float mouseSensitivity = 0.004f;
+        rotation.x = std::clamp(rotation.x + io.MouseDelta.y * mouseSensitivity,
+                                -DirectX::XM_PIDIV2 + 0.01f,
+                                DirectX::XM_PIDIV2 - 0.01f);
+        rotation.y += io.MouseDelta.x * mouseSensitivity;
+        rotationChanged = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
+        if (rotationChanged) {
+            sceneViewCamera_.SetRotation(rotation);
+        }
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+    }
+
+    const DirectX::XMMATRIX orientation =
+        DirectX::XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, 0.0f);
+    const DirectX::XMVECTOR right = DirectX::XMVector3TransformNormal(
+        DirectX::XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), orientation);
+    const DirectX::XMVECTOR up = DirectX::XMVector3TransformNormal(
+        DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f), orientation);
+    const DirectX::XMVECTOR forward = DirectX::XMVector3TransformNormal(
+        DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), orientation);
+    DirectX::XMVECTOR movement = DirectX::XMVectorZero();
+    if (sceneCameraNavigating_) {
+        if (ImGui::IsKeyDown(ImGuiKey_W)) {
+            movement = DirectX::XMVectorAdd(movement, forward);
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_S)) {
+            movement = DirectX::XMVectorSubtract(movement, forward);
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_D)) {
+            movement = DirectX::XMVectorAdd(movement, right);
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_A)) {
+            movement = DirectX::XMVectorSubtract(movement, right);
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_E)) {
+            movement = DirectX::XMVectorAdd(movement, up);
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_Q)) {
+            movement = DirectX::XMVectorSubtract(movement, up);
+        }
+    }
+
+    const float movementLengthSquared =
+        DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(movement));
+    DirectX::XMVECTOR position =
+        DirectX::XMLoadFloat3(&sceneViewCamera_.GetPosition());
+    bool positionChanged = false;
+    if (movementLengthSquared > 0.0f) {
+        const float deltaTime = std::clamp(io.DeltaTime, 0.0f, 0.1f);
+        const float speed = io.KeyShift ? 12.0f : 4.0f;
+        movement = DirectX::XMVectorScale(DirectX::XMVector3Normalize(movement),
+                                          speed * deltaTime);
+        position = DirectX::XMVectorAdd(position, movement);
+        positionChanged = true;
+    }
+    if (imageHovered && io.MouseWheel != 0.0f) {
+        position = DirectX::XMVectorAdd(
+            position, DirectX::XMVectorScale(forward, io.MouseWheel * 0.75f));
+        positionChanged = true;
+    }
+    if (positionChanged) {
+        DirectX::XMFLOAT3 updatedPosition{};
+        DirectX::XMStoreFloat3(&updatedPosition, position);
+        sceneViewCamera_.SetPosition(updatedPosition);
+    }
+}
+
 void EditorScene::HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
                                          bool imageHovered) {
-    if (imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    const ImVec2 rightDrag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
+    const bool rightClick = rightDrag.x * rightDrag.x + rightDrag.y * rightDrag.y <= 9.0f;
+    if (imageHovered && rightClick && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
         sceneContextCreatePosition_ = CalculateScenePlacementPosition(
             sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos());
         ImGui::OpenPopup("SceneContext");
@@ -2938,6 +3037,14 @@ void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
                                              const DirectX::XMFLOAT3& position) {
     std::string assetPath;
     if (!TryNormalizeModelAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::optional<std::filesystem::path> physicalPath = ResolveProjectAssetPath(path);
+    std::vector<AssetImport::File> importPlan;
+    std::string importError;
+    if (!physicalPath ||
+        !AssetImport::BuildPlan({*physicalPath}, importPlan, importError)) {
+        status_ = "Could not create model entity: " + importError;
         return;
     }
     const std::string before = WorldSerializer::Serialize(world_);
