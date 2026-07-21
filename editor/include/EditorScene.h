@@ -202,7 +202,7 @@ private:
         Paused,
     };
     PlayModeState playModeState_ = PlayModeState::Edit;
-    std::string playModeWorldSnapshot_;
+    std::optional<World> editModeWorld_;
     EntityId playModeSelectionSnapshot_{};
     bool playModeDirtySnapshot_ = false;
     bool focusGamePanelRequested_ = false;

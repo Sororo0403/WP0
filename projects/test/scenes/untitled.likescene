@@ -72,6 +72,27 @@
     },
     {
       "components": {
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 3.0399999618530273,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.9900000095367432,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
         "MeshRenderer": {
           "enabled": true,
           "model": "",

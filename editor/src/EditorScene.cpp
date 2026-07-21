@@ -4850,13 +4850,19 @@ void EditorScene::EnterPlayMode() {
         return;
     }
     CommitHistoryEdit();
-    playModeWorldSnapshot_ = WorldSerializer::Serialize(world_);
-    if (playModeWorldSnapshot_.empty()) {
-        status_ = "Could not enter Play Mode: scene snapshot failed.";
+    const std::string runtimeSnapshot = WorldSerializer::Serialize(world_);
+    World runtimeWorld;
+    std::string error;
+    if (runtimeSnapshot.empty() ||
+        !WorldSerializer::Deserialize(runtimeSnapshot, runtimeWorld, &error)) {
+        status_ = "Could not enter Play Mode: " +
+                  (error.empty() ? std::string("scene clone failed.") : error);
         return;
     }
     playModeSelectionSnapshot_ = selection_;
     playModeDirtySnapshot_ = dirty_;
+    editModeWorld_.emplace(std::move(world_));
+    world_ = std::move(runtimeWorld);
     playModeState_ = PlayModeState::Playing;
     showGamePanel_ = true;
     focusGamePanelRequested_ = true;
@@ -4867,13 +4873,12 @@ void EditorScene::StopPlayMode() {
     if (!IsInPlayMode()) {
         return;
     }
-    World restored;
-    std::string error;
-    if (!WorldSerializer::Deserialize(playModeWorldSnapshot_, restored, &error)) {
-        status_ = "Could not stop Play Mode: " + error;
+    if (!editModeWorld_) {
+        status_ = "Could not stop Play Mode: Edit World is unavailable.";
         return;
     }
-    world_ = std::move(restored);
+    world_ = std::move(*editModeWorld_);
+    editModeWorld_.reset();
     selection_ = world_.Contains(playModeSelectionSnapshot_) ? playModeSelectionSnapshot_
                                                               : EntityId{};
     hierarchySelection_.clear();
@@ -4886,7 +4891,6 @@ void EditorScene::StopPlayMode() {
     activeGizmoWorldTransforms_.clear();
     gizmoWasUsing_ = false;
     dirty_ = playModeDirtySnapshot_;
-    playModeWorldSnapshot_.clear();
     playModeSelectionSnapshot_ = {};
     playModeState_ = PlayModeState::Edit;
     status_ = "Stopped Play Mode and restored the Edit scene.";
