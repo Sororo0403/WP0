@@ -3938,10 +3938,14 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
             closestDistance = hitDistance;
         }
     }
-    selection_ = closest;
-    status_ = closest.IsValid() ? "Selected entity from Scene View."
-                                : "Scene View selection cleared.";
-    if (closest.IsValid() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (closest.IsValid()) {
+        SelectHierarchyEntity(closest, io.KeyCtrl, false);
+    } else if (!io.KeyCtrl) {
+        ClearHierarchySelection();
+    }
+    if (closest.IsValid() && selection_ == closest &&
+        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         FocusSceneCameraOnSelection();
     }
 }
@@ -3951,79 +3955,91 @@ void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,
     if (!selection_.IsValid() || ctx_ == nullptr || ctx_->rendering.model == nullptr) {
         return;
     }
-    const WorldEntity* entity = world_.Find(selection_);
-    if (entity == nullptr || !entity->meshRenderer || !entity->meshRenderer->enabled) {
-        return;
-    }
-    const ModelHandle handle = ResolveModel(*entity->meshRenderer);
-    const Model* model = handle.IsValid() ? ctx_->rendering.model->GetModel(handle) : nullptr;
-    DirectX::XMFLOAT3 boundsMin{};
-    DirectX::XMFLOAT3 boundsMax{};
-    DirectX::XMFLOAT4X4 worldMatrix{};
-    if (model == nullptr || !TryGetModelBounds(*model, boundsMin, boundsMax) ||
-        !world_.TryGetWorldMatrix(entity->id, worldMatrix)) {
-        return;
-    }
-
     using namespace DirectX;
-    const XMMATRIX worldViewProjection =
-        XMLoadFloat4x4(&worldMatrix) * sceneViewCamera_.GetViewProjection();
     const float width = imageMax.x - imageMin.x;
     const float height = imageMax.y - imageMin.y;
-    const XMFLOAT3 corners[8] = {
-        {boundsMin.x, boundsMin.y, boundsMin.z}, {boundsMax.x, boundsMin.y, boundsMin.z},
-        {boundsMax.x, boundsMax.y, boundsMin.z}, {boundsMin.x, boundsMax.y, boundsMin.z},
-        {boundsMin.x, boundsMin.y, boundsMax.z}, {boundsMax.x, boundsMin.y, boundsMax.z},
-        {boundsMax.x, boundsMax.y, boundsMax.z}, {boundsMin.x, boundsMax.y, boundsMax.z},
-    };
-    ImVec2 projected[8]{};
-    for (size_t index = 0; index < std::size(corners); ++index) {
-        const XMVECTOR clip = XMVector4Transform(
-            XMVectorSet(corners[index].x, corners[index].y, corners[index].z, 1.0f),
-            worldViewProjection);
-        const float clipW = XMVectorGetW(clip);
-        if (!std::isfinite(clipW) || clipW <= 1.0e-5f) {
-            return;
-        }
-        const float ndcX = XMVectorGetX(clip) / clipW;
-        const float ndcY = XMVectorGetY(clip) / clipW;
-        if (!std::isfinite(ndcX) || !std::isfinite(ndcY)) {
-            return;
-        }
-        projected[index] = {imageMin.x + (ndcX * 0.5f + 0.5f) * width,
-                            imageMin.y + (0.5f - ndcY * 0.5f) * height};
-    }
-
     constexpr size_t edges[][2] = {
         {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
         {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
     };
-    constexpr ImU32 outlineColor = IM_COL32(255, 184, 56, 255);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(imageMin, imageMax, true);
-    for (const auto& edge : edges) {
-        drawList->AddLine(projected[edge[0]], projected[edge[1]], outlineColor, 2.0f);
+    auto drawEntityOutline = [&](const WorldEntity& entity, bool active) {
+        if (!entity.meshRenderer || !entity.meshRenderer->enabled) {
+            return;
+        }
+        const ModelHandle handle = ResolveModel(*entity.meshRenderer);
+        const Model* model = handle.IsValid() ? ctx_->rendering.model->GetModel(handle) : nullptr;
+        XMFLOAT3 boundsMin{};
+        XMFLOAT3 boundsMax{};
+        XMFLOAT4X4 worldMatrix{};
+        if (model == nullptr || !TryGetModelBounds(*model, boundsMin, boundsMax) ||
+            !world_.TryGetWorldMatrix(entity.id, worldMatrix)) {
+            return;
+        }
+        const XMMATRIX worldViewProjection =
+            XMLoadFloat4x4(&worldMatrix) * sceneViewCamera_.GetViewProjection();
+        const XMFLOAT3 corners[8] = {
+            {boundsMin.x, boundsMin.y, boundsMin.z}, {boundsMax.x, boundsMin.y, boundsMin.z},
+            {boundsMax.x, boundsMax.y, boundsMin.z}, {boundsMin.x, boundsMax.y, boundsMin.z},
+            {boundsMin.x, boundsMin.y, boundsMax.z}, {boundsMax.x, boundsMin.y, boundsMax.z},
+            {boundsMax.x, boundsMax.y, boundsMax.z}, {boundsMin.x, boundsMax.y, boundsMax.z},
+        };
+        ImVec2 projected[8]{};
+        for (size_t index = 0; index < std::size(corners); ++index) {
+            const XMVECTOR clip = XMVector4Transform(
+                XMVectorSet(corners[index].x, corners[index].y, corners[index].z, 1.0f),
+                worldViewProjection);
+            const float clipW = XMVectorGetW(clip);
+            if (!std::isfinite(clipW) || clipW <= 1.0e-5f) {
+                return;
+            }
+            const float ndcX = XMVectorGetX(clip) / clipW;
+            const float ndcY = XMVectorGetY(clip) / clipW;
+            if (!std::isfinite(ndcX) || !std::isfinite(ndcY)) {
+                return;
+            }
+            projected[index] = {imageMin.x + (ndcX * 0.5f + 0.5f) * width,
+                                imageMin.y + (0.5f - ndcY * 0.5f) * height};
+        }
+        const ImU32 outlineColor = active ? IM_COL32(255, 184, 56, 255)
+                                          : IM_COL32(90, 190, 255, 220);
+        for (const auto& edge : edges) {
+            drawList->AddLine(projected[edge[0]], projected[edge[1]], outlineColor,
+                              active ? 2.0f : 1.5f);
+        }
+        if (!active) {
+            return;
+        }
+        ImVec2 labelPosition = projected[0];
+        for (const ImVec2& point : projected) {
+            labelPosition.x = (std::min)(labelPosition.x, point.x);
+            labelPosition.y = (std::min)(labelPosition.y, point.y);
+        }
+        const ImVec2 textSize = ImGui::CalcTextSize(entity.name.c_str());
+        const float labelMinX = imageMin.x + 3.0f;
+        const float labelMinY = imageMin.y + 3.0f;
+        const float labelMaxX = (std::max)(labelMinX, imageMax.x - textSize.x - 9.0f);
+        const float labelMaxY = (std::max)(labelMinY, imageMax.y - textSize.y - 7.0f);
+        labelPosition.x = std::clamp(labelPosition.x, labelMinX, labelMaxX);
+        labelPosition.y =
+            std::clamp(labelPosition.y - textSize.y - 8.0f, labelMinY, labelMaxY);
+        drawList->AddRectFilled(labelPosition,
+                                {labelPosition.x + textSize.x + 6.0f,
+                                 labelPosition.y + textSize.y + 4.0f},
+                                IM_COL32(20, 20, 24, 210), 3.0f);
+        drawList->AddText({labelPosition.x + 3.0f, labelPosition.y + 2.0f}, outlineColor,
+                          entity.name.c_str());
+    };
+    for (const WorldEntity& entity : world_.Entities()) {
+        const bool selected = hierarchySelection_.contains(entity.id) || entity.id == selection_;
+        if (selected && entity.id != selection_) {
+            drawEntityOutline(entity, false);
+        }
     }
-
-    ImVec2 labelPosition = projected[0];
-    for (const ImVec2& point : projected) {
-        labelPosition.x = (std::min)(labelPosition.x, point.x);
-        labelPosition.y = (std::min)(labelPosition.y, point.y);
+    if (const WorldEntity* active = world_.Find(selection_)) {
+        drawEntityOutline(*active, true);
     }
-    const ImVec2 textSize = ImGui::CalcTextSize(entity->name.c_str());
-    const float labelMinX = imageMin.x + 3.0f;
-    const float labelMinY = imageMin.y + 3.0f;
-    const float labelMaxX = (std::max)(labelMinX, imageMax.x - textSize.x - 9.0f);
-    const float labelMaxY = (std::max)(labelMinY, imageMax.y - textSize.y - 7.0f);
-    labelPosition.x = std::clamp(labelPosition.x, labelMinX, labelMaxX);
-    labelPosition.y =
-        std::clamp(labelPosition.y - textSize.y - 8.0f, labelMinY, labelMaxY);
-    drawList->AddRectFilled(labelPosition,
-                            {labelPosition.x + textSize.x + 6.0f,
-                             labelPosition.y + textSize.y + 4.0f},
-                            IM_COL32(20, 20, 24, 210), 3.0f);
-    drawList->AddText({labelPosition.x + 3.0f, labelPosition.y + 2.0f}, outlineColor,
-                      entity->name.c_str());
     drawList->PopClipRect();
 }
 
