@@ -17,6 +17,10 @@ Json EncodeFloat3(const DirectX::XMFLOAT3& value) {
     return Json::array({value.x, value.y, value.z});
 }
 
+Json EncodeFloat4(const DirectX::XMFLOAT4& value) {
+    return Json::array({value.x, value.y, value.z, value.w});
+}
+
 bool DecodeFloat3(const Json& value, DirectX::XMFLOAT3& result) {
     if (!value.is_array() || value.size() != 3u) {
         return false;
@@ -27,6 +31,20 @@ bool DecodeFloat3(const Json& value, DirectX::XMFLOAT3& result) {
         return false;
     }
     return std::isfinite(result.x) && std::isfinite(result.y) && std::isfinite(result.z);
+}
+
+bool DecodeFloat4(const Json& value, DirectX::XMFLOAT4& result) {
+    if (!value.is_array() || value.size() != 4u) {
+        return false;
+    }
+    try {
+        result = {value[0].get<float>(), value[1].get<float>(), value[2].get<float>(),
+                  value[3].get<float>()};
+    } catch (const std::exception&) {
+        return false;
+    }
+    return std::isfinite(result.x) && std::isfinite(result.y) && std::isfinite(result.z) &&
+           std::isfinite(result.w);
 }
 
 void SetError(std::string* error, std::string message) {
@@ -61,6 +79,15 @@ std::string WorldSerializer::Serialize(const World& world) {
             meshRenderer["primitive"] = static_cast<uint32_t>(renderer.primitive);
             meshRenderer["model"] = renderer.modelPath;
             encoded["components"]["MeshRenderer"] = std::move(meshRenderer);
+        }
+        if (entity.materialOverride) {
+            const MaterialOverrideComponent& material = *entity.materialOverride;
+            Json encodedMaterial;
+            encodedMaterial["enabled"] = material.enabled;
+            encodedMaterial["baseColor"] = EncodeFloat4(material.baseColor);
+            encodedMaterial["metallic"] = material.metallic;
+            encodedMaterial["roughness"] = material.roughness;
+            encoded["components"]["MaterialOverride"] = std::move(encodedMaterial);
         }
         if (entity.camera) {
             const CameraComponent& camera = *entity.camera;
@@ -186,6 +213,31 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.meshRenderer = std::move(component);
+        }
+        if (encoded["components"].contains("MaterialOverride")) {
+            const Json& material = encoded["components"]["MaterialOverride"];
+            if (!material.is_object() || !material.contains("enabled") ||
+                !material["enabled"].is_boolean() || !material.contains("baseColor") ||
+                !material.contains("metallic") || !material["metallic"].is_number() ||
+                !material.contains("roughness") || !material["roughness"].is_number()) {
+                SetError(error, "Scene MaterialOverride component is invalid.");
+                return false;
+            }
+            MaterialOverrideComponent component{};
+            component.enabled = material["enabled"].get<bool>();
+            component.metallic = material["metallic"].get<float>();
+            component.roughness = material["roughness"].get<float>();
+            if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
+                component.baseColor.x < 0.0f || component.baseColor.y < 0.0f ||
+                component.baseColor.z < 0.0f || component.baseColor.w < 0.0f ||
+                component.baseColor.w > 1.0f || !std::isfinite(component.metallic) ||
+                component.metallic < 0.0f || component.metallic > 1.0f ||
+                !std::isfinite(component.roughness) || component.roughness < 0.0f ||
+                component.roughness > 1.0f) {
+                SetError(error, "Scene MaterialOverride settings are invalid.");
+                return false;
+            }
+            entity.materialOverride = component;
         }
         if (encoded["components"].contains("Camera")) {
             const Json& camera = encoded["components"]["Camera"];

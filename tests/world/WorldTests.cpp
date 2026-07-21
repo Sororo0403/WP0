@@ -72,6 +72,10 @@ int main() {
     childEntity->transform.rotationDegrees = {10.0f, 20.0f, 30.0f};
     childEntity->meshRenderer = MeshRendererComponent{};
     childEntity->meshRenderer->primitive = MeshPrimitive::Sphere;
+    childEntity->materialOverride = MaterialOverrideComponent{};
+    childEntity->materialOverride->baseColor = {0.25f, 0.5f, 0.75f, 0.8f};
+    childEntity->materialOverride->metallic = 0.7f;
+    childEntity->materialOverride->roughness = 0.2f;
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
@@ -102,6 +106,11 @@ int main() {
                    restoredChild->transform.rotationDegrees.z == 30.0f &&
                    restoredChild->meshRenderer &&
                    restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   restoredChild->materialOverride &&
+                   restoredChild->materialOverride->baseColor.z == 0.75f &&
+                   restoredChild->materialOverride->baseColor.w == 0.8f &&
+                   restoredChild->materialOverride->metallic == 0.7f &&
+                   restoredChild->materialOverride->roughness == 0.2f &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
@@ -120,6 +129,8 @@ int main() {
                    duplicateChild != nullptr && duplicateChild->id != child &&
                    duplicateChild->name == "Child" && duplicateChild->meshRenderer &&
                    duplicateChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
+                   duplicateChild->materialOverride &&
+                   duplicateChild->materialOverride->metallic == 0.7f &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
@@ -179,6 +190,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidLight, rejected, &error),
                "Invalid Light data was accepted.")) {
         return 115;
+    }
+    const std::string invalidMaterial =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Material","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"MaterialOverride":{"enabled":true,"baseColor":[1,1,1,2],"metallic":-1,"roughness":0.5}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidMaterial, rejected, &error),
+               "Invalid MaterialOverride data was accepted.")) {
+        return 118;
     }
     const std::filesystem::path projectAssets =
         std::filesystem::temp_directory_path() / L"engine-external-project" / L"assets";

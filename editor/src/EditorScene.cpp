@@ -2461,7 +2461,8 @@ void EditorScene::DrawInspectorPanel() {
     drawTransform("Scale", entity->transform.scale, 0.02f);
 
     ImGui::Separator();
-    if (!entity->meshRenderer || !entity->camera || !entity->light) {
+    if (!entity->meshRenderer || !entity->materialOverride || !entity->camera ||
+        !entity->light) {
         if (ImGui::Button("Add Component")) {
             ImGui::OpenPopup("AddComponentMenu");
         }
@@ -2472,6 +2473,13 @@ void EditorScene::DrawInspectorPanel() {
                 entity->meshRenderer = MeshRendererComponent{};
                 RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
                 status_ = "Added MeshRenderer.";
+            }
+            if (!entity->materialOverride && ImGui::MenuItem("Material Override")) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                entity->materialOverride = MaterialOverrideComponent{};
+                RecordImmediateEdit("Add Material Override", before, selectionBefore);
+                status_ = "Added Material Override.";
             }
             if (!entity->camera && ImGui::MenuItem("Camera")) {
                 const std::string before = WorldSerializer::Serialize(world_);
@@ -2619,6 +2627,54 @@ void EditorScene::DrawInspectorPanel() {
                                (std::max)(0.0f, light.outerAngleDegrees - 0.1f), "%.1f deg");
                 drawLightFloat("Outer Angle##Light", light.outerAngleDegrees, 0.25f,
                                light.innerAngleDegrees + 0.1f, 179.0f, "%.1f deg");
+            }
+        }
+    }
+
+    if (entity->materialOverride) {
+        ImGui::SeparatorText("Material Override");
+        if (ImGui::Button("Remove Material Override")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->materialOverride.reset();
+            RecordImmediateEdit("Remove Material Override", before, selectionBefore);
+            status_ = "Removed Material Override.";
+        } else {
+            MaterialOverrideComponent& material = *entity->materialOverride;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##MaterialOverride", &material.enabled)) {
+                RecordImmediateEdit("Toggle Material Override", std::move(before),
+                                    selectionBefore);
+            }
+            if (ImGui::ColorEdit4("Base Color##MaterialOverride", &material.baseColor.x,
+                                  ImGuiColorEditFlags_Float)) {
+                RefreshDirty();
+                status_ = "Modified Material Override.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Material Base Color");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            auto drawMaterialFloat = [&](const char* label, float& value) {
+                if (ImGui::DragFloat(label, &value, 0.01f, 0.0f, 1.0f, "%.3f",
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified Material Override.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify Material Override");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            };
+            drawMaterialFloat("Metallic##MaterialOverride", material.metallic);
+            drawMaterialFloat("Roughness##MaterialOverride", material.roughness);
+            if (!entity->meshRenderer) {
+                ImGui::TextDisabled("Add a Mesh Renderer to display this material.");
             }
         }
     }
@@ -4096,6 +4152,11 @@ void EditorScene::BuildRenderScene() {
             item.mesh = &models->GetMesh(meshId);
             if (IsValidResourceId(materialId)) {
                 item.material = models->GetMaterial(materialId);
+            }
+            if (entity.materialOverride && entity.materialOverride->enabled) {
+                item.material.color = entity.materialOverride->baseColor;
+                item.material.metallic = entity.materialOverride->metallic;
+                item.material.roughness = entity.materialOverride->roughness;
             }
             item.transform = transform;
             item.textureId = textureId;

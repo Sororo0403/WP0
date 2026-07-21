@@ -12,6 +12,11 @@ bool IsFinite(const DirectX::XMFLOAT3& value) {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
+bool IsFinite(const DirectX::XMFLOAT4& value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
+           std::isfinite(value.w);
+}
+
 void SetError(std::string* error, const char* message) {
     if (error != nullptr) {
         *error = message;
@@ -55,6 +60,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         WorldEntity* duplicate = Find(duplicateId);
         duplicate->transform = original.transform;
         duplicate->meshRenderer = original.meshRenderer;
+        duplicate->materialOverride = original.materialOverride;
         duplicate->camera = original.camera;
         duplicate->light = original.light;
         if (duplicate->camera) {
@@ -260,6 +266,18 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             if (!validSource || !validPrimitive || renderer.modelPath.size() > 1024u ||
                 renderer.modelPath.find('\0') != std::string::npos) {
                 SetError(error, "Scene contains an invalid MeshRenderer component.");
+                return false;
+            }
+        }
+        if (entity.materialOverride) {
+            const MaterialOverrideComponent& material = *entity.materialOverride;
+            if (!IsFinite(material.baseColor) || !std::isfinite(material.metallic) ||
+                !std::isfinite(material.roughness) || material.baseColor.x < 0.0f ||
+                material.baseColor.y < 0.0f || material.baseColor.z < 0.0f ||
+                material.baseColor.w < 0.0f || material.baseColor.w > 1.0f ||
+                material.metallic < 0.0f || material.metallic > 1.0f ||
+                material.roughness < 0.0f || material.roughness > 1.0f) {
+                SetError(error, "Scene contains an invalid MaterialOverride component.");
                 return false;
             }
         }

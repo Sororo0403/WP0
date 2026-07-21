@@ -32,6 +32,13 @@ struct MeshRendererComponent {
     std::string modelPath;
 };
 
+struct MaterialOverrideComponent {
+    bool enabled = true;
+    DirectX::XMFLOAT4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float metallic = 0.0f;
+    float roughness = 0.5f;
+};
+
 enum class CameraProjection : uint8_t {
     Perspective = 0,
     Orthographic = 1,
@@ -69,6 +76,7 @@ struct WorldEntity {
     std::string name = "Entity";
     TransformComponent transform{};
     std::optional<MeshRendererComponent> meshRenderer;
+    std::optional<MaterialOverrideComponent> materialOverride;
     std::optional<CameraComponent> camera;
     std::optional<LightComponent> light;
 };
