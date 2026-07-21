@@ -5036,16 +5036,19 @@ void EditorScene::StepRuntimeWorld() {
 void EditorScene::BeginRuntimeWorld() {
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
+    runtimeBehaviors_.Start(world_);
 }
 
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+    runtimeBehaviors_.Update(safeDeltaTime);
     ++runtimeFrameCount_;
     runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
 }
 
 void EditorScene::EndRuntimeWorld() {
+    runtimeBehaviors_.Stop();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
 }

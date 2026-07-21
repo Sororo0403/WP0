@@ -3,6 +3,7 @@
 #include "RecentScenesStore.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
+#include "runtime/BehaviorSystem.h"
 #include "world/World.h"
 #include "world/WorldSerializer.h"
 #include "../../engine/src/model/internal/ModelPrimitiveFactory.h"
@@ -12,10 +13,45 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace {
+class LifecycleBehavior final : public Behavior {
+public:
+    LifecycleBehavior(int& startCount, int& updateCount, int& stopCount, float& lastDeltaTime)
+        : startCount_(startCount), updateCount_(updateCount), stopCount_(stopCount),
+          lastDeltaTime_(lastDeltaTime) {}
+
+    void OnStart(World& world, EntityId entity) override {
+        ++startCount_;
+        if (WorldEntity* target = world.Find(entity)) {
+            target->transform.position.x += 1.0f;
+        }
+    }
+
+    void OnUpdate(World& world, EntityId entity, float deltaTime) override {
+        ++updateCount_;
+        lastDeltaTime_ = deltaTime;
+        if (WorldEntity* target = world.Find(entity)) {
+            target->transform.position.y += deltaTime;
+        }
+    }
+
+    void OnStop(World& world, EntityId entity) override {
+        (void)world;
+        (void)entity;
+        ++stopCount_;
+    }
+
+private:
+    int& startCount_;
+    int& updateCount_;
+    int& stopCount_;
+    float& lastDeltaTime_;
+};
+
 bool Check(bool condition, const char* message) {
     if (!condition) {
         std::cerr << message << '\n';
@@ -88,6 +124,34 @@ bool RotationRoundTrips(const DirectX::XMFLOAT3& degrees) {
 } // namespace
 
 int main() {
+    World behaviorWorld;
+    const EntityId behaviorEntity = behaviorWorld.CreateEntity("Behavior Entity");
+    int behaviorStartCount = 0;
+    int behaviorUpdateCount = 0;
+    int behaviorStopCount = 0;
+    float behaviorLastDeltaTime = 0.0f;
+    BehaviorSystem behaviors;
+    if (!Check(behaviors.Attach(
+                   behaviorEntity,
+                   std::make_unique<LifecycleBehavior>(
+                       behaviorStartCount, behaviorUpdateCount, behaviorStopCount,
+                       behaviorLastDeltaTime)),
+               "A valid Runtime Behavior could not be attached.")) {
+        return 125;
+    }
+    behaviors.Start(behaviorWorld);
+    behaviors.Update(0.25f);
+    behaviors.Stop();
+    const WorldEntity* behaviorTarget = behaviorWorld.Find(behaviorEntity);
+    if (!Check(!behaviors.IsRunning() && behaviors.Size() == 1u &&
+                   behaviorStartCount == 1 && behaviorUpdateCount == 1 &&
+                   behaviorStopCount == 1 && behaviorLastDeltaTime == 0.25f &&
+                   behaviorTarget != nullptr && behaviorTarget->transform.position.x == 1.0f &&
+                   behaviorTarget->transform.position.y == 0.25f,
+               "Runtime Behavior lifecycle did not run in order.")) {
+        return 126;
+    }
+
     if (!Check(RotationRoundTrips({25.0f, -40.0f, 70.0f}) &&
                    RotationRoundTrips({120.0f, 215.0f, -150.0f}) &&
                    RotationRoundTrips({89.999f, 35.0f, -20.0f}),

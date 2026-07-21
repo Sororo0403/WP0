@@ -5,6 +5,8 @@
 #include "collision/CollisionManager.h"
 #include "collision/CollisionUtil.h"
 #include "collision/OBB.h"
+#include "runtime/Behavior.h"
+#include "runtime/BehaviorSystem.h"
 #include "scene/BaseScene.h"
 #include "scene/SceneContext.h"
 #include "scene/SceneManager.h"
