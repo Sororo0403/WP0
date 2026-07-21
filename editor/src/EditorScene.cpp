@@ -4107,6 +4107,7 @@ bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& 
             CommitHistoryEdit();
             gizmoWasUsing_ = false;
             activeGizmoEntity_ = {};
+            activeGizmoWorldTransforms_.clear();
         }
         return false;
     }
@@ -4137,46 +4138,82 @@ bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& 
         std::ranges::fill(snapValues, scaleSnap_);
     }
     const bool snapActive = gizmoSnapEnabled_ || ImGui::GetIO().KeyCtrl;
+    const DirectX::XMFLOAT4X4 worldBeforeManipulation = worldMatrix;
     const bool manipulated = ImGuizmo::Manipulate(
         &view._11, &projection._11, operation, mode, &worldMatrix._11, nullptr,
         snapActive ? snapValues : nullptr);
     const bool usingNow = ImGuizmo::IsUsing();
     if (usingNow && !gizmoWasUsing_) {
-        BeginHistoryEdit("Transform Entity");
+        SynchronizeHierarchySelection();
+        const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+        BeginHistoryEdit(roots.size() > 1u ? "Transform Entities" : "Transform Entity");
         activeGizmoEntity_ = selection_;
+        activeGizmoStartWorld_ = worldBeforeManipulation;
+        activeGizmoWorldTransforms_.clear();
+        activeGizmoWorldTransforms_.reserve(roots.size());
+        for (EntityId root : roots) {
+            DirectX::XMFLOAT4X4 initialWorld{};
+            if (world_.TryGetWorldMatrix(root, initialWorld)) {
+                activeGizmoWorldTransforms_.emplace_back(root, initialWorld);
+            }
+        }
     }
 
     if (manipulated && activeGizmoEntity_ == selection_) {
         using namespace DirectX;
-        XMMATRIX localMatrix = XMLoadFloat4x4(&worldMatrix);
-        bool canApply = true;
-        if (entity->parent.IsValid()) {
-            XMFLOAT4X4 parentWorld{};
-            if (!world_.TryGetWorldMatrix(entity->parent, parentWorld)) {
-                canApply = false;
-            } else {
-                XMVECTOR determinant{};
-                const XMMATRIX inverseParent =
-                    XMMatrixInverse(&determinant, XMLoadFloat4x4(&parentWorld));
-                const float determinantValue = XMVectorGetX(determinant);
-                if (std::isfinite(determinantValue) && std::abs(determinantValue) > 1.0e-8f) {
-                    localMatrix *= inverseParent;
-                } else {
-                    canApply = false;
+        XMVECTOR pivotDeterminant{};
+        const XMMATRIX inverseStartPivot =
+            XMMatrixInverse(&pivotDeterminant, XMLoadFloat4x4(&activeGizmoStartWorld_));
+        const float pivotDeterminantValue = XMVectorGetX(pivotDeterminant);
+        if (std::isfinite(pivotDeterminantValue) &&
+            std::abs(pivotDeterminantValue) > 1.0e-8f) {
+            const XMMATRIX groupDelta = inverseStartPivot * XMLoadFloat4x4(&worldMatrix);
+            bool changed = false;
+            for (const auto& [entityId, initialStoredWorld] : activeGizmoWorldTransforms_) {
+                WorldEntity* transformed = world_.Find(entityId);
+                if (transformed == nullptr) {
+                    continue;
+                }
+                XMMATRIX localMatrix = XMLoadFloat4x4(&initialStoredWorld) * groupDelta;
+                bool canApply = true;
+                if (transformed->parent.IsValid()) {
+                    XMFLOAT4X4 parentWorld{};
+                    if (!world_.TryGetWorldMatrix(transformed->parent, parentWorld)) {
+                        canApply = false;
+                    } else {
+                        XMVECTOR parentDeterminant{};
+                        const XMMATRIX inverseParent =
+                            XMMatrixInverse(&parentDeterminant, XMLoadFloat4x4(&parentWorld));
+                        const float parentDeterminantValue = XMVectorGetX(parentDeterminant);
+                        if (std::isfinite(parentDeterminantValue) &&
+                            std::abs(parentDeterminantValue) > 1.0e-8f) {
+                            localMatrix *= inverseParent;
+                        } else {
+                            canApply = false;
+                        }
+                    }
+                }
+                TransformComponent localTransform{};
+                if (canApply && TryDecomposeTransformComponent(localMatrix, localTransform)) {
+                    transformed->transform = localTransform;
+                    changed = true;
                 }
             }
-        }
-        TransformComponent localTransform{};
-        if (canApply && TryDecomposeTransformComponent(localMatrix, localTransform)) {
-            entity->transform = localTransform;
-            RefreshDirty();
+            if (changed) {
+                RefreshDirty();
+            }
         }
     }
 
     if (!usingNow && gizmoWasUsing_) {
         CommitHistoryEdit();
         activeGizmoEntity_ = {};
-        status_ = "Transformed entity from Scene View.";
+        const size_t transformedCount = activeGizmoWorldTransforms_.size();
+        activeGizmoWorldTransforms_.clear();
+        status_ = transformedCount > 1u
+                      ? "Transformed " + std::to_string(transformedCount) +
+                            " entities from Scene View."
+                      : "Transformed entity from Scene View.";
     }
     gizmoWasUsing_ = usingNow;
     return ImGuizmo::IsOver() || usingNow;

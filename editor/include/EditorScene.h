@@ -289,6 +289,8 @@ private:
     int sceneCameraCursorRestoreY_ = 0;
     DirectX::XMFLOAT3 sceneContextCreatePosition_{};
     EntityId activeGizmoEntity_{};
+    DirectX::XMFLOAT4X4 activeGizmoStartWorld_{};
+    std::vector<std::pair<EntityId, DirectX::XMFLOAT4X4>> activeGizmoWorldTransforms_;
     bool gizmoWasUsing_ = false;
     bool postProcessInitializationAttempted_ = false;
     bool gamePostProcessInitializationAttempted_ = false;
