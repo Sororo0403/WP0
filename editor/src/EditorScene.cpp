@@ -7,6 +7,7 @@
 #include "graphics/DirectXCommon.h"
 #include "graphics/LightingScene.h"
 #include "graphics/RenderScene.h"
+#include "graphics/ShaderPaths.h"
 #include "graphics/SrvManager.h"
 #include "imgui/ImguiManager.h"
 #include "imgui.h"
@@ -396,6 +397,8 @@ void EditorScene::Initialize(const SceneContext& ctx) {
         return;
     }
     sceneRenderer_.Initialize(ctx.rendering.meshRenderer);
+    sceneGridPipelineId_ = ctx.rendering.meshRenderer->CreatePipeline(
+        ShaderPaths::MeshVS, ShaderPaths::EditorGridPS);
     Material material{};
     material.enableTexture = 0;
     const uint32_t whiteTexture = ctx.rendering.texture->GetWhiteTextureId();
@@ -886,8 +889,10 @@ void EditorScene::DrawPanels() {
                 HandleSceneCameraControls(expectedImageMin, expectedImageMax,
                                           expectedImageHovered);
                 BuildRenderScene();
+                BuildEditorOverlayScene();
                 sceneRenderer_.Render(renderScene_, sceneViewCamera_, sceneViewSurface_,
-                                      {0.025f, 0.035f, 0.055f, 1.0f});
+                                      {0.025f, 0.035f, 0.055f, 1.0f},
+                                      &editorOverlayScene_);
                 sceneViewSurface_.TransitionDepthToShaderResource();
                 sceneViewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
                 const PostProcessOutputTarget target{
@@ -910,7 +915,6 @@ void EditorScene::DrawPanels() {
                 const bool imageHovered = ImGui::IsItemHovered() && !cameraPreviewHovered;
                 HandleSceneAssetDrop(imageMin, imageMax);
                 HandleSceneContextMenu(imageMin, imageMax, imageHovered);
-                DrawSceneGrid(imageMin, imageMax);
                 DrawSceneComponentGizmos(imageMin, imageMax);
                 DrawSceneSelectionOutline(imageMin, imageMax);
                 if (!DrawSceneTransformGizmo(imageMin, imageMax)) {
@@ -4733,6 +4737,37 @@ void EditorScene::BuildRenderScene() {
     }
 }
 
+void EditorScene::BuildEditorOverlayScene() {
+    editorOverlayScene_.BeginFrame();
+    if (!showSceneGrid_ || !IsValidResourceId(sceneGridPipelineId_) || ctx_ == nullptr ||
+        ctx_->rendering.model == nullptr) {
+        return;
+    }
+    ModelManager* models = ctx_->rendering.model;
+    const ModelHandle planeHandle =
+        primitiveModels_[static_cast<size_t>(MeshPrimitive::Plane)];
+    const Model* plane = planeHandle.IsValid() ? models->GetModel(planeHandle) : nullptr;
+    if (plane == nullptr || !IsValidResourceId(plane->meshId)) {
+        return;
+    }
+
+    RenderMeshItem grid{};
+    grid.mesh = &models->GetMesh(plane->meshId);
+    grid.material.color = {1.0f, 1.0f, 1.0f, 0.45f};
+    grid.material.enableTexture = 0;
+    grid.material.blendMode = static_cast<int32_t>(BlendMode::Transparent);
+    grid.material.cullMode = static_cast<int32_t>(MaterialCullMode::None);
+    grid.material.depthWrite = 0;
+    grid.transform.scale = {100.0f, 100.0f, 1.0f};
+    DirectX::XMStoreFloat4(
+        &grid.transform.rotation,
+        DirectX::XMQuaternionRotationAxis(DirectX::XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f),
+                                         -DirectX::XM_PIDIV2));
+    grid.pipelineId = sceneGridPipelineId_;
+    grid.flags = RenderObjectFlags::Transparent;
+    editorOverlayScene_.SubmitMesh(grid);
+}
+
 void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax,
                                   bool imageHovered) {
     if (!imageHovered || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -5145,25 +5180,6 @@ void EditorScene::DrawSceneGizmoToolbar() {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Enable Snap or hold Ctrl while manipulating.");
     }
-}
-
-void EditorScene::DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const {
-    if (!showSceneGrid_) {
-        return;
-    }
-    DirectX::XMFLOAT4X4 view{};
-    DirectX::XMFLOAT4X4 projection{};
-    DirectX::XMFLOAT4X4 identity{};
-    DirectX::XMStoreFloat4x4(&view, sceneViewCamera_.GetView());
-    DirectX::XMStoreFloat4x4(&projection, sceneViewCamera_.GetProj());
-    DirectX::XMStoreFloat4x4(&identity, DirectX::XMMatrixIdentity());
-    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-    ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x,
-                      imageMax.y - imageMin.y);
-    ImGuizmo::DrawGridCustomColor(
-        &view._11, &projection._11, &identity._11, 50.0f, 5.0f, 5u,
-        IM_COL32(125, 135, 150, 90), IM_COL32(95, 105, 120, 45),
-        IM_COL32(230, 165, 70, 150));
 }
 
 bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax) {

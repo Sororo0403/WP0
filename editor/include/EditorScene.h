@@ -124,6 +124,7 @@ private:
     void ClearHistory(bool markClean);
     void RefreshDirty();
     void BuildRenderScene();
+    void BuildEditorOverlayScene();
     void UpdateAssetPreview();
     void BuildAssetPreviewScene();
     bool UpdateGameViewCamera();
@@ -133,7 +134,6 @@ private:
     void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
-    void DrawSceneGrid(const ImVec2& imageMin, const ImVec2& imageMax) const;
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
@@ -237,6 +237,7 @@ private:
     PostProcessSystem sceneViewPostProcess_{};
     SceneRenderer sceneRenderer_{};
     RenderScene renderScene_{};
+    RenderScene editorOverlayScene_{};
     Camera sceneViewCamera_{};
     RenderSurface gameViewSurface_{};
     PostProcessSystem gameViewPostProcess_{};
@@ -254,6 +255,7 @@ private:
     std::vector<AssetImport::File> assetPreviewPlan_;
     std::string assetPreviewError_;
     ModelHandle primitiveModels_[4]{};
+    uint32_t sceneGridPipelineId_ = kInvalidResourceId;
     std::unordered_map<std::string, ModelHandle> loadedModels_;
     std::unordered_map<std::string, TextureHandle> loadedTextures_;
     std::unordered_map<std::string, TextureHandle> loadedLinearTextures_;

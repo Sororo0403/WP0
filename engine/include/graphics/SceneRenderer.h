@@ -21,7 +21,8 @@ class SceneRenderer {
 public:
     void Initialize(MeshRenderer* meshRenderer);
     bool Render(const RenderScene& scene, const Camera& camera, RenderSurface& surface,
-                const DirectX::XMFLOAT4& clearColor);
+                const DirectX::XMFLOAT4& clearColor,
+                const RenderScene* depthTestedOverlay = nullptr);
 
     [[nodiscard]] bool IsReady() const;
     [[nodiscard]] const SceneRendererStats& GetStats() const;

@@ -43,6 +43,8 @@ inline constexpr const wchar_t* MeshGpuLodCullCS =
     L"engine://shaders/mesh/MeshGpuLodCullCS.hlsl";
 inline constexpr const wchar_t* MeshGpuLodCullArgsCS =
     L"engine://shaders/mesh/MeshGpuLodCullArgsCS.hlsl";
+inline constexpr const wchar_t* EditorGridPS =
+    L"engine://shaders/editor/EditorGridPS.hlsl";
 
 inline constexpr const wchar_t* ModelVS = L"engine://shaders/model/ModelVS.hlsl";
 inline constexpr const wchar_t* ModelInstancedVS =
