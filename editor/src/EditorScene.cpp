@@ -816,6 +816,12 @@ void EditorScene::DrawEntityRenameDialog() {
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
+    if (IsInPlayMode()) {
+        renameEntity_ = {};
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
     WorldEntity* entity = world_.Find(renameEntity_);
     if (entity == nullptr) {
         renameEntity_ = {};
@@ -899,9 +905,7 @@ void EditorScene::DrawPanels() {
     projectPanelMaxY_ = 0.0f;
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
-            ImGui::BeginDisabled(IsInPlayMode());
             DrawHierarchyPanel();
-            ImGui::EndDisabled();
         }
         ImGui::End();
     }
@@ -2180,34 +2184,34 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
 
 void EditorScene::DrawHierarchyPanel() {
     SynchronizeHierarchySelection();
+    const bool editing = !IsInPlayMode();
+    if (!editing) {
+        ImGui::TextDisabled("Runtime World (Read Only)");
+    }
+    ImGui::BeginDisabled(!editing);
     if (ImGui::Button("Create")) {
         ImGui::OpenPopup("CreateEntity");
     }
+    ImGui::EndDisabled();
     if (ImGui::BeginPopup("CreateEntity")) {
+        ImGui::BeginDisabled(!editing);
         DrawCreateEntityMenu({0.0f, 0.0f, 0.0f});
+        ImGui::EndDisabled();
         ImGui::EndPopup();
     }
     ImGui::SameLine();
-    const bool canDelete = !hierarchySelection_.empty();
-    if (!canDelete) {
-        ImGui::BeginDisabled();
-    }
+    const bool canEditSelection = editing && !hierarchySelection_.empty();
+    ImGui::BeginDisabled(!canEditSelection);
     if (ImGui::Button("Duplicate")) {
         DuplicateSelection();
     }
-    if (!canDelete) {
-        ImGui::EndDisabled();
-    }
+    ImGui::EndDisabled();
     ImGui::SameLine();
-    if (!canDelete) {
-        ImGui::BeginDisabled();
-    }
+    ImGui::BeginDisabled(!canEditSelection);
     if (ImGui::Button("Delete")) {
         DeleteSelection();
     }
-    if (!canDelete) {
-        ImGui::EndDisabled();
-    }
+    ImGui::EndDisabled();
     ImGui::Separator();
     ImGui::SetNextItemWidth(-58.0f);
     ImGui::InputTextWithHint("##HierarchySearch", "Search entities...", hierarchySearch_.data(),
@@ -2247,10 +2251,10 @@ void EditorScene::DrawHierarchyPanel() {
         ImGui::TextDisabled("No matching entities.");
     }
     ImGui::Separator();
-    if (ImGui::Selectable("Scene Root (drop here)", false)) {
+    if (ImGui::Selectable(editing ? "Scene Root (drop here)" : "Scene Root", false)) {
         ClearHierarchySelection();
     }
-    if (ImGui::BeginDragDropTarget()) {
+    if (editing && ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
             payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
             EntityId child{};
@@ -2384,14 +2388,19 @@ void EditorScene::DrawEntityNode(EntityId id) {
 
     const std::string idText = id.ToString();
     ImGui::PushID(idText.c_str());
+    const bool editing = !IsInPlayMode();
     const bool hasMeshRenderer = entity->meshRenderer.has_value();
     bool rendererEnabled = hasMeshRenderer && entity->meshRenderer->enabled;
     if (hasMeshRenderer) {
+        ImGui::BeginDisabled(!editing);
         if (ImGui::Checkbox("##RendererVisible", &rendererEnabled)) {
             SetSelectedMeshRenderersEnabled(id, rendererEnabled);
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(rendererEnabled ? "Hide MeshRenderer" : "Show MeshRenderer");
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip(editing ? (rendererEnabled ? "Hide MeshRenderer"
+                                                        : "Show MeshRenderer")
+                                      : "MeshRenderer state (read-only in Play Mode)");
         }
     } else {
         ImGui::Dummy({ImGui::GetFrameHeight(), ImGui::GetFrameHeight()});
@@ -2422,20 +2431,20 @@ void EditorScene::DrawEntityNode(EntityId id) {
         if (!IsHierarchyEntitySelected(id)) {
             SelectHierarchyEntity(id, false, false);
         }
-        if (ImGui::BeginMenu("Create Child")) {
+        if (ImGui::BeginMenu("Create Child", editing)) {
             hierarchyChanged = DrawCreateEntityMenu({0.0f, 0.0f, 0.0f}, id);
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Rename", "F2")) {
+        if (ImGui::MenuItem("Rename", "F2", false, editing)) {
             RequestEntityRename(id);
         }
         if (ImGui::MenuItem("Focus in Scene", "F")) {
             SelectHierarchyEntity(id, false, false);
             FocusSceneCameraOnSelection();
         }
-        if (entity->meshRenderer &&
-            ImGui::MenuItem("Renderer Enabled", nullptr, entity->meshRenderer->enabled)) {
+        if (entity->meshRenderer && ImGui::MenuItem("Renderer Enabled", nullptr,
+                                                    entity->meshRenderer->enabled, editing)) {
             SetSelectedMeshRenderersEnabled(id, !entity->meshRenderer->enabled);
         }
         const WorldEntity* contextEntity = world_.Find(id);
@@ -2448,27 +2457,28 @@ void EditorScene::DrawEntityNode(EntityId id) {
                                siblingPosition != siblings.begin();
         const bool canMoveDown = siblingPosition != siblings.end() &&
                                  std::next(siblingPosition) != siblings.end();
-        if (ImGui::MenuItem("Move Up", "Alt+Up", false, canMoveUp)) {
+        if (ImGui::MenuItem("Move Up", "Alt+Up", false, editing && canMoveUp)) {
             hierarchyChanged = MoveEntityInHierarchy(id, -1);
         }
-        if (ImGui::MenuItem("Move Down", "Alt+Down", false, canMoveDown)) {
+        if (ImGui::MenuItem("Move Down", "Alt+Down", false, editing && canMoveDown)) {
             hierarchyChanged = MoveEntityInHierarchy(id, 1);
         }
-        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, editing)) {
             DuplicateSelection();
             hierarchyChanged = true;
         }
         if (ImGui::MenuItem("Copy", "Ctrl+C")) {
             CopySelection();
         }
-        if (ImGui::MenuItem("Cut", "Ctrl+X")) {
+        if (ImGui::MenuItem("Cut", "Ctrl+X", false, editing)) {
             CutSelection();
             hierarchyChanged = true;
         }
-        if (ImGui::MenuItem("Paste as Child", nullptr, false, !entityClipboard_.empty())) {
+        if (ImGui::MenuItem("Paste as Child", nullptr, false,
+                            editing && !entityClipboard_.empty())) {
             hierarchyChanged = PasteEntityClipboard(id);
         }
-        if (ImGui::MenuItem("Delete", "Delete")) {
+        if (ImGui::MenuItem("Delete", "Delete", false, editing)) {
             deleteRequested = true;
         }
         ImGui::Separator();
@@ -2489,7 +2499,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
         ImGui::PopID();
         return;
     }
-    if (ImGui::BeginDragDropSource()) {
+    if (editing && ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(kEntityDragPayload, &id, sizeof(id));
         if (IsHierarchyEntitySelected(id) && hierarchySelection_.size() > 1u) {
             ImGui::Text("Move %zu selected entities", hierarchySelection_.size());
@@ -2498,7 +2508,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
         }
         ImGui::EndDragDropSource();
     }
-    if (ImGui::BeginDragDropTarget()) {
+    if (editing && ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
                 kEntityDragPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
             payload != nullptr && payload->DataSize == sizeof(EntityId)) {
