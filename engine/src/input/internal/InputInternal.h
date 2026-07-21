@@ -40,6 +40,9 @@ struct Input::State {
     float gamepadRightStickY = 0.0f;
     float gamepadLeftTrigger = 0.0f;
     float gamepadRightTrigger = 0.0f;
+    bool keyboardQueryEnabled = true;
+    bool mouseQueryEnabled = true;
+    bool gamepadQueryEnabled = true;
 
     Input::ReplayMode replayMode = Input::ReplayMode::Live;
     std::wstring replayPath;

@@ -13,6 +13,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "ImGuizmo.h"
+#include "input/Input.h"
 #include "model/Model.h"
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
@@ -926,6 +927,10 @@ void EditorScene::DrawPanels() {
     projectPanelMinY_ = 0.0f;
     projectPanelMaxX_ = 0.0f;
     projectPanelMaxY_ = 0.0f;
+    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    if (input != nullptr) {
+        input->SetQueryEnabled(false, false, false);
+    }
     if (showHierarchyPanel_) {
         if (ImGui::Begin("Hierarchy", &showHierarchyPanel_, kPanelFlags)) {
             DrawHierarchyPanel();
@@ -1033,6 +1038,8 @@ void EditorScene::DrawPanels() {
             focusGamePanelRequested_ = false;
         }
         if (ImGui::Begin("Game", &showGamePanel_, kPanelFlags)) {
+            const bool gameViewFocused =
+                ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
             const ImVec2 available = ImGui::GetContentRegionAvail();
             requestedGameWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
             requestedGameHeight_ = (std::max)(1, static_cast<int>(std::lround(available.y)));
@@ -1064,6 +1071,12 @@ void EditorScene::DrawPanels() {
                 ImGui::Image(static_cast<ImTextureID>(output.ptr),
                              ImVec2(static_cast<float>(requestedGameWidth_),
                                     static_cast<float>(requestedGameHeight_)));
+                const bool gameImageHovered = ImGui::IsItemHovered();
+                if (input != nullptr && playModeState_ == PlayModeState::Playing) {
+                    input->SetQueryEnabled(gameViewFocused,
+                                           gameViewFocused && gameImageHovered,
+                                           gameViewFocused);
+                }
             }
         }
         ImGui::End();

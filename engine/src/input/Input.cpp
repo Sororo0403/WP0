@@ -83,43 +83,49 @@ const std::wstring& Input::GetReplayPath() const {
 }
 
 long Input::GetMouseDX() const {
-    return state_->mouseState.lX;
+    return state_->mouseQueryEnabled ? state_->mouseState.lX : 0L;
 }
 
 long Input::GetMouseDY() const {
-    return state_->mouseState.lY;
+    return state_->mouseQueryEnabled ? state_->mouseState.lY : 0L;
 }
 
 long Input::GetMouseWheel() const {
-    return state_->mouseState.lZ;
+    return state_->mouseQueryEnabled ? state_->mouseState.lZ : 0L;
 }
 
 bool Input::IsGamepadConnected() const {
-    return state_->gamepadConnected;
+    return state_->gamepadQueryEnabled && state_->gamepadConnected;
 }
 
 float Input::GetGamepadLeftStickX() const {
-    return state_->gamepadLeftStickX;
+    return state_->gamepadQueryEnabled ? state_->gamepadLeftStickX : 0.0f;
 }
 
 float Input::GetGamepadLeftStickY() const {
-    return state_->gamepadLeftStickY;
+    return state_->gamepadQueryEnabled ? state_->gamepadLeftStickY : 0.0f;
 }
 
 float Input::GetGamepadRightStickX() const {
-    return state_->gamepadRightStickX;
+    return state_->gamepadQueryEnabled ? state_->gamepadRightStickX : 0.0f;
 }
 
 float Input::GetGamepadRightStickY() const {
-    return state_->gamepadRightStickY;
+    return state_->gamepadQueryEnabled ? state_->gamepadRightStickY : 0.0f;
 }
 
 float Input::GetGamepadLeftTrigger() const {
-    return state_->gamepadLeftTrigger;
+    return state_->gamepadQueryEnabled ? state_->gamepadLeftTrigger : 0.0f;
 }
 
 float Input::GetGamepadRightTrigger() const {
-    return state_->gamepadRightTrigger;
+    return state_->gamepadQueryEnabled ? state_->gamepadRightTrigger : 0.0f;
+}
+
+void Input::SetQueryEnabled(bool keyboardEnabled, bool mouseEnabled, bool gamepadEnabled) {
+    state_->keyboardQueryEnabled = keyboardEnabled;
+    state_->mouseQueryEnabled = mouseEnabled;
+    state_->gamepadQueryEnabled = gamepadEnabled;
 }
 
 void Input::ClearInputState(bool clearPrevious) {
@@ -299,35 +305,40 @@ void Input::UpdateGamepad() {
 }
 
 bool Input::IsKeyPress(int dik) const {
-    if (dik < 0 || std::cmp_greater_equal(dik, state_->keyNow.size())) {
+    if (!state_->keyboardQueryEnabled || dik < 0 ||
+        std::cmp_greater_equal(dik, state_->keyNow.size())) {
         return false;
     }
     return (state_->keyNow[dik] & kPressMask) != 0;
 }
 
 bool Input::IsKeyTrigger(int dik) const {
-    if (dik < 0 || std::cmp_greater_equal(dik, state_->keyNow.size())) {
+    if (!state_->keyboardQueryEnabled || dik < 0 ||
+        std::cmp_greater_equal(dik, state_->keyNow.size())) {
         return false;
     }
     return (state_->keyNow[dik] & kPressMask) && !(state_->keyPrev[dik] & kPressMask);
 }
 
 bool Input::IsKeyRelease(int dik) const {
-    if (dik < 0 || std::cmp_greater_equal(dik, state_->keyNow.size())) {
+    if (!state_->keyboardQueryEnabled || dik < 0 ||
+        std::cmp_greater_equal(dik, state_->keyNow.size())) {
         return false;
     }
     return !(state_->keyNow[dik] & kPressMask) && (state_->keyPrev[dik] & kPressMask);
 }
 
 bool Input::IsMousePress(int button) const {
-    if (button < 0 || std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
+    if (!state_->mouseQueryEnabled || button < 0 ||
+        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
         return false;
     }
     return (state_->mouseState.rgbButtons[button] & 0x80) != 0;
 }
 
 bool Input::IsMouseTrigger(int button) const {
-    if (button < 0 || std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
+    if (!state_->mouseQueryEnabled || button < 0 ||
+        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
         return false;
     }
     return (state_->mouseState.rgbButtons[button] & 0x80) &&
@@ -335,7 +346,8 @@ bool Input::IsMouseTrigger(int button) const {
 }
 
 bool Input::IsMouseRelease(int button) const {
-    if (button < 0 || std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
+    if (!state_->mouseQueryEnabled || button < 0 ||
+        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
         return false;
     }
     return !(state_->mouseState.rgbButtons[button] & 0x80) &&
@@ -343,25 +355,30 @@ bool Input::IsMouseRelease(int button) const {
 }
 
 bool Input::IsGamepadButtonPress(WORD button) const {
-    return state_->gamepadConnected && (state_->gamepadState.Gamepad.wButtons & button) != 0;
+    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           (state_->gamepadState.Gamepad.wButtons & button) != 0;
 }
 
 bool Input::IsGamepadButtonTrigger(WORD button) const {
-    return state_->gamepadConnected && (state_->gamepadState.Gamepad.wButtons & button) != 0 &&
+    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           (state_->gamepadState.Gamepad.wButtons & button) != 0 &&
            (state_->gamepadPrevState.Gamepad.wButtons & button) == 0;
 }
 
 bool Input::IsGamepadButtonRelease(WORD button) const {
-    return state_->gamepadPrevConnected && (state_->gamepadState.Gamepad.wButtons & button) == 0 &&
+    return state_->gamepadQueryEnabled && state_->gamepadPrevConnected &&
+           (state_->gamepadState.Gamepad.wButtons & button) == 0 &&
            (state_->gamepadPrevState.Gamepad.wButtons & button) != 0;
 }
 
 bool Input::IsGamepadLeftTriggerTrigger(float threshold) const {
-    return state_->gamepadConnected && state_->gamepadLeftTrigger > threshold &&
+    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           state_->gamepadLeftTrigger > threshold &&
            NormalizeTrigger(state_->gamepadPrevState.Gamepad.bLeftTrigger) <= threshold;
 }
 
 bool Input::IsGamepadRightTriggerTrigger(float threshold) const {
-    return state_->gamepadConnected && state_->gamepadRightTrigger > threshold &&
+    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           state_->gamepadRightTrigger > threshold &&
            NormalizeTrigger(state_->gamepadPrevState.Gamepad.bRightTrigger) <= threshold;
 }

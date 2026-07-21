@@ -34,6 +34,11 @@ public:
     void Update(float deltaTime);
 
     /// <summary>
+    /// 入力状態の取得をデバイス種別ごとに有効化する
+    /// </summary>
+    void SetQueryEnabled(bool keyboardEnabled, bool mouseEnabled, bool gamepadEnabled);
+
+    /// <summary>
     /// 現在の入力をフレーム単位でJSONへ保存する録画を開始する
     /// </summary>
     bool StartRecording(const std::wstring& path, float fixedDeltaTime);
