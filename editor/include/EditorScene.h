@@ -67,7 +67,9 @@ private:
     void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
-    void HandleSceneCameraControls(bool imageHovered);
+    void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
+                                   bool imageHovered);
+    bool FocusSceneCameraOnSelection();
     void HandleSceneContextMenu(const ImVec2& imageMin, const ImVec2& imageMax,
                                 bool imageHovered);
     void CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent = {});
@@ -272,6 +274,11 @@ private:
     float scaleSnap_ = 0.1f;
     bool showSceneGrid_ = true;
     bool sceneCameraNavigating_ = false;
+    bool sceneCameraPanning_ = false;
+    bool sceneCameraCursorCaptured_ = false;
+    float sceneCameraPointerTravel_ = 0.0f;
+    int sceneCameraCursorRestoreX_ = 0;
+    int sceneCameraCursorRestoreY_ = 0;
     DirectX::XMFLOAT3 sceneContextCreatePosition_{};
     EntityId activeGizmoEntity_{};
     bool gizmoWasUsing_ = false;
