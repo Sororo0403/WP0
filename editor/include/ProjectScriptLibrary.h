@@ -22,4 +22,5 @@ public:
 private:
     void* module_ = nullptr;
     std::filesystem::path path_;
+    std::filesystem::path loadedPath_;
 };

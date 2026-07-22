@@ -5,6 +5,7 @@
 
 #include <Windows.h>
 
+#include <chrono>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -18,9 +19,16 @@ std::filesystem::path ResolveModulePath(const std::filesystem::path& projectRoot
 #else
     constexpr wchar_t configuration[] = L"Release";
 #endif
-    return (projectRoot / L"scripts" / L"bin" / L"x64" / configuration /
+    return (projectRoot / L"Library" / L"ScriptAssemblies" / L"x64" / configuration /
             L"ProjectScripts.dll")
         .lexically_normal();
+}
+
+std::filesystem::path CreateLoadPath(const std::filesystem::path& modulePath) {
+    const auto value = std::chrono::steady_clock::now().time_since_epoch().count();
+    return modulePath.parent_path() / L"Loaded" /
+           (L"ProjectScripts_" + std::to_wstring(GetCurrentProcessId()) + L"_" +
+            std::to_wstring(value) + L".dll");
 }
 }
 
@@ -28,6 +36,8 @@ ProjectScriptLibrary::~ProjectScriptLibrary() {
     if (module_ != nullptr) {
         FreeLibrary(static_cast<HMODULE>(module_));
     }
+    std::error_code error;
+    std::filesystem::remove(loadedPath_, error);
 }
 
 bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input* input,
@@ -44,8 +54,21 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
         return false;
     }
 
-    HMODULE module = LoadLibraryW(path_.c_str());
+    loadedPath_ = CreateLoadPath(path_);
+    std::filesystem::create_directories(loadedPath_.parent_path(), filesystemError);
+    if (filesystemError ||
+        !std::filesystem::copy_file(path_, loadedPath_,
+                                    std::filesystem::copy_options::overwrite_existing,
+                                    filesystemError)) {
+        error = "Project Script module could not be prepared for loading: " +
+                path_.generic_string();
+        loadedPath_.clear();
+        return false;
+    }
+    HMODULE module = LoadLibraryW(loadedPath_.c_str());
     if (module == nullptr) {
+        std::filesystem::remove(loadedPath_, filesystemError);
+        loadedPath_.clear();
         error = "Project Script module could not be loaded: " + path_.generic_string();
         return false;
     }

@@ -114,6 +114,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentProjectsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentScenesStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ScriptAsset.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\ScriptBuildService.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)externals\imguizmo\ImGuizmo.cpp">
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
     </ClCompile>
@@ -128,6 +129,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentProjectsStore.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentScenesStore.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ScriptAsset.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\ScriptBuildService.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)externals\imguizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>

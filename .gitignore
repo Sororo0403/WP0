@@ -370,3 +370,6 @@ imgui.ini
 # Codex files
 /.codex
 app/imgui.ini
+
+# LikeEngine project import and Script build cache
+/projects/*/Library/

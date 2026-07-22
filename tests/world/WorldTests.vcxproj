@@ -87,18 +87,13 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectScriptLibrary.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ScriptAsset.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ScriptBuildService.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\engine\Engine.vcxproj">
       <Project>{8D69C2B4-4F39-47F0-9A40-4CB78EC442A1}</Project>
       <SetPlatform>Platform=$(Platform)</SetPlatform>
       <Properties>Configuration=$(Configuration);Platform=$(Platform)</Properties>
-    </ProjectReference>
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\projects\test\scripts\ProjectScripts.vcxproj">
-      <Project>{5E4892FD-8050-46B8-AC75-0D29816A29D3}</Project>
-      <SetPlatform>Platform=$(Platform)</SetPlatform>
-      <Properties>Configuration=$(Configuration);Platform=$(Platform)</Properties>
-      <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -2,6 +2,7 @@
 
 #include "AssetImportPlanner.h"
 #include "ScriptAsset.h"
+#include "ScriptBuildService.h"
 
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
@@ -383,7 +384,8 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
     std::string behaviorRequirementError;
     std::string scriptModuleError;
-    if (!projectScripts_.Load(projectRoot_, ctx.systems.input, behaviorRegistry_,
+    if (!ScriptBuildService::BuildIfNeeded(projectRoot_, scriptModuleError) ||
+        !projectScripts_.Load(projectRoot_, ctx.systems.input, behaviorRegistry_,
                               scriptModuleError)) {
         status_ = "Error: " + scriptModuleError;
     } else if (!ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {

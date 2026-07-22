@@ -1,6 +1,7 @@
 #include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
 #include "ProjectScriptLibrary.h"
+#include "ScriptBuildService.h"
 #include "RecentScenesStore.h"
 #include "ScriptAsset.h"
 #include "collision/CollisionUtil.h"
@@ -142,9 +143,12 @@ int main() {
     ProjectScriptLibrary projectScripts;
     BehaviorRegistry projectBehaviorRegistry;
     std::string projectScriptError;
-    const bool projectScriptsLoaded = projectScripts.Load(
-        repositoryRoot / L"projects" / L"test", nullptr, projectBehaviorRegistry,
-        projectScriptError);
+    const std::filesystem::path testProjectRoot =
+        repositoryRoot / L"projects" / L"test";
+    const bool projectScriptsLoaded =
+        ScriptBuildService::BuildIfNeeded(testProjectRoot, projectScriptError) &&
+        projectScripts.Load(testProjectRoot, nullptr, projectBehaviorRegistry,
+                            projectScriptError);
     std::unique_ptr<Behavior> firstPerson =
         projectBehaviorRegistry.Create("FirstPersonController");
     std::unique_ptr<Behavior> rotator = projectBehaviorRegistry.Create("Rotator");
@@ -652,6 +656,7 @@ int main() {
                    createdProject.assetRoot == projectDirectory / L"assets" &&
                    createdProject.sceneRoot == projectDirectory / L"scenes" &&
                    std::filesystem::is_regular_file(createdProject.manifestPath) &&
+                   std::filesystem::is_regular_file(projectDirectory / L".gitignore") &&
                    std::filesystem::is_directory(createdProject.assetRoot) &&
                    std::filesystem::is_directory(createdProject.sceneRoot),
                "Created project structure is invalid.")) {

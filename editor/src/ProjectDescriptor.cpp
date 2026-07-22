@@ -169,6 +169,7 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
     }
     const std::filesystem::path manifest = root / manifestName;
     const std::filesystem::path temporary = manifest.wstring() + L".tmp";
+    const std::filesystem::path ignore = root / L".gitignore";
     const std::filesystem::path assets = root / L"assets";
     const std::filesystem::path scenes = root / L"scenes";
     const nlohmann::json json = {
@@ -193,6 +194,19 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
         return false;
     }
     try {
+        std::ofstream ignoreStream(ignore, std::ios::trunc);
+        ignoreStream << "/Library/\n";
+        ignoreStream.close();
+        if (!ignoreStream) {
+            throw std::ios_base::failure("project ignore write failed");
+        }
+    } catch (const std::exception&) {
+        std::filesystem::remove(scenes, filesystemError);
+        std::filesystem::remove(assets, filesystemError);
+        error = "Could not write the project ignore file.";
+        return false;
+    }
+    try {
         std::ofstream stream(temporary, std::ios::trunc);
         stream << json.dump(2) << '\n';
         stream.close();
@@ -201,6 +215,7 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
         }
     } catch (const std::exception&) {
         std::filesystem::remove(temporary, filesystemError);
+        std::filesystem::remove(ignore, filesystemError);
         std::filesystem::remove(scenes, filesystemError);
         std::filesystem::remove(assets, filesystemError);
         error = "Could not write the project manifest.";
@@ -208,6 +223,7 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
     }
     if (!MoveFileExW(temporary.c_str(), manifest.c_str(), MOVEFILE_WRITE_THROUGH)) {
         std::filesystem::remove(temporary, filesystemError);
+        std::filesystem::remove(ignore, filesystemError);
         std::filesystem::remove(scenes, filesystemError);
         std::filesystem::remove(assets, filesystemError);
         error = "Could not finish writing the project manifest.";
