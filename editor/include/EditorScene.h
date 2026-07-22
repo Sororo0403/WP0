@@ -82,6 +82,7 @@ private:
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
     void AssignScriptAsset(EntityId entity, const std::filesystem::path& path,
                            std::optional<size_t> scriptIndex = std::nullopt);
+    void ClearScriptAsset(EntityId entity, size_t scriptIndex);
     void AssignBaseColorTexture(EntityId entity, const std::filesystem::path& path);
     void AssignNormalTexture(EntityId entity, const std::filesystem::path& path);
     void AssignRoughnessTexture(EntityId entity, const std::filesystem::path& path);

@@ -2860,7 +2860,9 @@ void EditorScene::DrawInspectorPanel() {
                                                 : behavior.scriptAssetPath;
             ImGui::TextUnformatted("Script");
             ImGui::SameLine();
-            ImGui::Button(scriptLabel.c_str(), {-FLT_MIN, 0.0f});
+            if (ImGui::Button(scriptLabel.c_str(), {-FLT_MIN, 0.0f})) {
+                ImGui::OpenPopup("ScriptAssetPicker");
+            }
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* payload =
                         ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
@@ -2870,6 +2872,30 @@ void EditorScene::DrawInspectorPanel() {
                                       scriptIndex);
                 }
                 ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopup("ScriptAssetPicker")) {
+                if (ImGui::MenuItem("None", nullptr, behavior.scriptAssetPath.empty(),
+                                    !behavior.scriptAssetPath.empty())) {
+                    ClearScriptAsset(selection_, scriptIndex);
+                }
+                ImGui::Separator();
+                if (scriptAssets_.empty()) {
+                    ImGui::TextDisabled("No Script assets found.");
+                } else {
+                    for (const std::filesystem::path& scriptAsset : scriptAssets_) {
+                        const std::string assetPath = scriptAsset.generic_string();
+                        const std::string label =
+                            scriptAsset.filename().generic_string() + "##" + assetPath;
+                        if (ImGui::MenuItem(label.c_str(), nullptr,
+                                            behavior.scriptAssetPath == assetPath)) {
+                            AssignScriptAsset(selection_, scriptAsset, scriptIndex);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("%s", assetPath.c_str());
+                        }
+                    }
+                }
+                ImGui::EndPopup();
             }
             ImGui::TextDisabled("Runtime type: %s",
                                 behavior.type.empty() ? "None" : behavior.type.c_str());
@@ -4139,6 +4165,25 @@ void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::pa
                         selectionBefore);
     status_ = std::string(scriptIndex ? "Replaced" : "Added") +
               " Script component: " + assetPath;
+}
+
+void EditorScene::ClearScriptAsset(EntityId entityId, size_t scriptIndex) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || scriptIndex >= entity->scripts.size()) {
+        status_ = "The target Script component no longer exists.";
+        return;
+    }
+    BehaviorComponent& component = entity->scripts[scriptIndex];
+    if (component.type.empty() && component.scriptAssetPath.empty()) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const bool enabled = component.enabled;
+    component = BehaviorComponent{};
+    component.enabled = enabled;
+    RecordImmediateEdit("Clear Script", before, selectionBefore);
+    status_ = "Cleared Script component assignment.";
 }
 
 void EditorScene::AssignBaseColorTexture(EntityId entityId,
