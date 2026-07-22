@@ -92,8 +92,10 @@ private:
 
 class ConfigurableBehavior final : public Behavior {
 public:
-    ConfigurableBehavior(float& speed, EntityId& target)
-        : speed_(speed), target_(target) {}
+    ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
+                         ScriptVector3& offset)
+        : speed_(speed), target_(target), enabled_(enabled), count_(count),
+          offset_(offset) {}
 
     void OnConfigure(const ScriptPropertyValueView* properties, size_t count) override {
         if (const ScriptPropertyValueView* speed = FindScriptProperty(
@@ -104,11 +106,26 @@ public:
                 properties, count, "Target", ScriptPropertyType::Entity)) {
             target_ = target->entityValue;
         }
+        if (const ScriptPropertyValueView* enabled = FindScriptProperty(
+                properties, count, "Aggressive", ScriptPropertyType::Boolean)) {
+            enabled_ = enabled->booleanValue;
+        }
+        if (const ScriptPropertyValueView* value = FindScriptProperty(
+                properties, count, "Lives", ScriptPropertyType::Integer)) {
+            count_ = value->integerValue;
+        }
+        if (const ScriptPropertyValueView* offset = FindScriptProperty(
+                properties, count, "Offset", ScriptPropertyType::Vector3)) {
+            offset_ = offset->vector3Value;
+        }
     }
 
 private:
     float& speed_;
     EntityId& target_;
+    bool& enabled_;
+    int32_t& count_;
+    ScriptVector3& offset_;
 };
 
 bool Check(bool condition, const char* message) {
@@ -126,6 +143,13 @@ bool IsVerticallyCentered(const ModelPrimitiveFactory::PrimitiveMeshData& primit
         maximum = (std::max)(maximum, vertex.position.y);
     }
     return !primitive.vertices.empty() && std::abs(minimum + maximum) < 0.0001f;
+}
+
+const ScriptPropertyValue* FindStoredScriptProperty(const BehaviorComponent& component,
+                                                    std::string_view name) {
+    const auto found = std::ranges::find(component.properties, name,
+                                         &ScriptPropertyValue::name);
+    return found == component.properties.end() ? nullptr : &*found;
 }
 
 bool HasOutwardWinding(const ModelPrimitiveFactory::PrimitiveMeshData& primitive) {
@@ -226,11 +250,21 @@ int main() {
         projectBehaviorRegistry.Create("ChasePlayer");
     const std::vector<ScriptPropertyDefinition>* chaseProperties =
         projectBehaviorRegistry.Properties("ChasePlayer");
+    const std::vector<ScriptPropertyDefinition>* controllerProperties =
+        projectBehaviorRegistry.Properties("FirstPersonController");
     if (!Check(projectScriptsLoaded && projectScripts.IsLoaded() && firstPerson && rotator &&
                    chasePlayer &&
                    projectBehaviorRegistry.Requirements("FirstPersonController") != nullptr &&
                    projectBehaviorRegistry.Requirements("FirstPersonController")
                        ->characterController &&
+                   controllerProperties != nullptr &&
+                   controllerProperties->size() == 6u &&
+                   (*controllerProperties)[0].name == "Move Speed" &&
+                   (*controllerProperties)[0].defaultFloat == 4.0f &&
+                   (*controllerProperties)[1].name == "Sprint Speed" &&
+                   (*controllerProperties)[1].defaultFloat == 8.0f &&
+                   (*controllerProperties)[5].name == "Invert Y" &&
+                   (*controllerProperties)[5].type == ScriptPropertyType::Boolean &&
                    projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
                    projectBehaviorRegistry.Requirements("ChasePlayer")
                        ->characterController &&
@@ -320,16 +354,39 @@ int main() {
     }
     float configuredSpeed = 0.0f;
     EntityId configuredTarget{};
+    bool configuredBoolean = false;
+    int32_t configuredInteger = 0;
+    ScriptVector3 configuredVector{};
     const EntityId expectedConfiguredTarget = EntityId::New();
+    std::vector<ScriptPropertyDefinition> configurableDefinitions = {
+        {"Speed", ScriptPropertyType::Float, 2.5f, 0.0f, 20.0f},
+        {"Target", ScriptPropertyType::Entity},
+    };
+    ScriptPropertyDefinition booleanDefinition{};
+    booleanDefinition.name = "Aggressive";
+    booleanDefinition.type = ScriptPropertyType::Boolean;
+    booleanDefinition.defaultBoolean = true;
+    configurableDefinitions.push_back(booleanDefinition);
+    ScriptPropertyDefinition integerDefinition{};
+    integerDefinition.name = "Lives";
+    integerDefinition.type = ScriptPropertyType::Integer;
+    integerDefinition.defaultInteger = 3;
+    integerDefinition.minimumInteger = 1;
+    integerDefinition.maximumInteger = 99;
+    configurableDefinitions.push_back(integerDefinition);
+    ScriptPropertyDefinition vectorDefinition{};
+    vectorDefinition.name = "Offset";
+    vectorDefinition.type = ScriptPropertyType::Vector3;
+    vectorDefinition.defaultVector3 = {1.0f, 2.0f, 3.0f};
+    configurableDefinitions.push_back(vectorDefinition);
     if (!Check(behaviorRegistry.Register(
                    "Configurable",
                    [&] {
                        return std::make_unique<ConfigurableBehavior>(configuredSpeed,
-                                                                     configuredTarget);
+                            configuredTarget, configuredBoolean, configuredInteger,
+                            configuredVector);
                    },
-                   {}, "",
-                   {{"Speed", ScriptPropertyType::Float, 2.5f, 0.0f, 20.0f},
-                    {"Target", ScriptPropertyType::Entity}}),
+                   {}, "", std::move(configurableDefinitions)),
                "Script property metadata could not be registered.")) {
         return 146;
     }
@@ -338,16 +395,33 @@ int main() {
         {"Speed", ScriptPropertyType::Float, 7.5f, {}},
         {"Target", ScriptPropertyType::Entity, 0.0f, expectedConfiguredTarget},
     };
+    ScriptPropertyValue booleanValue{};
+    booleanValue.name = "Aggressive";
+    booleanValue.type = ScriptPropertyType::Boolean;
+    booleanValue.booleanValue = true;
+    configurableComponent.properties.push_back(booleanValue);
+    ScriptPropertyValue integerValue{};
+    integerValue.name = "Lives";
+    integerValue.type = ScriptPropertyType::Integer;
+    integerValue.integerValue = 7;
+    configurableComponent.properties.push_back(integerValue);
+    ScriptPropertyValue vectorValue{};
+    vectorValue.name = "Offset";
+    vectorValue.type = ScriptPropertyType::Vector3;
+    vectorValue.vector3Value = {4.0f, 5.0f, 6.0f};
+    configurableComponent.properties.push_back(vectorValue);
     std::unique_ptr<Behavior> configurableBehavior =
         behaviorRegistry.Create("Configurable");
     const std::vector<ScriptPropertyDefinition>* configurableProperties =
         behaviorRegistry.Properties("Configurable");
     if (!Check(configurableBehavior && configurableProperties != nullptr &&
-                   configurableProperties->size() == 2u &&
+                   configurableProperties->size() == 5u &&
                    behaviorRegistry.Configure("Configurable", configurableComponent,
                                               *configurableBehavior) &&
                    configuredSpeed == 7.5f &&
-                   configuredTarget == expectedConfiguredTarget,
+                   configuredTarget == expectedConfiguredTarget && configuredBoolean &&
+                   configuredInteger == 7 && configuredVector.x == 4.0f &&
+                   configuredVector.y == 5.0f && configuredVector.z == 6.0f,
                "Script property values were not configured on the Behavior.")) {
         return 147;
     }
@@ -489,6 +563,21 @@ int main() {
         {"Speed", ScriptPropertyType::Float, 3.5f, {}},
         {"Target", ScriptPropertyType::Entity, 0.0f, root},
     };
+    ScriptPropertyValue serializedBoolean{};
+    serializedBoolean.name = "Aggressive";
+    serializedBoolean.type = ScriptPropertyType::Boolean;
+    serializedBoolean.booleanValue = true;
+    childEntity->scripts[0].properties.push_back(serializedBoolean);
+    ScriptPropertyValue serializedInteger{};
+    serializedInteger.name = "Lives";
+    serializedInteger.type = ScriptPropertyType::Integer;
+    serializedInteger.integerValue = 7;
+    childEntity->scripts[0].properties.push_back(serializedInteger);
+    ScriptPropertyValue serializedVector{};
+    serializedVector.name = "Offset";
+    serializedVector.type = ScriptPropertyType::Vector3;
+    serializedVector.vector3Value = {4.0f, 5.0f, 6.0f};
+    childEntity->scripts[0].properties.push_back(serializedVector);
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -587,6 +676,20 @@ int main() {
         return 6;
     }
     const WorldEntity* restoredChild = restored.Find(child);
+    const bool hasRestoredScript =
+        restoredChild != nullptr && !restoredChild->scripts.empty();
+    const ScriptPropertyValue* restoredSpeed =
+        hasRestoredScript ? FindStoredScriptProperty(restoredChild->scripts[0], "Speed")
+                          : nullptr;
+    const ScriptPropertyValue* restoredTarget =
+        hasRestoredScript ? FindStoredScriptProperty(restoredChild->scripts[0], "Target")
+                          : nullptr;
+    const ScriptPropertyValue* restoredBoolean = hasRestoredScript
+        ? FindStoredScriptProperty(restoredChild->scripts[0], "Aggressive") : nullptr;
+    const ScriptPropertyValue* restoredInteger = hasRestoredScript
+        ? FindStoredScriptProperty(restoredChild->scripts[0], "Lives") : nullptr;
+    const ScriptPropertyValue* restoredVector = hasRestoredScript
+        ? FindStoredScriptProperty(restoredChild->scripts[0], "Offset") : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restoredChild->parent == root && restoredChild->transform.position.x == 1.0f &&
                    restoredChild->transform.rotationDegrees.z == 30.0f &&
@@ -621,15 +724,19 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   restoredChild->scripts[0].properties.size() == 2u &&
-                   restoredChild->scripts[0].properties[0].name == "Speed" &&
-                   restoredChild->scripts[0].properties[0].type ==
-                       ScriptPropertyType::Float &&
-                   restoredChild->scripts[0].properties[0].floatValue == 3.5f &&
-                   restoredChild->scripts[0].properties[1].name == "Target" &&
-                   restoredChild->scripts[0].properties[1].type ==
-                       ScriptPropertyType::Entity &&
-                   restoredChild->scripts[0].properties[1].entityValue == root &&
+                   restoredChild->scripts[0].properties.size() == 5u &&
+                   restoredSpeed != nullptr && restoredSpeed->type == ScriptPropertyType::Float &&
+                   restoredSpeed->floatValue == 3.5f && restoredTarget != nullptr &&
+                   restoredTarget->type == ScriptPropertyType::Entity &&
+                   restoredTarget->entityValue == root && restoredBoolean != nullptr &&
+                   restoredBoolean->type == ScriptPropertyType::Boolean &&
+                   restoredBoolean->booleanValue && restoredInteger != nullptr &&
+                   restoredInteger->type == ScriptPropertyType::Integer &&
+                   restoredInteger->integerValue == 7 && restoredVector != nullptr &&
+                   restoredVector->type == ScriptPropertyType::Vector3 &&
+                   restoredVector->vector3Value.x == 4.0f &&
+                   restoredVector->vector3Value.y == 5.0f &&
+                   restoredVector->vector3Value.z == 6.0f &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -677,9 +784,12 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   duplicateChild->scripts[0].properties.size() == 2u &&
+                   duplicateChild->scripts[0].properties.size() == 5u &&
                    duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
                    duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
+                   duplicateChild->scripts[0].properties[2].booleanValue &&
+                   duplicateChild->scripts[0].properties[3].integerValue == 7 &&
+                   duplicateChild->scripts[0].properties[4].vector3Value.z == 6.0f &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&
@@ -799,6 +909,24 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidScriptProperty, rejected, &error),
                "Invalid Script property data was accepted.")) {
         return 149;
+    }
+    const std::string invalidBooleanProperty =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Boolean","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Scripts":[{"enabled":true,"type":"Configurable","properties":{"Aggressive":{"type":"Boolean","value":1}}}]}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidBooleanProperty, rejected, &error),
+               "Invalid Script Boolean property was accepted.")) {
+        return 150;
+    }
+    const std::string invalidIntegerProperty =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Integer","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Scripts":[{"enabled":true,"type":"Configurable","properties":{"Lives":{"type":"Integer","value":1.5}}}]}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidIntegerProperty, rejected, &error),
+               "Invalid Script Integer property was accepted.")) {
+        return 151;
+    }
+    const std::string invalidVectorProperty =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Vector","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Scripts":[{"enabled":true,"type":"Configurable","properties":{"Offset":{"type":"Vector3","value":[1,2]}}}]}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidVectorProperty, rejected, &error),
+               "Invalid Script Vector3 property was accepted.")) {
+        return 152;
     }
     const std::string invalidBoxCollider =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Collider","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"BoxCollider":{"enabled":true,"center":[0,0,0],"size":[1,0,1],"isTrigger":false}}}]})";

@@ -7,6 +7,7 @@
 #include <DirectXMath.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <new>
 
@@ -15,15 +16,50 @@ class FirstPersonController final : public Behavior {
 public:
     explicit FirstPersonController(Input* input);
 
+    void OnConfigure(const ScriptPropertyValueView* properties, size_t count) override;
     void OnStart(World& world, EntityId entity) override;
     void OnUpdate(World& world, EntityId entity, float deltaTime) override;
 
 private:
     Input* input_ = nullptr;
+    float moveSpeed_ = 4.0f;
+    float sprintSpeed_ = 8.0f;
+    float mouseSensitivity_ = 0.1f;
+    float gamepadLookSpeed_ = 120.0f;
+    float gravity_ = -24.0f;
+    bool invertY_ = false;
     float verticalVelocity_ = 0.0f;
 };
 
 FirstPersonController::FirstPersonController(Input* input) : input_(input) {}
+
+void FirstPersonController::OnConfigure(const ScriptPropertyValueView* properties,
+                                        size_t count) {
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Move Speed", ScriptPropertyType::Float)) {
+        moveSpeed_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Sprint Speed", ScriptPropertyType::Float)) {
+        sprintSpeed_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Mouse Sensitivity", ScriptPropertyType::Float)) {
+        mouseSensitivity_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Gamepad Look Speed", ScriptPropertyType::Float)) {
+        gamepadLookSpeed_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Gravity", ScriptPropertyType::Float)) {
+        gravity_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Invert Y", ScriptPropertyType::Boolean)) {
+        invertY_ = value->booleanValue;
+    }
+}
 
 void FirstPersonController::OnStart(World& world, EntityId entity) {
     (void)world;
@@ -39,17 +75,17 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     }
 
     TransformComponent& transform = target->transform;
-    constexpr float mouseSensitivity = 0.1f;
-    constexpr float gamepadLookSpeed = 120.0f;
+    const float verticalLookSign = invertY_ ? -1.0f : 1.0f;
     transform.rotationDegrees.x = std::clamp(
         transform.rotationDegrees.x +
-            static_cast<float>(input_->GetMouseDY()) * mouseSensitivity -
-            input_->GetGamepadRightStickY() * gamepadLookSpeed * deltaTime,
+            verticalLookSign *
+                (static_cast<float>(input_->GetMouseDY()) * mouseSensitivity_ -
+                 input_->GetGamepadRightStickY() * gamepadLookSpeed_ * deltaTime),
         -89.0f, 89.0f);
     transform.rotationDegrees.y = std::remainder(
         transform.rotationDegrees.y +
-            static_cast<float>(input_->GetMouseDX()) * mouseSensitivity +
-            input_->GetGamepadRightStickX() * gamepadLookSpeed * deltaTime,
+            static_cast<float>(input_->GetMouseDX()) * mouseSensitivity_ +
+            input_->GetGamepadRightStickX() * gamepadLookSpeed_ * deltaTime,
         360.0f);
 
     float forwardInput = input_->GetGamepadLeftStickY();
@@ -76,12 +112,11 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     const float cosYaw = std::cos(yaw);
     const bool sprinting =
         input_->IsKeyPress(DIK_LSHIFT) || input_->IsKeyPress(DIK_RSHIFT);
-    const float speed = sprinting ? 8.0f : 4.0f;
+    const float speed = sprinting ? sprintSpeed_ : moveSpeed_;
     const float distance = speed * deltaTime;
-    constexpr float gravity = -24.0f;
     constexpr float terminalVelocity = -50.0f;
     verticalVelocity_ =
-        (std::max)(verticalVelocity_ + gravity * deltaTime, terminalVelocity);
+        (std::max)(verticalVelocity_ + gravity_ * deltaTime, terminalVelocity);
     const DirectX::XMFLOAT3 displacement{
         (sinYaw * forwardInput + cosYaw * rightInput) * distance,
         verticalVelocity_ * deltaTime,
@@ -102,6 +137,37 @@ Behavior* CreateFirstPersonController(Input* input) {
 }
 
 ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
+    static constexpr std::array properties = {
+        ScriptPropertyDescriptor{.name = "Move Speed",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 4.0f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 20.0f},
+        ScriptPropertyDescriptor{.name = "Sprint Speed",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 8.0f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 40.0f},
+        ScriptPropertyDescriptor{.name = "Mouse Sensitivity",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 0.1f,
+                                 .minimumFloat = 0.001f,
+                                 .maximumFloat = 2.0f},
+        ScriptPropertyDescriptor{.name = "Gamepad Look Speed",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 120.0f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 720.0f},
+        ScriptPropertyDescriptor{.name = "Gravity",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = -24.0f,
+                                 .minimumFloat = -100.0f,
+                                 .maximumFloat = 0.0f},
+        ScriptPropertyDescriptor{.name = "Invert Y",
+                                 .type = ScriptPropertyType::Boolean,
+                                 .defaultBoolean = false},
+    };
     return {"FirstPersonController", "asset://Scripts/FirstPersonController.cpp",
-            &CreateFirstPersonController, {.characterController = true}};
+            &CreateFirstPersonController, {.characterController = true},
+            properties.data(), properties.size()};
 }

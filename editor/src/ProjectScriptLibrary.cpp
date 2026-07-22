@@ -162,6 +162,16 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                  property.minimumFloat > property.maximumFloat ||
                  property.defaultFloat < property.minimumFloat ||
                  property.defaultFloat > property.maximumFloat);
+            const bool invalidInteger =
+                property.type == ScriptPropertyType::Integer &&
+                (property.minimumInteger > property.maximumInteger ||
+                 property.defaultInteger < property.minimumInteger ||
+                 property.defaultInteger > property.maximumInteger);
+            const bool invalidVector3 =
+                property.type == ScriptPropertyType::Vector3 &&
+                (!std::isfinite(property.defaultVector3.x) ||
+                 !std::isfinite(property.defaultVector3.y) ||
+                 !std::isfinite(property.defaultVector3.z));
             bool duplicate = false;
             for (size_t previous = 0u; previous < propertyIndex; ++previous) {
                 duplicate = duplicate ||
@@ -169,7 +179,8 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
             }
             if (propertyName.empty() || propertyName.size() > 128u || duplicate ||
                 property.type < ScriptPropertyType::Float ||
-                property.type > ScriptPropertyType::Entity || invalidFloat) {
+                property.type > ScriptPropertyType::Vector3 || invalidFloat ||
+                invalidInteger || invalidVector3) {
                 FreeLibrary(module);
                 error = "Project Script module contains an invalid property.";
                 return false;
@@ -189,7 +200,10 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
             const ScriptPropertyDescriptor& property =
                 registration.properties[propertyIndex];
             properties.push_back({property.name, property.type, property.defaultFloat,
-                                  property.minimumFloat, property.maximumFloat});
+                                  property.minimumFloat, property.maximumFloat,
+                                  property.defaultBoolean, property.defaultInteger,
+                                  property.minimumInteger, property.maximumInteger,
+                                  property.defaultVector3});
         }
         if (!registry.Register(
                 type,

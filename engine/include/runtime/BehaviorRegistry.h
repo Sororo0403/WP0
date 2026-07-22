@@ -21,6 +21,11 @@ struct ScriptPropertyDefinition {
     float defaultFloat = 0.0f;
     float minimumFloat = 0.0f;
     float maximumFloat = 0.0f;
+    bool defaultBoolean = false;
+    int32_t defaultInteger = 0;
+    int32_t minimumInteger = (std::numeric_limits<int32_t>::min)();
+    int32_t maximumInteger = (std::numeric_limits<int32_t>::max)();
+    ScriptVector3 defaultVector3{};
 };
 
 class BehaviorRegistry {

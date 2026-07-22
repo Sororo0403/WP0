@@ -5,10 +5,20 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 enum class ScriptPropertyType : uint32_t {
     Float = 0,
     Entity = 1,
+    Boolean = 2,
+    Integer = 3,
+    Vector3 = 4,
+};
+
+struct ScriptVector3 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
 };
 
 struct ScriptPropertyDescriptor {
@@ -17,6 +27,11 @@ struct ScriptPropertyDescriptor {
     float defaultFloat = 0.0f;
     float minimumFloat = 0.0f;
     float maximumFloat = 0.0f;
+    bool defaultBoolean = false;
+    int32_t defaultInteger = 0;
+    int32_t minimumInteger = (std::numeric_limits<int32_t>::min)();
+    int32_t maximumInteger = (std::numeric_limits<int32_t>::max)();
+    ScriptVector3 defaultVector3{};
 };
 
 struct ScriptPropertyValueView {
@@ -24,6 +39,9 @@ struct ScriptPropertyValueView {
     ScriptPropertyType type = ScriptPropertyType::Float;
     float floatValue = 0.0f;
     EntityId entityValue{};
+    bool booleanValue = false;
+    int32_t integerValue = 0;
+    ScriptVector3 vector3Value{};
 };
 
 [[nodiscard]] inline const ScriptPropertyValueView* FindScriptProperty(

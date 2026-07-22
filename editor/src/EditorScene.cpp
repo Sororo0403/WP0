@@ -3092,6 +3092,82 @@ void EditorScene::DrawInspectorPanel() {
                         if (ImGui::IsItemDeactivatedAfterEdit()) {
                             CommitHistoryEdit();
                         }
+                    } else if (definition.type == ScriptPropertyType::Boolean) {
+                        bool value = stored != behavior.properties.end() &&
+                                             stored->type == definition.type
+                                         ? stored->booleanValue
+                                         : definition.defaultBoolean;
+                        if (ImGui::Checkbox(definition.name.c_str(), &value)) {
+                            const std::string propertyBefore =
+                                WorldSerializer::Serialize(world_);
+                            if (stored == behavior.properties.end()) {
+                                behavior.properties.push_back({});
+                                stored = std::prev(behavior.properties.end());
+                            }
+                            *stored = {};
+                            stored->name = definition.name;
+                            stored->type = definition.type;
+                            stored->booleanValue = value;
+                            RecordImmediateEdit("Modify Script Property", propertyBefore,
+                                                selectionBefore);
+                            status_ = "Modified Script property.";
+                        }
+                    } else if (definition.type == ScriptPropertyType::Integer) {
+                        int value = stored != behavior.properties.end() &&
+                                            stored->type == definition.type
+                                        ? stored->integerValue
+                                        : definition.defaultInteger;
+                        if (ImGui::DragInt(definition.name.c_str(), &value, 1.0f,
+                                           definition.minimumInteger,
+                                           definition.maximumInteger, "%d",
+                                           ImGuiSliderFlags_AlwaysClamp)) {
+                            if (stored == behavior.properties.end()) {
+                                behavior.properties.push_back({});
+                                stored = std::prev(behavior.properties.end());
+                            }
+                            if (stored->type != definition.type) {
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                            }
+                            stored->integerValue = value;
+                            RefreshDirty();
+                            status_ = "Modified Script property.";
+                        }
+                        if (ImGui::IsItemActivated()) {
+                            BeginHistoryEdit("Modify Script Property");
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            CommitHistoryEdit();
+                        }
+                    } else if (definition.type == ScriptPropertyType::Vector3) {
+                        ScriptVector3 value = stored != behavior.properties.end() &&
+                                                      stored->type == definition.type
+                                                  ? stored->vector3Value
+                                                  : definition.defaultVector3;
+                        float components[3]{value.x, value.y, value.z};
+                        if (ImGui::DragFloat3(definition.name.c_str(), components, 0.1f,
+                                              0.0f, 0.0f, "%.3f")) {
+                            if (stored == behavior.properties.end()) {
+                                behavior.properties.push_back({});
+                                stored = std::prev(behavior.properties.end());
+                            }
+                            if (stored->type != definition.type) {
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                            }
+                            stored->vector3Value =
+                                {components[0], components[1], components[2]};
+                            RefreshDirty();
+                            status_ = "Modified Script property.";
+                        }
+                        if (ImGui::IsItemActivated()) {
+                            BeginHistoryEdit("Modify Script Property");
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            CommitHistoryEdit();
+                        }
                     } else if (definition.type == ScriptPropertyType::Entity) {
                         const EntityId referenced =
                             stored != behavior.properties.end() &&

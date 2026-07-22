@@ -23,10 +23,21 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
                  property.minimumFloat > property.maximumFloat ||
                  property.defaultFloat < property.minimumFloat ||
                  property.defaultFloat > property.maximumFloat);
+            const bool invalidInteger =
+                property.type == ScriptPropertyType::Integer &&
+                (property.minimumInteger > property.maximumInteger ||
+                 property.defaultInteger < property.minimumInteger ||
+                 property.defaultInteger > property.maximumInteger);
+            const bool invalidVector3 =
+                property.type == ScriptPropertyType::Vector3 &&
+                (!std::isfinite(property.defaultVector3.x) ||
+                 !std::isfinite(property.defaultVector3.y) ||
+                 !std::isfinite(property.defaultVector3.z));
             return property.name.empty() || property.name.size() > 128u ||
                    property.name.find('\0') != std::string::npos || duplicate ||
                    property.type < ScriptPropertyType::Float ||
-                   property.type > ScriptPropertyType::Entity || invalidFloat;
+                   property.type > ScriptPropertyType::Vector3 || invalidFloat ||
+                   invalidInteger || invalidVector3;
         });
     if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
         !factory || sourceAsset.size() > 1024u ||
@@ -97,11 +108,17 @@ bool BehaviorRegistry::Configure(std::string_view type,
         value.name = definition.name.c_str();
         value.type = definition.type;
         value.floatValue = definition.defaultFloat;
+        value.booleanValue = definition.defaultBoolean;
+        value.integerValue = definition.defaultInteger;
+        value.vector3Value = definition.defaultVector3;
         const auto stored = std::ranges::find(component.properties, definition.name,
                                               &ScriptPropertyValue::name);
         if (stored != component.properties.end() && stored->type == definition.type) {
             value.floatValue = stored->floatValue;
             value.entityValue = stored->entityValue;
+            value.booleanValue = stored->booleanValue;
+            value.integerValue = stored->integerValue;
+            value.vector3Value = stored->vector3Value;
         }
         values.push_back(value);
     }

@@ -104,6 +104,9 @@ struct ScriptPropertyValue {
     ScriptPropertyType type = ScriptPropertyType::Float;
     float floatValue = 0.0f;
     EntityId entityValue{};
+    bool booleanValue = false;
+    int32_t integerValue = 0;
+    ScriptVector3 vector3Value{};
 };
 
 struct BehaviorComponent {

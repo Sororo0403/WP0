@@ -438,7 +438,8 @@ bool RunBuild(const std::filesystem::path& buildProject,
 }
 
 bool GenerateBuildFiles(const std::filesystem::path& projectRoot,
-                        std::vector<ScriptSource>& scripts, std::string& error) {
+                        std::vector<ScriptSource>& scripts, std::string& error,
+                        std::filesystem::path* resolvedEngineRoot = nullptr) {
     if (!EnsureLowercaseLibraryDirectory(projectRoot, error)) {
         return false;
     }
@@ -453,6 +454,9 @@ bool GenerateBuildFiles(const std::filesystem::path& projectRoot,
     if (engineRoot.empty()) {
         error = "LikeEngine source root was not found for Project Script compilation.";
         return false;
+    }
+    if (resolvedEngineRoot != nullptr) {
+        *resolvedEngineRoot = engineRoot;
     }
     scripts = DiscoverScripts(projectRoot, error);
     if (!error.empty()) {
@@ -489,7 +493,8 @@ bool ScriptBuildService::BuildIfNeeded(const std::filesystem::path& projectRoot,
                                        std::string& error) {
     error.clear();
     std::vector<ScriptSource> scripts;
-    if (!GenerateBuildFiles(projectRoot, scripts, error)) {
+    std::filesystem::path engineRoot;
+    if (!GenerateBuildFiles(projectRoot, scripts, error, &engineRoot)) {
         return false;
     }
     const std::filesystem::path assembly = AssemblyPath(projectRoot);
@@ -520,6 +525,25 @@ bool ScriptBuildService::BuildIfNeeded(const std::filesystem::path& projectRoot,
     }
     if (filesystemError) {
         return Build(projectRoot, error);
+    }
+    const std::array engineDependencyRoots = {
+        engineRoot / L"engine" / L"public",
+        engineRoot / L"engine" / L"include",
+    };
+    for (const std::filesystem::path& dependencyRoot : engineDependencyRoots) {
+        for (std::filesystem::recursive_directory_iterator iterator(
+                 dependencyRoot, filesystemError), end;
+             iterator != end && !filesystemError; iterator.increment(filesystemError)) {
+            if (iterator->is_regular_file(filesystemError) && !filesystemError &&
+                IsScriptDependency(iterator->path()) &&
+                IsNewerThan(iterator->path(), assemblyTime)) {
+                return Build(projectRoot, error);
+            }
+            filesystemError.clear();
+        }
+        if (filesystemError) {
+            return Build(projectRoot, error);
+        }
     }
     return true;
 }

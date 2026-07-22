@@ -85,9 +85,9 @@
         ],
         "Transform": {
           "position": [
-            0.0,
-            2.9802322387695313e-08,
-            3.0100276470184326
+            0.15000000596046448,
+            -1.1444091796875e-05,
+            4.561216354370117
           ],
           "rotation": [
             0.0,
@@ -95,9 +95,9 @@
             0.0
           ],
           "scale": [
-            1.0,
-            1.0,
-            1.0
+            1.0000077486038208,
+            0.9999935030937195,
+            1.0000102519989014
           ]
         }
       },
@@ -122,15 +122,15 @@
           "stepOffset": 0.30000001192092896
         },
         "MaterialOverride": {
-          "alphaCutoff": 0.5,
+          "alphaCutoff": 0.9900000095367432,
           "baseColor": [
             1.0,
-            1.0,
-            1.0,
+            0.4749034643173218,
+            0.4749034643173218,
             1.0
           ],
           "baseColorTexture": "asset://taro.png",
-          "blendMode": "Opaque",
+          "blendMode": "Cutout",
           "cullMode": "None",
           "depthWrite": true,
           "enabled": true,
@@ -139,7 +139,7 @@
           "normalStrength": 1.0,
           "normalTexture": "",
           "pbrTexturePacking": "Separate",
-          "roughness": 0.0,
+          "roughness": 1.0,
           "roughnessTexture": ""
         },
         "MeshRenderer": {
@@ -152,6 +152,10 @@
           {
             "enabled": true,
             "properties": {
+              "Move Speed": {
+                "type": "Float",
+                "value": 14.699999809265137
+              },
               "Target": {
                 "type": "Entity",
                 "value": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
@@ -228,9 +232,9 @@
         },
         "Transform": {
           "position": [
+            6.0,
             0.0,
-            0.0,
-            8.035422325134277
+            8.035421371459961
           ],
           "rotation": [
             0.0,
@@ -238,9 +242,9 @@
             0.0
           ],
           "scale": [
-            9.69999885559082,
-            2.179999351501465,
-            1.5799942016601563
+            9.699996948242188,
+            2.179993152618408,
+            1.5799895524978638
           ]
         }
       },
@@ -303,9 +307,9 @@
             0.0
           ],
           "scale": [
-            9.699996948242188,
-            2.179985523223877,
-            20.38038444519043
+            21.459999084472656,
+            1.940000057220459,
+            20.440000534057617
           ]
         }
       },
@@ -323,10 +327,10 @@
           ],
           "enabled": true,
           "innerAngle": 25.0,
-          "intensity": 1.0,
+          "intensity": 2.119999885559082,
           "outerAngle": 45.0,
-          "range": 10.0,
-          "type": "Directional"
+          "range": 29.450000762939453,
+          "type": "Point"
         },
         "Transform": {
           "position": [
@@ -352,20 +356,6 @@
     },
     {
       "components": {
-        "CharacterController": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "height": 2.0,
-          "minMoveDistance": 0.0,
-          "radius": 0.5,
-          "skinWidth": 0.05000000074505806,
-          "slopeLimit": 45.0,
-          "stepOffset": 0.30000001192092896
-        },
         "Light": {
           "color": [
             1.0,
@@ -373,19 +363,12 @@
             1.0
           ],
           "enabled": true,
-          "innerAngle": 25.0,
-          "intensity": 20.559999465942383,
-          "outerAngle": 45.0,
-          "range": 0.800000011920929,
-          "type": "Point"
+          "innerAngle": 3.200000047683716,
+          "intensity": 7.659999847412109,
+          "outerAngle": 18.200000762939453,
+          "range": 10.0,
+          "type": "Spot"
         },
-        "Scripts": [
-          {
-            "enabled": true,
-            "script": "asset://Scripts/ChasePlayer.cpp",
-            "type": "ChasePlayer"
-          }
-        ],
         "Transform": {
           "position": [
             0.0,
@@ -404,9 +387,9 @@
           ]
         }
       },
-      "id": "4ce0d475-a42c-667b-f68b-650d2931bcaf",
+      "id": "45430fd4-2ecf-fc46-e0e5-00e2d29b10ac",
       "name": "Light",
-      "parent": "40aa24ff-628d-e18f-d1d3-5f5d47dbb38b"
+      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     }
   ],
   "version": 1

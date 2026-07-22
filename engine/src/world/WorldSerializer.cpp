@@ -7,6 +7,7 @@
 #include <cmath>
 #include <exception>
 #include <fstream>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -188,6 +189,22 @@ std::string WorldSerializer::Serialize(const World& world) {
                             encodedProperty["value"] = property.entityValue.IsValid()
                                                            ? Json(property.entityValue.ToString())
                                                            : Json(nullptr);
+                            break;
+                        case ScriptPropertyType::Boolean:
+                            encodedProperty["type"] = "Boolean";
+                            encodedProperty["value"] = property.booleanValue;
+                            break;
+                        case ScriptPropertyType::Integer:
+                            encodedProperty["type"] = "Integer";
+                            encodedProperty["value"] = property.integerValue;
+                            break;
+                        case ScriptPropertyType::Vector3:
+                            encodedProperty["type"] = "Vector3";
+                            encodedProperty["value"] = {
+                                property.vector3Value.x,
+                                property.vector3Value.y,
+                                property.vector3Value.z,
+                            };
                             break;
                         }
                         properties[property.name] = std::move(encodedProperty);
@@ -574,6 +591,39 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                             SetError(error, "Scene Script Entity property is invalid.");
                             return false;
                         }
+                    } else if (propertyType == "Boolean") {
+                        if (!encodedProperty["value"].is_boolean()) {
+                            SetError(error, "Scene Script Boolean property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::Boolean;
+                        property.booleanValue = encodedProperty["value"].get<bool>();
+                    } else if (propertyType == "Integer") {
+                        const Json& encodedValue = encodedProperty["value"];
+                        if ((!encodedValue.is_number_integer() &&
+                             !encodedValue.is_number_unsigned()) ||
+                            (encodedValue.is_number_unsigned() &&
+                             encodedValue.get<uint64_t>() >
+                                 static_cast<uint64_t>((std::numeric_limits<int32_t>::max)())) ||
+                            (encodedValue.is_number_integer() &&
+                             !encodedValue.is_number_unsigned() &&
+                             (encodedValue.get<int64_t>() <
+                                  static_cast<int64_t>((std::numeric_limits<int32_t>::min)()) ||
+                              encodedValue.get<int64_t>() >
+                                  static_cast<int64_t>((std::numeric_limits<int32_t>::max)())))) {
+                            SetError(error, "Scene Script Integer property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::Integer;
+                        property.integerValue = encodedValue.get<int32_t>();
+                    } else if (propertyType == "Vector3") {
+                        DirectX::XMFLOAT3 value{};
+                        if (!DecodeFloat3(encodedProperty["value"], value)) {
+                            SetError(error, "Scene Script Vector3 property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::Vector3;
+                        property.vector3Value = {value.x, value.y, value.z};
                     } else {
                         SetError(error, "Scene Script property type is invalid.");
                         return false;
