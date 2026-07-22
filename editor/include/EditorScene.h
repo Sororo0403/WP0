@@ -80,6 +80,8 @@ private:
     void DuplicateSelection();
     void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
+    void AssignScriptAsset(EntityId entity, const std::filesystem::path& path,
+                           std::optional<size_t> scriptIndex = std::nullopt);
     void AssignBaseColorTexture(EntityId entity, const std::filesystem::path& path);
     void AssignNormalTexture(EntityId entity, const std::filesystem::path& path);
     void AssignRoughnessTexture(EntityId entity, const std::filesystem::path& path);
@@ -102,6 +104,9 @@ private:
                                          std::string& assetPath);
     bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,
                                            std::string& assetPath);
+    bool TryNormalizeScriptAssetReference(const std::filesystem::path& path,
+                                          std::string& assetPath,
+                                          std::filesystem::path& physicalPath);
     void RefreshAssetBrowser();
     void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
     void DrawAssetBrowserBreadcrumbs();
@@ -291,6 +296,7 @@ private:
     std::unordered_map<std::string, TextureHandle> loadedLinearTextures_;
     std::vector<std::filesystem::path> modelAssets_;
     std::vector<std::filesystem::path> textureAssets_;
+    std::vector<std::filesystem::path> scriptAssets_;
     struct AssetBrowserEntry {
         std::filesystem::path relativePath;
         bool directory = false;

@@ -63,7 +63,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->materialOverride = original.materialOverride;
         duplicate->camera = original.camera;
         duplicate->light = original.light;
-        duplicate->behavior = original.behavior;
+        duplicate->scripts = original.scripts;
         duplicate->boxCollider = original.boxCollider;
         duplicate->characterController = original.characterController;
         if (duplicate->camera) {
@@ -300,11 +300,15 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 return false;
             }
         }
-        if (entity.behavior &&
-            (entity.behavior->type.empty() || entity.behavior->type.size() > 128u ||
-             entity.behavior->type.find('\0') != std::string::npos)) {
-            SetError(error, "Scene contains an invalid Behavior component.");
-            return false;
+        for (const BehaviorComponent& script : entity.scripts) {
+            if (script.type.size() > 128u ||
+                script.type.find('\0') != std::string::npos ||
+                script.scriptAssetPath.size() > 1024u ||
+                script.scriptAssetPath.find('\0') != std::string::npos ||
+                (script.type.empty() && !script.scriptAssetPath.empty())) {
+                SetError(error, "Scene contains an invalid Script component.");
+                return false;
+            }
         }
         if (entity.boxCollider) {
             const BoxColliderComponent& collider = *entity.boxCollider;

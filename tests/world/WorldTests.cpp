@@ -1,6 +1,7 @@
 #include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
 #include "RecentScenesStore.h"
+#include "ScriptAsset.h"
 #include "collision/CollisionUtil.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
@@ -127,6 +128,21 @@ bool RotationRoundTrips(const DirectX::XMFLOAT3& degrees) {
 } // namespace
 
 int main() {
+    ScriptAsset scriptAsset{};
+    std::string scriptAssetError;
+    if (!Check(ScriptAssets::IsScriptFile("Player.likescript") &&
+                   ScriptAssets::Deserialize(
+                       R"({"version":1,"type":"FirstPersonController"})", scriptAsset,
+                       &scriptAssetError) &&
+                   scriptAsset.type == "FirstPersonController" &&
+                   !ScriptAssets::Deserialize(R"({"version":1,"type":""})", scriptAsset,
+                                              &scriptAssetError) &&
+                   !ScriptAssets::Deserialize(R"({"version":2,"type":"Rotator"})",
+                                              scriptAsset, &scriptAssetError),
+               "Script asset validation is invalid.")) {
+        return 1;
+    }
+
     World behaviorWorld;
     const EntityId behaviorEntity = behaviorWorld.CreateEntity("Behavior Entity");
     int behaviorStartCount = 0;
@@ -261,8 +277,12 @@ int main() {
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
-    childEntity->behavior = BehaviorComponent{};
-    childEntity->behavior->type = "Rotator";
+    childEntity->scripts.push_back(
+        {true, "Rotator", "asset://Scripts/Rotator.likescript"});
+    childEntity->scripts.push_back(
+        {false, "FirstPersonController",
+         "asset://Scripts/FirstPersonController.likescript"});
+    childEntity->scripts.emplace_back();
     childEntity->boxCollider = BoxColliderComponent{};
     childEntity->boxCollider->center = {0.25f, 0.5f, -0.25f};
     childEntity->boxCollider->size = {1.0f, 2.0f, 3.0f};
@@ -386,8 +406,15 @@ int main() {
                    !restoredChild->materialOverride->depthWrite &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
-                   restoredChild->behavior && restoredChild->behavior->enabled &&
-                   restoredChild->behavior->type == "Rotator" &&
+                   restoredChild->scripts.size() == 3u &&
+                   restoredChild->scripts[0].enabled &&
+                   restoredChild->scripts[0].type == "Rotator" &&
+                   restoredChild->scripts[0].scriptAssetPath ==
+                       "asset://Scripts/Rotator.likescript" &&
+                   !restoredChild->scripts[1].enabled &&
+                   restoredChild->scripts[1].type == "FirstPersonController" &&
+                   restoredChild->scripts[2].type.empty() &&
+                   restoredChild->scripts[2].scriptAssetPath.empty() &&
                    restoredChild->boxCollider && !restoredChild->boxCollider->isTrigger &&
                    restoredChild->boxCollider->center.y == 0.5f &&
                    restoredChild->boxCollider->size.z == 3.0f &&
@@ -427,7 +454,12 @@ int main() {
                    duplicateChild->materialOverride->cullMode ==
                        MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
-                   duplicateChild->behavior && duplicateChild->behavior->type == "Rotator" &&
+                   duplicateChild->scripts.size() == 3u &&
+                   duplicateChild->scripts[0].type == "Rotator" &&
+                   duplicateChild->scripts[0].scriptAssetPath ==
+                       "asset://Scripts/Rotator.likescript" &&
+                   duplicateChild->scripts[1].type == "FirstPersonController" &&
+                   duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&
                    duplicateChild->boxCollider->center.x == 0.25f &&
                    duplicateChild->boxCollider->size.y == 2.0f &&
@@ -508,6 +540,16 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidLight, rejected, &error),
                "Invalid Light data was accepted.")) {
         return 115;
+    }
+    const std::string legacyBehavior =
+        R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Legacy Behavior","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Behavior":{"enabled":true,"type":"Rotator"}}}]})";
+    World legacyBehaviorWorld;
+    if (!Check(WorldSerializer::Deserialize(legacyBehavior, legacyBehaviorWorld, &error) &&
+                   legacyBehaviorWorld.Entities().size() == 1u &&
+                   legacyBehaviorWorld.Entities().front().scripts.size() == 1u &&
+                   legacyBehaviorWorld.Entities().front().scripts.front().type == "Rotator",
+               "Legacy Behavior data was not migrated to a Script component.")) {
+        return 127;
     }
     const std::string invalidBehavior =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Behavior","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Behavior":{"enabled":true,"type":""}}}]})";

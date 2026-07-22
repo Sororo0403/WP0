@@ -1,6 +1,7 @@
 #include "EditorScene.h"
 
 #include "AssetImportPlanner.h"
+#include "ScriptAsset.h"
 
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
@@ -48,6 +49,7 @@ constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"}
 constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
+constexpr const char* kScriptAssetDragPayload = "EDITOR_SCRIPT_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
@@ -1331,8 +1333,8 @@ void EditorScene::DrawProjectPanel() {
         RefreshAssetBrowser();
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu model(s), %zu texture(s)", modelAssets_.size(),
-                        textureAssets_.size());
+    ImGui::TextDisabled("%zu model(s), %zu texture(s), %zu script(s)",
+                        modelAssets_.size(), textureAssets_.size(), scriptAssets_.size());
     ImGui::Separator();
     if (!currentAssetDirectory_.empty()) {
         if (ImGui::Button("< Back")) {
@@ -1345,10 +1347,10 @@ void EditorScene::DrawProjectPanel() {
     ImGui::InputTextWithHint("##AssetSearch", "Search assets...", assetSearch_.data(),
                              assetSearch_.size());
 
-    constexpr const char* formatLabels[] = {"All formats", "glTF", "GLB", "OBJ",
+    constexpr const char* formatLabels[] = {"All formats", "Script", "glTF", "GLB", "OBJ",
                                              "FBX", "DAE", "3DS", "PLY", "PNG", "JPG",
                                              "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
-    constexpr const char* formatExtensions[] = {"",     ".gltf", ".glb", ".obj",
+    constexpr const char* formatExtensions[] = {"", ".likescript", ".gltf", ".glb", ".obj",
                                                  ".fbx", ".dae",  ".3ds", ".ply",
                                                  ".png", ".jpg",  ".jpeg", ".tga",
                                                  ".bmp", ".dds",  ".hdr", ".exr"};
@@ -1421,6 +1423,7 @@ void EditorScene::DrawProjectPanel() {
             };
             appendMatches(modelAssets_);
             appendMatches(textureAssets_);
+            appendMatches(scriptAssets_);
             std::ranges::sort(matches, comparePaths);
             for (const std::filesystem::path& relativePath : matches) {
                 DrawAssetBrowserEntry(relativePath, false);
@@ -1484,8 +1487,10 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         (std::filesystem::path("assets") / relativePath).lexically_normal();
     const std::string id = logicalPath.generic_string();
     const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
+    const bool script = !directory && ScriptAssets::IsScriptFile(relativePath);
     const std::string label = std::string(directory ? "[Folder] "
-                                                     : texture ? "[Texture] " : "[Model] ") +
+                                                     : texture ? "[Texture] "
+                                                     : script ? "[Script] " : "[Model] ") +
                               relativePath.filename().string();
     ImGui::PushID(id.c_str());
     const bool selected = selectedAsset_ == relativePath;
@@ -1500,7 +1505,9 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::SetTooltip("%s", id.c_str());
     }
     if (!directory && ImGui::BeginDragDropSource()) {
-        ImGui::SetDragDropPayload(texture ? kTextureAssetDragPayload : kModelAssetDragPayload,
+        ImGui::SetDragDropPayload(texture ? kTextureAssetDragPayload
+                                          : script ? kScriptAssetDragPayload
+                                                   : kModelAssetDragPayload,
                                   id.c_str(), id.size() + 1u);
         ImGui::TextUnformatted(id.c_str());
         ImGui::EndDragDropSource();
@@ -1511,6 +1518,9 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
             if (ImGui::MenuItem("Open")) {
                 NavigateAssetBrowser(relativePath);
             }
+        } else if (script && ImGui::MenuItem("Attach to Selected Entity", nullptr, false,
+                                             selection_.IsValid())) {
+            AssignScriptAsset(selection_, logicalPath);
         } else if (!texture && ImGui::MenuItem("Create Entity")) {
             CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
         } else if (texture && ImGui::BeginMenu("Assign to Selected Material",
@@ -1582,8 +1592,11 @@ void EditorScene::DrawSelectedAssetDetails() {
         return;
     }
     const std::string extension = physical.extension().string();
-    std::string typeLabel = directory ? "Folder"
-                                      : AssetImport::IsTextureFile(physical) ? "Texture" : "Model";
+    std::string typeLabel = directory
+                                ? "Folder"
+                                : AssetImport::IsTextureFile(physical)
+                                      ? "Texture"
+                                      : ScriptAssets::IsScriptFile(physical) ? "Script" : "Model";
     if (regularFile && !extension.empty()) {
         typeLabel += " (" + extension + ")";
     }
@@ -2194,8 +2207,14 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
             roughnessReference && AssetPathMatches(*roughnessReference, relativePath, directory);
         const bool matchesMetallic =
             metallicReference && AssetPathMatches(*metallicReference, relativePath, directory);
+        const bool matchesScript = std::ranges::any_of(
+            entity.scripts, [&](const BehaviorComponent& script) {
+                const std::optional<std::filesystem::path> referenced =
+                    AssetRelativeFromReference(script.scriptAssetPath);
+                return referenced && AssetPathMatches(*referenced, relativePath, directory);
+            });
         if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
-            !matchesMetallic) {
+            !matchesMetallic && !matchesScript) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -2252,6 +2271,15 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
             referencedByEntity =
                 referenced && AssetPathMatches(*referenced, relativePath, directory);
         }
+        if (!referencedByEntity) {
+            referencedByEntity = std::ranges::any_of(
+                entity.scripts, [&](const BehaviorComponent& script) {
+                    const std::optional<std::filesystem::path> referenced =
+                        AssetRelativeFromReference(script.scriptAssetPath);
+                    return referenced &&
+                           AssetPathMatches(*referenced, relativePath, directory);
+                });
+        }
         if (referencedByEntity) {
             ++references;
         }
@@ -2288,6 +2316,9 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
             updateReference(entity->materialOverride->normalTexturePath);
             updateReference(entity->materialOverride->roughnessTexturePath);
             updateReference(entity->materialOverride->metallicTexturePath);
+        }
+        for (BehaviorComponent& script : entity->scripts) {
+            updateReference(script.scriptAssetPath);
         }
     }
     return updated;
@@ -2651,6 +2682,11 @@ void EditorScene::DrawEntityNode(EntityId id) {
             static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
             AssignModelAsset(id, static_cast<const char*>(payload->Data));
         }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignScriptAsset(id, static_cast<const char*>(payload->Data));
+        }
         ImGui::EndDragDropTarget();
     }
     if (open && !children.empty()) {
@@ -2736,111 +2772,114 @@ void EditorScene::DrawInspectorPanel() {
     drawTransform("Scale", entity->transform.scale, 0.02f);
 
     ImGui::Separator();
-    if (!entity->meshRenderer || !entity->materialOverride || !entity->camera ||
-        !entity->light || !entity->behavior || !entity->boxCollider ||
-        !entity->characterController) {
-        if (ImGui::Button("Add Component")) {
-            ImGui::OpenPopup("AddComponentMenu");
-        }
-        if (ImGui::BeginPopup("AddComponentMenu")) {
-            if (!entity->meshRenderer && ImGui::MenuItem("Mesh Renderer")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->meshRenderer = MeshRendererComponent{};
-                RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
-                status_ = "Added MeshRenderer.";
-            }
-            if (!entity->materialOverride && ImGui::MenuItem("Material Override")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->materialOverride = MaterialOverrideComponent{};
-                RecordImmediateEdit("Add Material Override", before, selectionBefore);
-                status_ = "Added Material Override.";
-            }
-            if (!entity->camera && ImGui::MenuItem("Camera")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->camera = CameraComponent{};
-                RecordImmediateEdit("Add Camera", before, selectionBefore);
-                status_ = "Added Camera.";
-            }
-            if (!entity->light && ImGui::MenuItem("Light")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->light = LightComponent{};
-                RecordImmediateEdit("Add Light", before, selectionBefore);
-                status_ = "Added Light.";
-            }
-            if (!entity->behavior && ImGui::MenuItem("Behavior")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                BehaviorComponent behavior{};
-                const std::vector<std::string_view> types = behaviorRegistry_.Types();
-                if (!types.empty()) {
-                    behavior.type = types.front();
-                }
-                entity->behavior = std::move(behavior);
-                (void)behaviorRegistry_.EnsureRequirements(entity->behavior->type, *entity);
-                RecordImmediateEdit("Add Behavior", before, selectionBefore);
-                status_ = "Added Behavior.";
-            }
-            if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->boxCollider = BoxColliderComponent{};
-                RecordImmediateEdit("Add BoxCollider", before, selectionBefore);
-                status_ = "Added BoxCollider.";
-            }
-            if (!entity->characterController && ImGui::MenuItem("Character Controller")) {
-                const std::string before = WorldSerializer::Serialize(world_);
-                const EntityId selectionBefore = selection_;
-                entity->characterController = CharacterControllerComponent{};
-                RecordImmediateEdit("Add CharacterController", before, selectionBefore);
-                status_ = "Added CharacterController.";
-            }
-            ImGui::EndPopup();
-        }
+    if (ImGui::Button("Add Component")) {
+        ImGui::OpenPopup("AddComponentMenu");
     }
-
-    if (entity->behavior) {
-        ImGui::SeparatorText("Behavior");
-        if (ImGui::Button("Remove Behavior")) {
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignScriptAsset(selection_, static_cast<const char*>(payload->Data));
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (ImGui::BeginPopup("AddComponentMenu")) {
+        if (!entity->meshRenderer && ImGui::MenuItem("Mesh Renderer")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
-            entity->behavior.reset();
-            RecordImmediateEdit("Remove Behavior", before, selectionBefore);
-            status_ = "Removed Behavior.";
+            entity->meshRenderer = MeshRendererComponent{};
+            RecordImmediateEdit("Add MeshRenderer", before, selectionBefore);
+            status_ = "Added MeshRenderer.";
+        }
+        if (!entity->materialOverride && ImGui::MenuItem("Material Override")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->materialOverride = MaterialOverrideComponent{};
+            RecordImmediateEdit("Add Material Override", before, selectionBefore);
+            status_ = "Added Material Override.";
+        }
+        if (!entity->camera && ImGui::MenuItem("Camera")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->camera = CameraComponent{};
+            RecordImmediateEdit("Add Camera", before, selectionBefore);
+            status_ = "Added Camera.";
+        }
+        if (!entity->light && ImGui::MenuItem("Light")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->light = LightComponent{};
+            RecordImmediateEdit("Add Light", before, selectionBefore);
+            status_ = "Added Light.";
+        }
+        if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->boxCollider = BoxColliderComponent{};
+            RecordImmediateEdit("Add BoxCollider", before, selectionBefore);
+            status_ = "Added BoxCollider.";
+        }
+        if (!entity->characterController && ImGui::MenuItem("Character Controller")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->characterController = CharacterControllerComponent{};
+            RecordImmediateEdit("Add CharacterController", before, selectionBefore);
+            status_ = "Added CharacterController.";
+        }
+        if (ImGui::MenuItem("Script")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->scripts.emplace_back();
+            RecordImmediateEdit("Add Script", before, selectionBefore);
+            status_ = "Added an empty Script component.";
+        }
+        ImGui::EndPopup();
+    }
+
+    for (size_t scriptIndex = 0; scriptIndex < entity->scripts.size(); ++scriptIndex) {
+        ImGui::PushID(static_cast<int>(scriptIndex));
+        ImGui::SeparatorText("Script");
+        if (ImGui::Button("Remove Script")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->scripts.erase(entity->scripts.begin() +
+                                  static_cast<std::ptrdiff_t>(scriptIndex));
+            RecordImmediateEdit("Remove Script", before, selectionBefore);
+            status_ = "Removed Script component.";
+            ImGui::PopID();
+            break;
         } else {
-            BehaviorComponent& behavior = *entity->behavior;
+            BehaviorComponent& behavior = entity->scripts[scriptIndex];
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
-            if (ImGui::Checkbox("Enabled##Behavior", &behavior.enabled)) {
-                RecordImmediateEdit("Toggle Behavior", std::move(before), selectionBefore);
+            if (ImGui::Checkbox("Enabled", &behavior.enabled)) {
+                RecordImmediateEdit("Toggle Script", std::move(before), selectionBefore);
             }
-            if (ImGui::BeginCombo("Type##Behavior", behavior.type.c_str())) {
-                for (const std::string_view type : behaviorRegistry_.Types()) {
-                    const bool selected = behavior.type == type;
-                    if (ImGui::Selectable(type.data(), selected)) {
-                        before = WorldSerializer::Serialize(world_);
-                        behavior.type = type;
-                        (void)behaviorRegistry_.EnsureRequirements(behavior.type, *entity);
-                        RecordImmediateEdit("Change Behavior Type", std::move(before),
-                                            selectionBefore);
-                        status_ = "Changed Behavior type.";
-                    }
-                    if (selected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
+            const std::string scriptLabel = behavior.scriptAssetPath.empty()
+                                                ? "None (drop a Script asset)"
+                                                : behavior.scriptAssetPath;
+            ImGui::TextUnformatted("Script");
+            ImGui::SameLine();
+            ImGui::Button(scriptLabel.c_str(), {-FLT_MIN, 0.0f});
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                    static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignScriptAsset(selection_, static_cast<const char*>(payload->Data),
+                                      scriptIndex);
                 }
-                ImGui::EndCombo();
+                ImGui::EndDragDropTarget();
             }
+            ImGui::TextDisabled("Runtime type: %s",
+                                behavior.type.empty() ? "None" : behavior.type.c_str());
             if (behavior.type == "FirstPersonController" && !entity->characterController) {
                 ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.25f, 1.0f),
                                    "Character Controller is required for collision movement.");
             }
         }
+        ImGui::PopID();
     }
-
     if (entity->boxCollider) {
         ImGui::SeparatorText("Box Collider");
         if (ImGui::Button("Remove Box Collider")) {
@@ -2892,12 +2931,12 @@ void EditorScene::DrawInspectorPanel() {
 
     if (entity->characterController) {
         ImGui::SeparatorText("Character Controller");
-        const BehaviorRequirements* requirements =
-            entity->behavior
-                ? behaviorRegistry_.Requirements(entity->behavior->type)
-                : nullptr;
-        const bool requiredByBehavior =
-            requirements != nullptr && requirements->characterController;
+        const bool requiredByBehavior = std::ranges::any_of(
+            entity->scripts, [this](const BehaviorComponent& script) {
+                const BehaviorRequirements* requirements =
+                    behaviorRegistry_.Requirements(script.type);
+                return requirements != nullptr && requirements->characterController;
+            });
         ImGui::BeginDisabled(requiredByBehavior);
         const bool removeRequested = ImGui::Button("Remove Character Controller");
         ImGui::EndDisabled();
@@ -4057,6 +4096,51 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     status_ = "Assigned model asset: " + assetPath;
 }
 
+void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::path& path,
+                                    std::optional<size_t> scriptIndex) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    std::filesystem::path physicalPath;
+    if (!TryNormalizeScriptAssetReference(path, assetPath, physicalPath)) {
+        return;
+    }
+    ScriptAsset script{};
+    std::string error;
+    if (!ScriptAssets::Load(physicalPath, script, &error)) {
+        status_ = "Could not load Script asset: " + error;
+        return;
+    }
+    if (behaviorRegistry_.Requirements(script.type) == nullptr) {
+        status_ = "Script asset references an unregistered runtime type: " + script.type;
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    BehaviorComponent component{};
+    component.type = script.type;
+    component.scriptAssetPath = assetPath;
+    if (scriptIndex) {
+        if (*scriptIndex >= entity->scripts.size()) {
+            status_ = "The target Script component no longer exists.";
+            return;
+        }
+        component.enabled = entity->scripts[*scriptIndex].enabled;
+        entity->scripts[*scriptIndex] = std::move(component);
+    } else {
+        entity->scripts.push_back(std::move(component));
+    }
+    (void)behaviorRegistry_.EnsureRequirements(script.type, *entity);
+    selection_ = entityId;
+    RecordImmediateEdit(scriptIndex ? "Replace Script" : "Add Script", before,
+                        selectionBefore);
+    status_ = std::string(scriptIndex ? "Replaced" : "Added") +
+              " Script component: " + assetPath;
+}
+
 void EditorScene::AssignBaseColorTexture(EntityId entityId,
                                          const std::filesystem::path& path) {
     WorldEntity* entity = world_.Find(entityId);
@@ -4553,6 +4637,7 @@ void EditorScene::RefreshAssetBrowser() {
     assetPreviewError_.clear();
     modelAssets_.clear();
     textureAssets_.clear();
+    scriptAssets_.clear();
     assetBrowserEntries_.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(assetRoot_, error) || error) {
@@ -4583,7 +4668,8 @@ void EditorScene::RefreshAssetBrowser() {
             }
         } else if (!error && entry.is_regular_file(error) && !error &&
                    (AssetImport::IsModelFile(entry.path()) ||
-                    AssetImport::IsTextureFile(entry.path()))) {
+                    AssetImport::IsTextureFile(entry.path()) ||
+                    ScriptAssets::IsScriptFile(entry.path()))) {
             const std::filesystem::path relative =
                 std::filesystem::relative(entry.path(), assetRoot_, error);
             if (!error) {
@@ -4608,12 +4694,16 @@ void EditorScene::RefreshAssetBrowser() {
     while (!error && iterator != end) {
         if (iterator->is_regular_file(error) && !error &&
             (AssetImport::IsModelFile(iterator->path()) ||
-             AssetImport::IsTextureFile(iterator->path()))) {
+             AssetImport::IsTextureFile(iterator->path()) ||
+             ScriptAssets::IsScriptFile(iterator->path()))) {
             std::filesystem::path relative =
                 std::filesystem::relative(iterator->path(), assetRoot_, error);
             if (!error) {
-                auto& assets = AssetImport::IsTextureFile(iterator->path()) ? textureAssets_
-                                                                            : modelAssets_;
+                auto& assets = AssetImport::IsTextureFile(iterator->path())
+                                   ? textureAssets_
+                                   : ScriptAssets::IsScriptFile(iterator->path())
+                                         ? scriptAssets_
+                                         : modelAssets_;
                 assets.push_back((std::filesystem::path("assets") / relative).lexically_normal());
             }
         }
@@ -4623,6 +4713,9 @@ void EditorScene::RefreshAssetBrowser() {
         return path.generic_string();
     });
     std::ranges::sort(textureAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    std::ranges::sort(scriptAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
 }
@@ -5261,27 +5354,28 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
     runtimeBehaviors_.Clear();
     bool valid = true;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.behavior || !entity.behavior->enabled) {
-            continue;
-        }
-        std::string requirementError;
-        if (!behaviorRegistry_.ValidateRequirements(entity.behavior->type, entity,
-                                                     &requirementError)) {
-            valid = false;
-            if (error != nullptr && error->empty()) {
-                *error = entity.name + " (" + entity.behavior->type + "): " +
-                         requirementError;
+        for (const BehaviorComponent& script : entity.scripts) {
+            if (!script.enabled || script.type.empty()) {
+                continue;
             }
-            continue;
-        }
-        std::unique_ptr<Behavior> behavior = behaviorRegistry_.Create(entity.behavior->type);
-        if (behavior != nullptr) {
-            runtimeBehaviors_.Attach(entity.id, std::move(behavior));
-        } else {
-            valid = false;
-            if (error != nullptr && error->empty()) {
-                *error = entity.name + " (" + entity.behavior->type +
-                         "): Behavior creation failed.";
+            std::string requirementError;
+            if (!behaviorRegistry_.ValidateRequirements(script.type, entity,
+                                                         &requirementError)) {
+                valid = false;
+                if (error != nullptr && error->empty()) {
+                    *error = entity.name + " (" + script.type + "): " + requirementError;
+                }
+                continue;
+            }
+            std::unique_ptr<Behavior> behavior = behaviorRegistry_.Create(script.type);
+            if (behavior != nullptr) {
+                runtimeBehaviors_.Attach(entity.id, std::move(behavior));
+            } else {
+                valid = false;
+                if (error != nullptr && error->empty()) {
+                    *error = entity.name + " (" + script.type +
+                             "): Behavior creation failed.";
+                }
             }
         }
     }
@@ -5294,22 +5388,49 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
 
 bool EditorScene::ValidateWorldBehaviorRequirements(std::string* error) const {
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.behavior || !entity.behavior->enabled) {
-            continue;
-        }
-        std::string requirementError;
-        if (!behaviorRegistry_.ValidateRequirements(entity.behavior->type, entity,
-                                                     &requirementError)) {
-            if (error != nullptr) {
-                *error = entity.name + " (" + entity.behavior->type + "): " +
-                         requirementError;
+        for (const BehaviorComponent& script : entity.scripts) {
+            if (!script.enabled || script.type.empty()) {
+                continue;
             }
-            return false;
+            std::string requirementError;
+            if (!behaviorRegistry_.ValidateRequirements(script.type, entity,
+                                                         &requirementError)) {
+                if (error != nullptr) {
+                    *error = entity.name + " (" + script.type + "): " + requirementError;
+                }
+                return false;
+            }
         }
     }
     if (error != nullptr) {
         error->clear();
     }
+    return true;
+}
+
+bool EditorScene::TryNormalizeScriptAssetReference(
+    const std::filesystem::path& path, std::string& assetPath,
+    std::filesystem::path& physicalPath) {
+    if (!ScriptAssets::IsScriptFile(path)) {
+        status_ = "The dropped Script asset is invalid.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped Script asset no longer exists.";
+        return false;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
+        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped Script asset path is too long.";
+        return false;
+    }
+    physicalPath = *resolvedPath;
     return true;
 }
 

@@ -11,6 +11,13 @@
           "primary": true,
           "projection": "Perspective"
         },
+        "Scripts": [
+          {
+            "enabled": true,
+            "script": "asset://Scripts/Rotator.likescript",
+            "type": "Rotator"
+          }
+        ],
         "Transform": {
           "position": [
             0.0,
@@ -35,10 +42,6 @@
     },
     {
       "components": {
-        "Behavior": {
-          "enabled": true,
-          "type": "FirstPersonController"
-        },
         "BoxCollider": {
           "center": [
             0.0,
@@ -94,6 +97,12 @@
           "primitive": 0,
           "source": "Primitive"
         },
+        "Scripts": [
+          {
+            "enabled": true,
+            "type": "FirstPersonController"
+          }
+        ],
         "Transform": {
           "position": [
             0.0,
@@ -145,9 +154,9 @@
           "cullMode": "Back",
           "depthWrite": true,
           "enabled": true,
-          "metallic": 0.0,
+          "metallic": 1.0,
           "metallicTexture": "",
-          "normalStrength": 1.0,
+          "normalStrength": 4.0,
           "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
           "pbrTexturePacking": "Separate",
           "roughness": 0.5,
@@ -163,7 +172,7 @@
           "position": [
             0.0,
             0.0,
-            4.9150919914245605
+            8.035422325134277
           ],
           "rotation": [
             0.0,
@@ -171,9 +180,9 @@
             0.0
           ],
           "scale": [
-            9.699999809265137,
-            2.180000066757202,
-            1.5800000429153442
+            9.69999885559082,
+            2.179999351501465,
+            1.5799942016601563
           ]
         }
       },
@@ -186,14 +195,14 @@
         "Light": {
           "color": [
             1.0,
-            1.0,
-            1.0
+            0.0,
+            0.0
           ],
           "enabled": true,
-          "innerAngle": 0.0,
-          "intensity": 19.959999084472656,
-          "outerAngle": 18.100000381469727,
-          "range": 10.0,
+          "innerAngle": 8.399999618530273,
+          "intensity": 16.479999542236328,
+          "outerAngle": 16.200000762939453,
+          "range": 10.449999809265137,
           "type": "Spot"
         },
         "Transform": {
@@ -217,6 +226,331 @@
       "id": "43e2fb8b-be91-0671-239b-1296e85b9db0",
       "name": "Light",
       "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 1.0,
+          "metallicTexture": "",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            5.008456707000732
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.69999885559082,
+            2.179999351501465,
+            1.5799946784973145
+          ]
+        }
+      },
+      "id": "40557ad4-9aa7-dd9f-1ec6-5abd58e358ad",
+      "name": "Box Copy",
+      "parent": null
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 1.0,
+          "metallicTexture": "",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            2.391866445541382
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.69999885559082,
+            2.179999351501465,
+            1.5799955129623413
+          ]
+        }
+      },
+      "id": "4ef4286b-b57e-92d5-e323-2ce0557f5c86",
+      "name": "Box Copy Copy",
+      "parent": null
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            -2.3977911472320557
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.699997901916504,
+            2.1799991130828857,
+            1.5799955129623413
+          ]
+        }
+      },
+      "id": "442f900c-d612-b3d0-285a-1abbcf137c84",
+      "name": "Box Copy Copy Copy",
+      "parent": null
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 1.0,
+          "metallicTexture": "",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            -5.261970043182373
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.699997901916504,
+            2.1799991130828857,
+            1.5799955129623413
+          ]
+        }
+      },
+      "id": "4af344fb-2bfd-a6c7-42cc-12184b320aaa",
+      "name": "Box Copy Copy Copy Copy",
+      "parent": null
+    },
+    {
+      "components": {
+        "BoxCollider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "isTrigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "blendMode": "Opaque",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 1.0,
+          "metallicTexture": "",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 0,
+          "source": "Primitive"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            -8.626896858215332
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            9.699997901916504,
+            2.1799991130828857,
+            1.5799955129623413
+          ]
+        }
+      },
+      "id": "4d3a8e41-df98-3126-bb11-affae07ba39e",
+      "name": "Box Copy Copy Copy Copy Copy",
+      "parent": null
     }
   ],
   "version": 1

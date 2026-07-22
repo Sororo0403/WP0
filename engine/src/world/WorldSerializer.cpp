@@ -165,9 +165,18 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedLight["outerAngle"] = light.outerAngleDegrees;
             encoded["components"]["Light"] = std::move(encodedLight);
         }
-        if (entity.behavior) {
-            encoded["components"]["Behavior"]["enabled"] = entity.behavior->enabled;
-            encoded["components"]["Behavior"]["type"] = entity.behavior->type;
+        if (!entity.scripts.empty()) {
+            Json scripts = Json::array();
+            for (const BehaviorComponent& script : entity.scripts) {
+                Json encodedScript;
+                encodedScript["enabled"] = script.enabled;
+                encodedScript["type"] = script.type;
+                if (!script.scriptAssetPath.empty()) {
+                    encodedScript["script"] = script.scriptAssetPath;
+                }
+                scripts.push_back(std::move(encodedScript));
+            }
+            encoded["components"]["Scripts"] = std::move(scripts);
         }
         if (entity.boxCollider) {
             encoded["components"]["BoxCollider"]["enabled"] =
@@ -486,23 +495,54 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             }
             entity.light = component;
         }
-        if (encoded["components"].contains("Behavior")) {
-            const Json& behavior = encoded["components"]["Behavior"];
+        const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
+                                      bool allowUnassigned) -> bool {
             if (!behavior.is_object() || !behavior.contains("enabled") ||
                 !behavior["enabled"].is_boolean() || !behavior.contains("type") ||
                 !behavior["type"].is_string()) {
-                SetError(error, "Scene Behavior component is invalid.");
+                SetError(error, "Scene Script component is invalid.");
                 return false;
             }
-            BehaviorComponent component{};
             component.enabled = behavior["enabled"].get<bool>();
             component.type = behavior["type"].get<std::string>();
-            if (component.type.empty() || component.type.size() > 128u ||
-                component.type.find('\0') != std::string::npos) {
-                SetError(error, "Scene Behavior type is invalid.");
+            if (behavior.contains("script")) {
+                if (!behavior["script"].is_string()) {
+                    SetError(error, "Scene Behavior script asset path is invalid.");
+                    return false;
+                }
+                component.scriptAssetPath = behavior["script"].get<std::string>();
+            }
+            if ((!allowUnassigned && component.type.empty()) ||
+                component.type.size() > 128u ||
+                component.type.find('\0') != std::string::npos ||
+                component.scriptAssetPath.size() > 1024u ||
+                component.scriptAssetPath.find('\0') != std::string::npos ||
+                (component.type.empty() && !component.scriptAssetPath.empty())) {
+                SetError(error, "Scene Script type is invalid.");
                 return false;
             }
-            entity.behavior = std::move(component);
+            return true;
+        };
+        if (encoded["components"].contains("Scripts")) {
+            const Json& scripts = encoded["components"]["Scripts"];
+            if (!scripts.is_array() || scripts.size() > 1024u) {
+                SetError(error, "Scene Scripts component list is invalid.");
+                return false;
+            }
+            entity.scripts.reserve(scripts.size());
+            for (const Json& encodedScript : scripts) {
+                BehaviorComponent component{};
+                if (!decodeScript(encodedScript, component, true)) {
+                    return false;
+                }
+                entity.scripts.push_back(std::move(component));
+            }
+        } else if (encoded["components"].contains("Behavior")) {
+            BehaviorComponent component{};
+            if (!decodeScript(encoded["components"]["Behavior"], component, false)) {
+                return false;
+            }
+            entity.scripts.push_back(std::move(component));
         }
         if (encoded["components"].contains("BoxCollider")) {
             const Json& collider = encoded["components"]["BoxCollider"];

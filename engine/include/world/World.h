@@ -101,6 +101,7 @@ struct LightComponent {
 struct BehaviorComponent {
     bool enabled = true;
     std::string type;
+    std::string scriptAssetPath;
 };
 
 struct BoxColliderComponent {
@@ -130,7 +131,7 @@ struct WorldEntity {
     std::optional<MaterialOverrideComponent> materialOverride;
     std::optional<CameraComponent> camera;
     std::optional<LightComponent> light;
-    std::optional<BehaviorComponent> behavior;
+    std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;
 };

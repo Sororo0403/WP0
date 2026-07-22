@@ -85,6 +85,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ScriptAsset.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\engine\Engine.vcxproj">
