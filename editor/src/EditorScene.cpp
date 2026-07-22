@@ -2982,33 +2982,56 @@ void EditorScene::DrawInspectorPanel() {
         return;
     }
 
-    std::array<char, 256> nameBuffer{};
-    strncpy_s(nameBuffer.data(), nameBuffer.size(), entity->name.c_str(), _TRUNCATE);
-    const bool nameChanged = ImGui::InputText("Name", nameBuffer.data(), nameBuffer.size());
-    if (ImGui::IsItemActivated()) {
-        BeginHistoryEdit("Rename Entity");
-    }
-    if (nameChanged) {
-        entity->name = nameBuffer.data();
-        if (entity->name.empty()) {
-            entity->name = "Entity";
+    std::vector<EntityId> inspectedEntities;
+    if (hierarchySelection_.size() > 1u && hierarchySelection_.contains(selection_)) {
+        inspectedEntities.reserve(hierarchySelection_.size());
+        for (const WorldEntity& candidate : world_.Entities()) {
+            if (hierarchySelection_.contains(candidate.id)) {
+                inspectedEntities.push_back(candidate.id);
+            }
         }
-        RefreshDirty();
+    } else {
+        inspectedEntities.push_back(selection_);
     }
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-        CommitHistoryEdit();
+    const bool multipleEntities = inspectedEntities.size() > 1u;
+
+    if (multipleEntities) {
+        ImGui::Text("%zu Entities Selected", inspectedEntities.size());
+        ImGui::TextDisabled("Transform changes preserve relative offsets and scale ratios.");
+    } else {
+        std::array<char, 256> nameBuffer{};
+        strncpy_s(nameBuffer.data(), nameBuffer.size(), entity->name.c_str(), _TRUNCATE);
+        const bool nameChanged = ImGui::InputText("Name", nameBuffer.data(), nameBuffer.size());
+        if (ImGui::IsItemActivated()) {
+            BeginHistoryEdit("Rename Entity");
+        }
+        if (nameChanged) {
+            entity->name = nameBuffer.data();
+            if (entity->name.empty()) {
+                entity->name = "Entity";
+            }
+            RefreshDirty();
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            CommitHistoryEdit();
+        }
+        ImGui::TextDisabled("ID: %s", entity->id.ToString().c_str());
     }
-    ImGui::TextDisabled("ID: %s", entity->id.ToString().c_str());
     ImGui::Separator();
-    ImGui::TextUnformatted("Transform");
+    ImGui::TextUnformatted(multipleEntities ? "Transforms" : "Transform");
     ImGui::SameLine();
     if (ImGui::SmallButton("Reset##Transform")) {
         CommitHistoryEdit();
         const std::string before = WorldSerializer::Serialize(world_);
         const EntityId selectionBefore = selection_;
-        entity->transform = TransformComponent{};
-        RecordImmediateEdit("Reset Transform", before, selectionBefore);
-        status_ = "Reset Transform.";
+        for (EntityId inspected : inspectedEntities) {
+            if (WorldEntity* target = world_.Find(inspected)) {
+                target->transform = TransformComponent{};
+            }
+        }
+        RecordImmediateEdit(multipleEntities ? "Reset Transforms" : "Reset Transform",
+                            before, selectionBefore);
+        status_ = multipleEntities ? "Reset selected Transforms." : "Reset Transform.";
     }
     ImGui::SameLine();
     if (ImGui::SmallButton("Copy##Transform")) {
@@ -3024,29 +3047,72 @@ void EditorScene::DrawInspectorPanel() {
         CommitHistoryEdit();
         const std::string before = WorldSerializer::Serialize(world_);
         const EntityId selectionBefore = selection_;
-        entity->transform = *transformClipboard_;
-        RecordImmediateEdit("Paste Transform", before, selectionBefore);
-        status_ = "Pasted Transform.";
+        for (EntityId inspected : inspectedEntities) {
+            if (WorldEntity* target = world_.Find(inspected)) {
+                target->transform = *transformClipboard_;
+            }
+        }
+        RecordImmediateEdit(multipleEntities ? "Paste Transforms" : "Paste Transform",
+                            before, selectionBefore);
+        status_ = multipleEntities ? "Pasted Transform to selected entities."
+                                   : "Pasted Transform.";
     }
     if (!transformClipboard_) {
         ImGui::EndDisabled();
     }
-    auto drawTransform = [&](const char* label, DirectX::XMFLOAT3& value, float speed) {
-        const bool changed = ImGui::DragFloat3(label, &value.x, speed);
+    auto drawTransform = [&](const char* label,
+                             DirectX::XMFLOAT3 TransformComponent::*member,
+                             float speed, bool scale) {
+        const DirectX::XMFLOAT3 previous = entity->transform.*member;
+        DirectX::XMFLOAT3 edited = previous;
+        const bool changed = ImGui::DragFloat3(label, &edited.x, speed);
         if (ImGui::IsItemActivated()) {
-            BeginHistoryEdit(std::string("Modify Transform ") + label);
+            BeginHistoryEdit(std::string(multipleEntities ? "Modify Transforms "
+                                                          : "Modify Transform ") +
+                             label);
         }
         if (changed) {
+            const DirectX::XMFLOAT3 delta{edited.x - previous.x, edited.y - previous.y,
+                                          edited.z - previous.z};
+            auto applyComponent = [scale](float current, float oldActive,
+                                          float newActive, float additiveDelta) {
+                constexpr float epsilon = 1.0e-6f;
+                if (scale && std::abs(oldActive) > epsilon) {
+                    return current * (newActive / oldActive);
+                }
+                return current + additiveDelta;
+            };
+            for (EntityId inspected : inspectedEntities) {
+                WorldEntity* target = world_.Find(inspected);
+                if (target == nullptr) {
+                    continue;
+                }
+                DirectX::XMFLOAT3& value = target->transform.*member;
+                if (inspected == selection_) {
+                    value = edited;
+                } else {
+                    value = {applyComponent(value.x, previous.x, edited.x, delta.x),
+                             applyComponent(value.y, previous.y, edited.y, delta.y),
+                             applyComponent(value.z, previous.z, edited.z, delta.z)};
+                }
+            }
             RefreshDirty();
-            status_ = "Modified Transform.";
+            status_ = multipleEntities ? "Modified selected Transforms."
+                                       : "Modified Transform.";
         }
         if (ImGui::IsItemDeactivatedAfterEdit()) {
             CommitHistoryEdit();
         }
     };
-    drawTransform("Position", entity->transform.position, 0.05f);
-    drawTransform("Rotation", entity->transform.rotationDegrees, 0.25f);
-    drawTransform("Scale", entity->transform.scale, 0.02f);
+    drawTransform("Position", &TransformComponent::position, 0.05f, false);
+    drawTransform("Rotation", &TransformComponent::rotationDegrees, 0.25f, false);
+    drawTransform("Scale", &TransformComponent::scale, 0.02f, true);
+
+    if (multipleEntities) {
+        ImGui::Separator();
+        ImGui::TextDisabled("Component editing is available when one Entity is selected.");
+        return;
+    }
 
     ImGui::Separator();
     if (ImGui::Button("Add Component")) {
