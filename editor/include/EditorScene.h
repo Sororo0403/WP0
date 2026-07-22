@@ -387,6 +387,7 @@ private:
     float rotationSnapDegrees_ = 15.0f;
     float scaleSnap_ = 0.1f;
     bool showSceneGrid_ = true;
+    bool showPhysicsDebug_ = false;
     bool sceneCameraNavigating_ = false;
     bool sceneCameraPanning_ = false;
     bool sceneCameraCursorCaptured_ = false;

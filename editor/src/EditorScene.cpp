@@ -959,9 +959,7 @@ void EditorScene::DrawPanels() {
 
     if (showScenePanel_) {
         if (ImGui::Begin("Scene", &showScenePanel_, kPanelFlags)) {
-            ImGui::BeginDisabled(IsInPlayMode());
             DrawSceneGizmoToolbar();
-            ImGui::EndDisabled();
             ImGui::Separator();
             const ImVec2 available = ImGui::GetContentRegionAvail();
             requestedSceneWidth_ = (std::max)(1, static_cast<int>(std::lround(available.x)));
@@ -6225,6 +6223,8 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                           ? IM_COL32(90, 185, 255, 230)
                           : (entity.light ? IM_COL32(255, 215, 80, 230)
                                           : IM_COL32(80, 230, 130, 230));
+        const bool drawPhysicsShapes =
+            showPhysicsDebug_ && (entity.boxCollider || entity.characterController);
         if (active) {
             color = IM_COL32(255, 184, 56, 255);
         } else if (selected) {
@@ -6261,7 +6261,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                               {center.x + 6.0f, center.y + 6.0f}, color, 1.0f, 0,
                               1.8f);
         }
-        if (active) {
+        if (active || drawPhysicsShapes) {
             using namespace DirectX;
             const XMMATRIX world = XMLoadFloat4x4(&worldMatrix);
             const XMVECTOR origin = XMVectorSet(worldMatrix._41, worldMatrix._42,
@@ -6281,7 +6281,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 return result;
             };
 
-            if (entity.camera) {
+            if (active && entity.camera) {
                 const CameraComponent& camera = *entity.camera;
                 const float aspect = static_cast<float>((std::max)(1, gameViewSurface_.GetWidth())) /
                                      static_cast<float>((std::max)(1, gameViewSurface_.GetHeight()));
@@ -6319,7 +6319,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 }
             }
 
-            if (entity.light) {
+            if (active && entity.light) {
                 const LightComponent& light = *entity.light;
                 const ImU32 guideColor = light.enabled ? IM_COL32(255, 215, 80, 190)
                                                        : IM_COL32(255, 215, 80, 80);
@@ -6369,7 +6369,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 }
             }
 
-            if (entity.boxCollider) {
+            if (entity.boxCollider && (active || showPhysicsDebug_)) {
                 OBB collider{};
                 if (TryBuildWorldBoxCollider(world_, entity.id, collider)) {
                     const XMVECTOR colliderCenter = XMLoadFloat3(&collider.center);
@@ -6400,9 +6400,12 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                         {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
                         {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
                     };
-                    const ImU32 guideColor = entity.boxCollider->enabled
-                                                 ? IM_COL32(80, 230, 130, 210)
-                                                 : IM_COL32(80, 230, 130, 80);
+                    const ImU32 guideColor =
+                        entity.boxCollider->isTrigger
+                            ? (entity.boxCollider->enabled ? IM_COL32(255, 170, 70, 220)
+                                                           : IM_COL32(255, 170, 70, 80))
+                            : (entity.boxCollider->enabled ? IM_COL32(80, 230, 130, 210)
+                                                           : IM_COL32(80, 230, 130, 80));
                     for (const auto& edge : colliderEdges) {
                         drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor,
                                       1.5f);
@@ -6410,7 +6413,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 }
             }
 
-            if (entity.characterController) {
+            if (entity.characterController && (active || showPhysicsDebug_)) {
                 CharacterCapsule capsule{};
                 if (TryBuildWorldCharacterCapsule(world_, entity.id, capsule)) {
                     const ImU32 guideColor = entity.characterController->enabled
@@ -6579,6 +6582,7 @@ void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,
 }
 
 void EditorScene::DrawSceneGizmoToolbar() {
+    ImGui::BeginDisabled(IsInPlayMode());
     auto operationButton = [&](const char* label, GizmoOperation operation) {
         const bool selected = gizmoOperation_ == operation;
         if (selected) {
@@ -6606,6 +6610,7 @@ void EditorScene::DrawSceneGizmoToolbar() {
     if (ImGui::RadioButton("World", gizmoSpace_ == GizmoSpace::World)) {
         gizmoSpace_ = GizmoSpace::World;
     }
+    ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::TextDisabled("|");
     ImGui::SameLine();
@@ -6613,6 +6618,14 @@ void EditorScene::DrawSceneGizmoToolbar() {
     ImGui::SameLine();
     ImGui::TextDisabled("|");
     ImGui::SameLine();
+    ImGui::Checkbox("Physics", &showPhysicsDebug_);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Show every BoxCollider and Character Controller in Scene View.");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(IsInPlayMode());
     ImGui::Checkbox("Snap", &gizmoSnapEnabled_);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(72.0f);
@@ -6629,6 +6642,7 @@ void EditorScene::DrawSceneGizmoToolbar() {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Enable Snap or hold Ctrl while manipulating.");
     }
+    ImGui::EndDisabled();
 }
 
 bool EditorScene::DrawBoxColliderGizmo(const ImVec2& imageMin,
