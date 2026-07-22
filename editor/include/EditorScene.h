@@ -68,6 +68,10 @@ private:
         std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
     void EndRuntimeWorld();
+    bool BeginRuntimeAudio(std::string* error = nullptr);
+    void UpdateRuntimeAudio();
+    void PauseRuntimeAudio(bool paused);
+    void EndRuntimeAudio();
     [[nodiscard]] bool IsInPlayMode() const;
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
@@ -108,6 +112,7 @@ private:
     void DuplicateSelection();
     void ReparentSelection(EntityId draggedEntity, EntityId parent);
     void AssignModelAsset(EntityId entity, const std::filesystem::path& path);
+    void AssignAudioAsset(EntityId entity, const std::filesystem::path& path);
     void AssignScriptAsset(EntityId entity, const std::filesystem::path& path,
                            std::optional<size_t> scriptIndex = std::nullopt);
     void ClearScriptAsset(EntityId entity, size_t scriptIndex);
@@ -137,6 +142,8 @@ private:
                                          std::string& assetPath);
     bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,
                                            std::string& assetPath);
+    bool TryNormalizeAudioAssetReference(const std::filesystem::path& path,
+                                         std::string& assetPath);
     bool TryNormalizeScriptAssetReference(const std::filesystem::path& path,
                                           std::string& assetPath,
                                           std::filesystem::path& physicalPath);
@@ -274,6 +281,13 @@ private:
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
     TriggerSystem runtimeTriggers_;
+    struct RuntimeAudioSource {
+        EntityId entity{};
+        uint32_t soundId = kInvalidResourceId;
+        uint32_t voice = kInvalidResourceId;
+        bool activated = false;
+    };
+    std::vector<RuntimeAudioSource> runtimeAudioSources_;
     std::future<ScriptBuildCompletion> scriptBuildFuture_;
     uint64_t scriptSourceFingerprint_ = 0u;
     bool scriptFingerprintInitialized_ = false;

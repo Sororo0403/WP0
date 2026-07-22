@@ -127,7 +127,7 @@ public:
     /// <summary>
     /// 指定した再生中ボイスを一時停止する
     /// </summary>
-    void Pause(uint32_t voiceHandle);
+    void Pause(uint32_t voiceHandle) override;
     void Pause(VoiceHandle voice) {
         Pause(voice.Get());
     }
@@ -135,7 +135,7 @@ public:
     /// <summary>
     /// 一時停止したボイスを再開する
     /// </summary>
-    void Resume(uint32_t voiceHandle);
+    void Resume(uint32_t voiceHandle) override;
     void Resume(VoiceHandle voice) {
         Resume(voice.Get());
     }

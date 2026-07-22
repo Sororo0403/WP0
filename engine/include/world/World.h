@@ -101,6 +101,17 @@ struct LightComponent {
     float outerAngleDegrees = 45.0f;
 };
 
+struct AudioSourceComponent {
+    bool enabled = true;
+    std::string clipPath;
+    bool playOnAwake = true;
+    bool loop = false;
+    float volume = 1.0f;
+    bool spatial = false;
+    float minDistance = 1.0f;
+    float maxDistance = 50.0f;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -147,6 +158,7 @@ struct WorldEntity {
     std::optional<MaterialOverrideComponent> materialOverride;
     std::optional<CameraComponent> camera;
     std::optional<LightComponent> light;
+    std::optional<AudioSourceComponent> audioSource;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

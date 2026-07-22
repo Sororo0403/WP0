@@ -65,6 +65,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->materialOverride = original.materialOverride;
         duplicate->camera = original.camera;
         duplicate->light = original.light;
+        duplicate->audioSource = original.audioSource;
         duplicate->scripts = original.scripts;
         duplicate->boxCollider = original.boxCollider;
         duplicate->characterController = original.characterController;
@@ -425,6 +426,18 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 material.alphaCutoff > 1.0f || material.cullMode < MaterialSurfaceCullMode::None ||
                 material.cullMode > MaterialSurfaceCullMode::Back) {
                 SetError(error, "Scene contains an invalid MaterialOverride component.");
+                return false;
+            }
+        }
+        if (entity.audioSource) {
+            const AudioSourceComponent& source = *entity.audioSource;
+            if (source.clipPath.size() > 1024u ||
+                source.clipPath.find('\0') != std::string::npos ||
+                !std::isfinite(source.volume) || source.volume < 0.0f ||
+                source.volume > 1.0f || !std::isfinite(source.minDistance) ||
+                !std::isfinite(source.maxDistance) || source.minDistance < 0.0f ||
+                source.maxDistance <= source.minDistance) {
+                SetError(error, "Scene contains an invalid AudioSource component.");
                 return false;
             }
         }

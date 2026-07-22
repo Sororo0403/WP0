@@ -168,6 +168,19 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedLight["outerAngle"] = light.outerAngleDegrees;
             encoded["components"]["Light"] = std::move(encodedLight);
         }
+        if (entity.audioSource) {
+            const AudioSourceComponent& source = *entity.audioSource;
+            Json encodedSource;
+            encodedSource["enabled"] = source.enabled;
+            encodedSource["clip"] = source.clipPath;
+            encodedSource["playOnAwake"] = source.playOnAwake;
+            encodedSource["loop"] = source.loop;
+            encodedSource["volume"] = source.volume;
+            encodedSource["spatial"] = source.spatial;
+            encodedSource["minDistance"] = source.minDistance;
+            encodedSource["maxDistance"] = source.maxDistance;
+            encoded["components"]["AudioSource"] = std::move(encodedSource);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -548,6 +561,40 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.light = component;
+        }
+        if (encoded["components"].contains("AudioSource")) {
+            const Json& source = encoded["components"]["AudioSource"];
+            if (!source.is_object() || !source.contains("enabled") ||
+                !source["enabled"].is_boolean() || !source.contains("clip") ||
+                !source["clip"].is_string() || !source.contains("playOnAwake") ||
+                !source["playOnAwake"].is_boolean() || !source.contains("loop") ||
+                !source["loop"].is_boolean() || !source.contains("volume") ||
+                !source["volume"].is_number() || !source.contains("spatial") ||
+                !source["spatial"].is_boolean() || !source.contains("minDistance") ||
+                !source["minDistance"].is_number() || !source.contains("maxDistance") ||
+                !source["maxDistance"].is_number()) {
+                SetError(error, "Scene AudioSource component is invalid.");
+                return false;
+            }
+            AudioSourceComponent component{};
+            component.enabled = source["enabled"].get<bool>();
+            component.clipPath = source["clip"].get<std::string>();
+            component.playOnAwake = source["playOnAwake"].get<bool>();
+            component.loop = source["loop"].get<bool>();
+            component.volume = source["volume"].get<float>();
+            component.spatial = source["spatial"].get<bool>();
+            component.minDistance = source["minDistance"].get<float>();
+            component.maxDistance = source["maxDistance"].get<float>();
+            if (component.clipPath.size() > 1024u ||
+                component.clipPath.find('\0') != std::string::npos ||
+                !std::isfinite(component.volume) || component.volume < 0.0f ||
+                component.volume > 1.0f || !std::isfinite(component.minDistance) ||
+                !std::isfinite(component.maxDistance) || component.minDistance < 0.0f ||
+                component.maxDistance <= component.minDistance) {
+                SetError(error, "Scene AudioSource settings are invalid.");
+                return false;
+            }
+            entity.audioSource = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

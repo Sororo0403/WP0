@@ -51,6 +51,7 @@ constexpr const char* kPrimitiveNames[] = {"Box", "Sphere", "Plane", "Cylinder"}
 constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
+constexpr const char* kAudioAssetDragPayload = "EDITOR_AUDIO_ASSET";
 constexpr const char* kScriptAssetDragPayload = "EDITOR_SCRIPT_ASSET";
 constexpr const char* kPrefabAssetDragPayload = "EDITOR_PREFAB_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
@@ -1914,9 +1915,10 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", id.c_str());
     }
-    if (!directory && !scriptHeader && !audio && ImGui::BeginDragDropSource()) {
+    if (!directory && !scriptHeader && ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(prefab ? kPrefabAssetDragPayload
                                           : texture ? kTextureAssetDragPayload
+                                          : audio ? kAudioAssetDragPayload
                                           : script ? kScriptAssetDragPayload
                                                    : kModelAssetDragPayload,
                                   id.c_str(), id.size() + 1u);
@@ -2647,8 +2649,14 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
                     AssetRelativeFromReference(script.scriptAssetPath);
                 return referenced && AssetPathMatches(*referenced, relativePath, directory);
             });
+        const std::optional<std::filesystem::path> audioReference =
+            entity.audioSource
+                ? AssetRelativeFromReference(entity.audioSource->clipPath)
+                : std::nullopt;
+        const bool matchesAudio =
+            audioReference && AssetPathMatches(*audioReference, relativePath, directory);
         if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
-            !matchesMetallic && !matchesScript) {
+            !matchesMetallic && !matchesScript && !matchesAudio) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -2714,6 +2722,12 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
                            AssetPathMatches(*referenced, relativePath, directory);
                 });
         }
+        if (!referencedByEntity && entity.audioSource) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.audioSource->clipPath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
         if (referencedByEntity) {
             ++references;
         }
@@ -2750,6 +2764,9 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
             updateReference(entity->materialOverride->normalTexturePath);
             updateReference(entity->materialOverride->roughnessTexturePath);
             updateReference(entity->materialOverride->metallicTexturePath);
+        }
+        if (entity->audioSource) {
+            updateReference(entity->audioSource->clipPath);
         }
         for (BehaviorComponent& script : entity->scripts) {
             updateReference(script.scriptAssetPath);
@@ -3120,6 +3137,11 @@ void EditorScene::DrawEntityNode(EntityId id) {
             static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
             AssignModelAsset(id, static_cast<const char*>(payload->Data));
         }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kAudioAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignAudioAsset(id, static_cast<const char*>(payload->Data));
+        }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
             payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
             static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
@@ -3378,6 +3400,13 @@ void EditorScene::DrawInspectorPanel() {
             entity->light = LightComponent{};
             RecordImmediateEdit("Add Light", before, selectionBefore);
             status_ = "Added Light.";
+        }
+        if (!entity->audioSource && ImGui::MenuItem("Audio Source")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->audioSource = AudioSourceComponent{};
+            RecordImmediateEdit("Add AudioSource", before, selectionBefore);
+            status_ = "Added AudioSource.";
         }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -3980,6 +4009,92 @@ void EditorScene::DrawInspectorPanel() {
                                (std::max)(0.0f, light.outerAngleDegrees - 0.1f), "%.1f deg");
                 drawLightFloat("Outer Angle##Light", light.outerAngleDegrees, 0.25f,
                                light.innerAngleDegrees + 0.1f, 179.0f, "%.1f deg");
+            }
+        }
+    }
+
+    if (entity->audioSource) {
+        ImGui::SeparatorText("Audio Source");
+        if (ImGui::Button("Remove Audio Source")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->audioSource.reset();
+            RecordImmediateEdit("Remove AudioSource", before, selectionBefore);
+            status_ = "Removed AudioSource.";
+        } else {
+            AudioSourceComponent& source = *entity->audioSource;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##AudioSource", &source.enabled)) {
+                RecordImmediateEdit("Toggle AudioSource", std::move(before), selectionBefore);
+            }
+
+            const std::string clipLabel = source.clipPath.empty()
+                                              ? "None (drop an Audio asset)"
+                                              : source.clipPath;
+            ImGui::TextUnformatted("Clip");
+            ImGui::SameLine();
+            if (ImGui::Button(clipLabel.c_str(), {-FLT_MIN, 0.0f})) {
+                ImGui::OpenPopup("AudioAssetPicker");
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kAudioAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+                    static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignAudioAsset(selection_, static_cast<const char*>(payload->Data));
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopup("AudioAssetPicker")) {
+                if (ImGui::Selectable("None", source.clipPath.empty())) {
+                    before = WorldSerializer::Serialize(world_);
+                    source.clipPath.clear();
+                    RecordImmediateEdit("Clear Audio Clip", std::move(before),
+                                        selectionBefore);
+                }
+                for (const std::filesystem::path& audioAsset : audioAssets_) {
+                    const std::string label = audioAsset.generic_string();
+                    if (ImGui::Selectable(label.c_str(), source.clipPath == label)) {
+                        AssignAudioAsset(selection_, audioAsset);
+                    }
+                }
+                ImGui::EndPopup();
+            }
+
+            auto drawAudioCheckbox = [&](const char* label, bool& value,
+                                         const char* historyLabel) {
+                before = WorldSerializer::Serialize(world_);
+                if (ImGui::Checkbox(label, &value)) {
+                    RecordImmediateEdit(historyLabel, std::move(before), selectionBefore);
+                }
+            };
+            drawAudioCheckbox("Play On Awake##AudioSource", source.playOnAwake,
+                              "Toggle AudioSource Play On Awake");
+            drawAudioCheckbox("Loop##AudioSource", source.loop, "Toggle AudioSource Loop");
+            drawAudioCheckbox("Spatial##AudioSource", source.spatial,
+                              "Toggle AudioSource Spatial");
+
+            auto drawAudioFloat = [&](const char* label, float& value, float speed,
+                                      float minimum, float maximum) {
+                if (ImGui::DragFloat(label, &value, speed, minimum, maximum, "%.2f",
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified AudioSource.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify AudioSource");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+            };
+            drawAudioFloat("Volume##AudioSource", source.volume, 0.01f, 0.0f, 1.0f);
+            if (source.spatial) {
+                drawAudioFloat("Min Distance##AudioSource", source.minDistance, 0.05f,
+                               0.0f, (std::max)(0.0f, source.maxDistance - 0.01f));
+                drawAudioFloat("Max Distance##AudioSource", source.maxDistance, 0.1f,
+                               source.minDistance + 0.01f, 1000000.0f);
             }
         }
     }
@@ -4914,6 +5029,27 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     status_ = "Assigned model asset: " + assetPath;
 }
 
+void EditorScene::AssignAudioAsset(EntityId entityId, const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "The target entity no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeAudioAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (!entity->audioSource) {
+        entity->audioSource = AudioSourceComponent{};
+    }
+    entity->audioSource->clipPath = assetPath;
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Audio Asset", before, selectionBefore);
+    status_ = "Assigned audio asset: " + assetPath;
+}
+
 void EditorScene::DrawAudioAssetPreview(const std::filesystem::path& physicalPath) {
     const std::filesystem::path selected = selectedAsset_.lexically_normal();
     if (assetPreviewAsset_ != selected) {
@@ -5598,6 +5734,30 @@ bool EditorScene::SaveSelectionAsPrefab() {
         selectedAsset_.clear();
     }
     status_ = "Saved Prefab: " + destination->string();
+    return true;
+}
+
+bool EditorScene::TryNormalizeAudioAssetReference(const std::filesystem::path& path,
+                                                  std::string& assetPath) {
+    if (!AssetImport::IsAudioFile(path)) {
+        status_ = "The dropped audio asset is invalid.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolvedPath = ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath || !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped audio asset no longer exists.";
+        return false;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() && *normalized.begin() == "assets") {
+        assetPath = "asset://" + normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped audio asset path is too long.";
+        return false;
+    }
     return true;
 }
 
@@ -6305,6 +6465,7 @@ void EditorScene::EnterPlayMode() {
         return;
     }
     CommitHistoryEdit();
+    StopAudioAssetPreview();
     gizmoWasUsing_ = false;
     boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
     boxColliderGizmoEntity_ = {};
@@ -6331,7 +6492,7 @@ void EditorScene::EnterPlayMode() {
     focusGamePanelRequested_ = true;
     status_ = allBehaviorsStarted
                   ? "Entered Play Mode. Runtime changes will be discarded on Stop."
-                  : "Error: Entered Play Mode with invalid Behavior(s) disabled: " +
+                  : "Error: Entered Play Mode with runtime setup issue(s): " +
                         runtimeError;
 }
 
@@ -6371,9 +6532,11 @@ void EditorScene::StopPlayMode() {
 void EditorScene::TogglePlayPause() {
     if (playModeState_ == PlayModeState::Playing) {
         ReleaseGameInputCapture();
+        PauseRuntimeAudio(true);
         playModeState_ = PlayModeState::Paused;
         status_ = "Paused Play Mode.";
     } else if (playModeState_ == PlayModeState::Paused) {
+        PauseRuntimeAudio(false);
         playModeState_ = PlayModeState::Playing;
         status_ = "Resumed Play Mode.";
     }
@@ -6436,6 +6599,13 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
         }
     }
     runtimeBehaviors_.Start(world_);
+    std::string audioError;
+    if (!BeginRuntimeAudio(&audioError)) {
+        valid = false;
+        if (error != nullptr && error->empty()) {
+            *error = audioError;
+        }
+    }
     if (valid && error != nullptr) {
         error->clear();
     }
@@ -6495,15 +6665,171 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
     runtimeBehaviors_.Update(safeDeltaTime);
     runtimeTriggers_.Update(world_, runtimeBehaviors_);
+    UpdateRuntimeAudio();
     ++runtimeFrameCount_;
     runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
 }
 
 void EditorScene::EndRuntimeWorld() {
+    EndRuntimeAudio();
     runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
+}
+
+bool EditorScene::BeginRuntimeAudio(std::string* error) {
+    EndRuntimeAudio();
+    if (std::ranges::none_of(world_.Entities(), [](const WorldEntity& entity) {
+            return entity.audioSource.has_value();
+        })) {
+        if (error != nullptr) {
+            error->clear();
+        }
+        return true;
+    }
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    if (sound == nullptr) {
+        if (error != nullptr) {
+            *error = "Audio service is unavailable.";
+        }
+        return false;
+    }
+    bool valid = true;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.audioSource) {
+            continue;
+        }
+        RuntimeAudioSource runtime{};
+        runtime.entity = entity.id;
+        if (!entity.audioSource->clipPath.empty()) {
+            const std::optional<std::filesystem::path> clip =
+                ResolveProjectAssetPath(entity.audioSource->clipPath);
+            if (!clip || !AssetImport::IsAudioFile(*clip) ||
+                !sound->TryLoad(clip->wstring(), runtime.soundId)) {
+                valid = false;
+                if (error != nullptr && error->empty()) {
+                    *error = entity.name + ": AudioSource clip could not be loaded.";
+                }
+            }
+        }
+        runtimeAudioSources_.push_back(runtime);
+    }
+    UpdateRuntimeAudio();
+    if (valid && error != nullptr) {
+        error->clear();
+    }
+    return valid;
+}
+
+void EditorScene::UpdateRuntimeAudio() {
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    if (sound == nullptr) {
+        return;
+    }
+
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!world_.IsActiveInHierarchy(entity.id) || !entity.camera ||
+            !entity.camera->enabled || !entity.camera->primary) {
+            continue;
+        }
+        DirectX::XMFLOAT4X4 matrix{};
+        if (!world_.TryGetWorldMatrix(entity.id, matrix)) {
+            break;
+        }
+        using namespace DirectX;
+        const XMMATRIX world = XMLoadFloat4x4(&matrix);
+        XMVECTOR forward = XMVector3TransformNormal(g_XMIdentityR2, world);
+        XMVECTOR up = XMVector3TransformNormal(g_XMIdentityR1, world);
+        forward = XMVectorGetX(XMVector3LengthSq(forward)) > 1.0e-8f
+                      ? XMVector3Normalize(forward)
+                      : g_XMIdentityR2;
+        up = XMVectorGetX(XMVector3LengthSq(up)) > 1.0e-8f
+                 ? XMVector3Normalize(up)
+                 : g_XMIdentityR1;
+        XMFLOAT3 storedForward{};
+        XMFLOAT3 storedUp{};
+        XMStoreFloat3(&storedForward, forward);
+        XMStoreFloat3(&storedUp, up);
+        sound->SetListener({matrix._41, matrix._42, matrix._43}, storedForward, storedUp);
+        break;
+    }
+
+    for (RuntimeAudioSource& runtime : runtimeAudioSources_) {
+        const WorldEntity* entity = world_.Find(runtime.entity);
+        const AudioSourceComponent* source =
+            entity != nullptr && entity->audioSource ? &*entity->audioSource : nullptr;
+        const bool active = source != nullptr && source->enabled &&
+                            world_.IsActiveInHierarchy(runtime.entity) &&
+                            runtime.soundId != ISoundService::kInvalidSoundId;
+        if (!active) {
+            if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+                sound->Stop(runtime.voice);
+            }
+            runtime.voice = ISoundService::kInvalidVoiceHandle;
+            runtime.activated = false;
+            continue;
+        }
+        if (!runtime.activated) {
+            runtime.activated = true;
+            if (source->playOnAwake) {
+                if (source->spatial) {
+                    DirectX::XMFLOAT4X4 matrix{};
+                    if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
+                        runtime.voice = sound->Play3D(
+                            runtime.soundId, {matrix._41, matrix._42, matrix._43},
+                            source->volume, source->loop);
+                    }
+                } else {
+                    runtime.voice = sound->Play(runtime.soundId, source->volume, source->loop);
+                }
+            }
+        }
+        if (runtime.voice == ISoundService::kInvalidVoiceHandle ||
+            !sound->IsPlaying(runtime.voice)) {
+            runtime.voice = ISoundService::kInvalidVoiceHandle;
+            continue;
+        }
+        sound->SetVoiceVolume(runtime.voice, source->volume);
+        if (source->spatial) {
+            DirectX::XMFLOAT4X4 matrix{};
+            if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
+                sound->SetVoicePosition(runtime.voice,
+                                        {matrix._41, matrix._42, matrix._43});
+                sound->SetVoice3DRange(runtime.voice, source->minDistance,
+                                       source->maxDistance);
+            }
+        }
+    }
+}
+
+void EditorScene::PauseRuntimeAudio(bool paused) {
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    if (sound == nullptr) {
+        return;
+    }
+    for (const RuntimeAudioSource& runtime : runtimeAudioSources_) {
+        if (runtime.voice == ISoundService::kInvalidVoiceHandle) {
+            continue;
+        }
+        if (paused) {
+            sound->Pause(runtime.voice);
+        } else {
+            sound->Resume(runtime.voice);
+        }
+    }
+}
+
+void EditorScene::EndRuntimeAudio() {
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    if (sound != nullptr) {
+        for (const RuntimeAudioSource& runtime : runtimeAudioSources_) {
+            if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+                sound->Stop(runtime.voice);
+            }
+        }
+    }
+    runtimeAudioSources_.clear();
 }
 
 void EditorScene::BuildEditorOverlayScene() {

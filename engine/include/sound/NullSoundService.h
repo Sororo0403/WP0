@@ -31,6 +31,8 @@ public:
     }
 
     void Stop(uint32_t) override {}
+    void Pause(uint32_t) override {}
+    void Resume(uint32_t) override {}
     void StopAll() override {}
     bool IsPlaying(uint32_t) const override {
         return false;

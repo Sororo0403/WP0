@@ -583,6 +583,13 @@ int main() {
     childEntity->light = LightComponent{};
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
+    childEntity->audioSource = AudioSourceComponent{};
+    childEntity->audioSource->clipPath = "asset://Audio/test.wav";
+    childEntity->audioSource->loop = true;
+    childEntity->audioSource->volume = 0.6f;
+    childEntity->audioSource->spatial = true;
+    childEntity->audioSource->minDistance = 2.0f;
+    childEntity->audioSource->maxDistance = 30.0f;
     childEntity->scripts.push_back(
         {true, "Rotator", "asset://Scripts/Rotator.cpp"});
     childEntity->scripts[0].properties = {
@@ -794,6 +801,14 @@ int main() {
                    !restoredChild->materialOverride->depthWrite &&
                    restoredChild->light && restoredChild->light->type == LightType::Point &&
                    restoredChild->light->intensity == 2.0f &&
+                   restoredChild->audioSource && restoredChild->audioSource->enabled &&
+                   restoredChild->audioSource->clipPath == "asset://Audio/test.wav" &&
+                   restoredChild->audioSource->playOnAwake &&
+                   restoredChild->audioSource->loop &&
+                   restoredChild->audioSource->volume == 0.6f &&
+                   restoredChild->audioSource->spatial &&
+                   restoredChild->audioSource->minDistance == 2.0f &&
+                   restoredChild->audioSource->maxDistance == 30.0f &&
                    restoredChild->scripts.size() == 3u &&
                    restoredChild->scripts[0].enabled &&
                    restoredChild->scripts[0].type == "Rotator" &&
@@ -863,7 +878,8 @@ int main() {
                    !instanceRoot->camera->primary && instanceChild != nullptr &&
                    instanceChild->id != child && instanceChild->parent == instanceRoot->id &&
                    instanceChild->meshRenderer && instanceChild->materialOverride &&
-                   instanceChild->light && instanceChild->boxCollider &&
+                   instanceChild->light && instanceChild->audioSource &&
+                   instanceChild->boxCollider &&
                    instanceChild->characterController && instanceChild->scripts.size() == 3u &&
                    instanceTarget != nullptr &&
                    instanceTarget->entityValue == instanceRoot->id &&

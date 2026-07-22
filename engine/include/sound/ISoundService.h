@@ -30,6 +30,8 @@ public:
     virtual uint32_t Play3D(uint32_t soundId, const DirectX::XMFLOAT3& sourcePosition,
                             float volume = 1.0f, bool loop = false) = 0;
     virtual void Stop(uint32_t voiceHandle) = 0;
+    virtual void Pause(uint32_t voiceHandle) = 0;
+    virtual void Resume(uint32_t voiceHandle) = 0;
     virtual void StopAll() = 0;
     virtual bool IsPlaying(uint32_t voiceHandle) const = 0;
     virtual const SoundInfo* GetInfo(uint32_t soundId) const = 0;
