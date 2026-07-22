@@ -19,6 +19,7 @@
 #include "model/Model.h"
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
+#include "sound/ISoundService.h"
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 #include "world/WorldCollision.h"
@@ -1718,9 +1719,10 @@ void EditorScene::DrawProjectPanel() {
         RefreshAssetBrowser();
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu model(s), %zu texture(s), %zu script(s), %zu prefab(s)",
-                        modelAssets_.size(), textureAssets_.size(), scriptAssets_.size(),
-                        prefabAssets_.size());
+    ImGui::TextDisabled(
+        "%zu model(s), %zu texture(s), %zu audio(s), %zu script(s), %zu prefab(s)",
+        modelAssets_.size(), textureAssets_.size(), audioAssets_.size(),
+        scriptAssets_.size(), prefabAssets_.size());
     ImGui::Separator();
     if (!currentAssetDirectory_.empty()) {
         if (ImGui::Button("< Back")) {
@@ -1735,10 +1737,12 @@ void EditorScene::DrawProjectPanel() {
 
     constexpr const char* formatLabels[] = {
         "All formats", "Prefab", "C++ Script", "glTF", "GLB", "OBJ", "FBX", "DAE",
-        "3DS", "PLY", "PNG", "JPG", "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
+        "3DS", "PLY", "PNG", "JPG", "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR",
+        "WAV", "MP3", "AAC", "M4A", "WMA"};
     constexpr const char* formatExtensions[] = {
         "", ".likeprefab", ".cpp", ".gltf", ".glb", ".obj", ".fbx", ".dae", ".3ds",
-        ".ply", ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds", ".hdr", ".exr"};
+        ".ply", ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds", ".hdr", ".exr",
+        ".wav", ".mp3", ".aac", ".m4a", ".wma"};
     constexpr const char* sortLabels[] = {"Name", "Type", "Size"};
     ImGui::SetNextItemWidth(105.0f);
     ImGui::Combo("##AssetFormat", &assetFormatFilter_, formatLabels,
@@ -1808,6 +1812,7 @@ void EditorScene::DrawProjectPanel() {
             };
             appendMatches(modelAssets_);
             appendMatches(textureAssets_);
+            appendMatches(audioAssets_);
             appendMatches(scriptAssets_);
             appendMatches(prefabAssets_);
             std::ranges::sort(matches, comparePaths);
@@ -1873,6 +1878,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         (std::filesystem::path("assets") / relativePath).lexically_normal();
     const std::string id = logicalPath.generic_string();
     const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
+    const bool audio = !directory && AssetImport::IsAudioFile(relativePath);
     const bool script = !directory && ScriptAssets::IsScriptFile(relativePath);
     const bool scriptSource =
         !directory && ScriptAssets::IsScriptSourceFile(relativePath);
@@ -1881,6 +1887,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const std::string label = std::string(directory ? "[Folder] "
                                                      : prefab ? "[Prefab] "
                                                      : texture ? "[Texture] "
+                                                     : audio ? "[Audio] "
                                                      : script ? "[Script] "
                                                      : scriptSource ? "[C++ Script] "
                                                                     : "[Model] ") +
@@ -1907,7 +1914,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", id.c_str());
     }
-    if (!directory && !scriptHeader && ImGui::BeginDragDropSource()) {
+    if (!directory && !scriptHeader && !audio && ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(prefab ? kPrefabAssetDragPayload
                                           : texture ? kTextureAssetDragPayload
                                           : script ? kScriptAssetDragPayload
@@ -2013,6 +2020,8 @@ void EditorScene::DrawSelectedAssetDetails() {
                                       ? "Prefab"
                                 : AssetImport::IsTextureFile(physical)
                                       ? "Texture"
+                                : AssetImport::IsAudioFile(physical)
+                                      ? "Audio"
                                       : ScriptAssets::IsScriptFile(physical)
                                             ? "Script"
                                             : ScriptAssets::IsScriptSourceFile(physical)
@@ -2050,6 +2059,10 @@ void EditorScene::DrawSelectedAssetDetails() {
     }
     if (references == 0u) {
         ImGui::EndDisabled();
+    }
+    if (regularFile && AssetImport::IsAudioFile(physical)) {
+        DrawAudioAssetPreview(physical);
+        return;
     }
     if (!regularFile || !AssetImport::IsModelFile(physical)) {
         return;
@@ -4901,6 +4914,60 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     status_ = "Assigned model asset: " + assetPath;
 }
 
+void EditorScene::DrawAudioAssetPreview(const std::filesystem::path& physicalPath) {
+    const std::filesystem::path selected = selectedAsset_.lexically_normal();
+    if (assetPreviewAsset_ != selected) {
+        StopAudioAssetPreview();
+        audioPreviewSoundId_ = ISoundService::kInvalidSoundId;
+        assetPreviewAsset_ = selected;
+        assetPreviewModel_ = {};
+        assetPreviewPlan_.clear();
+        assetPreviewError_.clear();
+    }
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    const bool playing = sound != nullptr &&
+                         audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle &&
+                         sound->IsPlaying(audioPreviewVoice_);
+    ImGui::BeginDisabled(sound == nullptr);
+    if (ImGui::SmallButton(playing ? "Restart Preview" : "Play Preview")) {
+        StopAudioAssetPreview();
+        uint32_t soundId = ISoundService::kInvalidSoundId;
+        if (!sound->TryLoad(physicalPath.wstring(), soundId)) {
+            status_ = "Audio preview failed: the file could not be decoded.";
+        } else {
+            audioPreviewSoundId_ = soundId;
+            audioPreviewVoice_ = sound->Play(soundId);
+            status_ = audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle
+                          ? "Playing audio preview: " + physicalPath.filename().string()
+                          : "Audio preview failed: the audio device is unavailable.";
+        }
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!playing);
+    if (ImGui::SmallButton("Stop Preview")) {
+        StopAudioAssetPreview();
+        status_ = "Stopped audio preview.";
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+
+    if (sound != nullptr && audioPreviewSoundId_ != ISoundService::kInvalidSoundId) {
+        if (const ISoundService::SoundInfo* info = sound->GetInfo(audioPreviewSoundId_)) {
+            ImGui::TextDisabled("Duration: %.2f s   Channels: %u   Sample Rate: %u Hz",
+                                info->durationSeconds, static_cast<unsigned>(info->channels),
+                                info->sampleRate);
+        }
+    }
+}
+
+void EditorScene::StopAudioAssetPreview() {
+    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
+    if (sound != nullptr && audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle) {
+        sound->Stop(audioPreviewVoice_);
+    }
+    audioPreviewVoice_ = ISoundService::kInvalidVoiceHandle;
+}
+
 void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::path& path,
                                     std::optional<size_t> scriptIndex) {
     WorldEntity* entity = world_.Find(entityId);
@@ -5584,6 +5651,7 @@ void EditorScene::RefreshAssetBrowser() {
     assetPreviewError_.clear();
     modelAssets_.clear();
     textureAssets_.clear();
+    audioAssets_.clear();
     scriptAssets_.clear();
     prefabAssets_.clear();
     assetBrowserEntries_.clear();
@@ -5617,6 +5685,7 @@ void EditorScene::RefreshAssetBrowser() {
         } else if (!error && entry.is_regular_file(error) && !error &&
                    (AssetImport::IsModelFile(entry.path()) ||
                     AssetImport::IsTextureFile(entry.path()) ||
+                    AssetImport::IsAudioFile(entry.path()) ||
                     IsPrefabAsset(entry.path()) ||
                     ScriptAssets::IsScriptFile(entry.path()) ||
                     ScriptAssets::IsScriptSourceFile(entry.path()))) {
@@ -5645,6 +5714,7 @@ void EditorScene::RefreshAssetBrowser() {
         if (iterator->is_regular_file(error) && !error &&
             (AssetImport::IsModelFile(iterator->path()) ||
              AssetImport::IsTextureFile(iterator->path()) ||
+             AssetImport::IsAudioFile(iterator->path()) ||
              IsPrefabAsset(iterator->path()) ||
              ScriptAssets::IsScriptFile(iterator->path()))) {
             std::filesystem::path relative =
@@ -5654,7 +5724,9 @@ void EditorScene::RefreshAssetBrowser() {
                                    ? prefabAssets_
                                : AssetImport::IsTextureFile(iterator->path())
                                    ? textureAssets_
-                                   : ScriptAssets::IsScriptFile(iterator->path())
+                               : AssetImport::IsAudioFile(iterator->path())
+                                   ? audioAssets_
+                               : ScriptAssets::IsScriptFile(iterator->path())
                                          ? scriptAssets_
                                          : modelAssets_;
                 assets.push_back((std::filesystem::path("assets") / relative).lexically_normal());
@@ -5666,6 +5738,9 @@ void EditorScene::RefreshAssetBrowser() {
         return path.generic_string();
     });
     std::ranges::sort(textureAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    std::ranges::sort(audioAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
     std::ranges::sort(scriptAssets_, {}, [](const std::filesystem::path& path) {
@@ -6012,6 +6087,8 @@ void EditorScene::UpdateAssetPreview() {
     if (relative == assetPreviewAsset_) {
         return;
     }
+    StopAudioAssetPreview();
+    audioPreviewSoundId_ = ISoundService::kInvalidSoundId;
     assetPreviewAsset_ = relative;
     assetPreviewModel_ = {};
     assetPreviewPlan_.clear();
@@ -7749,9 +7826,9 @@ std::vector<std::filesystem::path> EditorScene::ShowImportAssetDialog() const {
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFilter =
-        L"Model and Texture Assets\0"
+        L"Model, Texture, and Audio Assets\0"
         L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply;*.bin;*.mtl;*.png;*.jpg;*.jpeg;"
-        L"*.tga;*.bmp;*.dds;*.hdr;*.exr\0";
+        L"*.tga;*.bmp;*.dds;*.hdr;*.exr;*.wav;*.mp3;*.aac;*.m4a;*.wma\0";
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |

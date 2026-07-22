@@ -4,6 +4,11 @@
 
 class NullSoundService final : public ISoundService {
 public:
+    bool TryLoad(const std::wstring&, uint32_t& soundId) override {
+        soundId = kInvalidSoundId;
+        return false;
+    }
+
     uint32_t CreatePcm16Sound(const std::wstring&, const std::vector<int16_t>&, uint32_t = 48000,
                               uint16_t = 1) override {
         return kInvalidSoundId;

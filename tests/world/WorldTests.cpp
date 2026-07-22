@@ -1313,7 +1313,8 @@ int main() {
                   "map_Kd -s 1 1 1 ../textures/diffuse\\ image.png\n"
                   "bump ../textures/normal.png\n") &&
         writeFile(importDirectory / "obj/textures/diffuse image.png", "diffuse") &&
-        writeFile(importDirectory / "obj/textures/normal.png", "normal");
+        writeFile(importDirectory / "obj/textures/normal.png", "normal") &&
+        writeFile(importDirectory / "preview.wav", "audio-data");
     if (!Check(importFilesCreated, "Asset import test files could not be created.")) {
         std::filesystem::remove_all(importDirectory, importFilesystemError);
         return 31;
@@ -1329,6 +1330,14 @@ int main() {
                "Standalone texture import plan failed.")) {
         std::filesystem::remove_all(importDirectory, importFilesystemError);
         return 119;
+    }
+    if (!Check(AssetImport::IsAudioFile(importDirectory / "preview.wav") &&
+                   AssetImport::BuildPlan({importDirectory / "preview.wav"}, importPlan,
+                                          importError) &&
+                   importPlan.size() == 1u,
+               "Standalone audio import plan failed.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 158;
     }
     const bool gltfPlanBuilt = AssetImport::BuildPlan(
         {importDirectory / "gltf/model.gltf"}, importPlan, importError);

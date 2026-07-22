@@ -57,8 +57,16 @@ bool IsTextureAsset(const std::filesystem::path& path) {
     return std::ranges::find(extensions, extension) != std::end(extensions);
 }
 
+bool IsAudioAsset(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    constexpr std::string_view extensions[] = {".wav", ".mp3", ".aac", ".m4a", ".wma"};
+    return std::ranges::find(extensions, extension) != std::end(extensions);
+}
+
 bool IsImportableAssetFile(const std::filesystem::path& path) {
-    if (IsModelAsset(path)) {
+    if (IsModelAsset(path) || IsAudioAsset(path)) {
         return true;
     }
     std::string extension = path.extension().string();
@@ -464,6 +472,10 @@ bool IsTextureFile(const std::filesystem::path& path) {
     return IsTextureAsset(path);
 }
 
+bool IsAudioFile(const std::filesystem::path& path) {
+    return IsAudioAsset(path);
+}
+
 bool IsSelectableFile(const std::filesystem::path& path) {
     return IsImportableAssetFile(path);
 }
@@ -476,12 +488,12 @@ bool BuildPlan(const std::vector<std::filesystem::path>& selectedFiles,
         std::ranges::any_of(selectedFiles, [](const std::filesystem::path& path) {
             return IsModelAsset(path);
         });
-    const bool texturesOnly = !selectedFiles.empty() &&
-                              std::ranges::all_of(selectedFiles, [](const auto& path) {
-                                  return IsTextureAsset(path);
-                              });
-    if (selectedFiles.empty() || (!containsModel && !texturesOnly)) {
-        errorMessage = "Asset import requires a supported model or texture file.";
+    const bool standaloneAssetsOnly = !selectedFiles.empty() &&
+        std::ranges::all_of(selectedFiles, [](const auto& path) {
+            return IsTextureAsset(path) || IsAudioAsset(path);
+        });
+    if (selectedFiles.empty() || (!containsModel && !standaloneAssetsOnly)) {
+        errorMessage = "Asset import requires a supported model, texture, or audio file.";
         return false;
     }
     for (const std::filesystem::path& source : selectedFiles) {

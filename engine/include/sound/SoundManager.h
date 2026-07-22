@@ -44,7 +44,7 @@ public:
     /// <summary>
     /// 音声ファイルを読み込み、失敗時はfalseを返す
     /// </summary>
-    bool TryLoad(const std::wstring& path, uint32_t& soundId);
+    bool TryLoad(const std::wstring& path, uint32_t& soundId) override;
     bool TryLoadHandle(const std::wstring& path, SoundHandle& sound) {
         uint32_t soundId = kInvalidSoundId;
         const bool loaded = TryLoad(path, soundId);

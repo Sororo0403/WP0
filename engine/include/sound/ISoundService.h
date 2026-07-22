@@ -18,6 +18,8 @@ public:
 
     virtual ~ISoundService() = default;
 
+    virtual bool TryLoad(const std::wstring& path, uint32_t& soundId) = 0;
+
     virtual uint32_t CreatePcm16Sound(const std::wstring& cacheKey,
                                       const std::vector<int16_t>& pcmSamples,
                                       uint32_t sampleRate = 48000, uint16_t channels = 1) = 0;

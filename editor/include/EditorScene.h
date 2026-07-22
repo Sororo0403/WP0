@@ -147,6 +147,8 @@ private:
                                bool directory);
     void DrawSelectedAssetDetails();
     void DrawAssetPreviewPopup();
+    void DrawAudioAssetPreview(const std::filesystem::path& physicalPath);
+    void StopAudioAssetPreview();
     void DrawAssetOperationDialogs();
     void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);
     void RequestAssetDelete(const std::filesystem::path& relativePath, bool directory);
@@ -338,6 +340,8 @@ private:
     std::filesystem::path assetPreviewAsset_;
     std::vector<AssetImport::File> assetPreviewPlan_;
     std::string assetPreviewError_;
+    uint32_t audioPreviewSoundId_ = kInvalidResourceId;
+    uint32_t audioPreviewVoice_ = kInvalidResourceId;
     ModelHandle primitiveModels_[4]{};
     uint32_t sceneGridPipelineId_ = kInvalidResourceId;
     std::unordered_map<std::string, ModelHandle> loadedModels_;
@@ -345,6 +349,7 @@ private:
     std::unordered_map<std::string, TextureHandle> loadedLinearTextures_;
     std::vector<std::filesystem::path> modelAssets_;
     std::vector<std::filesystem::path> textureAssets_;
+    std::vector<std::filesystem::path> audioAssets_;
     std::vector<std::filesystem::path> scriptAssets_;
     std::vector<std::filesystem::path> prefabAssets_;
     struct AssetBrowserEntry {
