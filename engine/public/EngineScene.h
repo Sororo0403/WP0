@@ -8,7 +8,7 @@
 #include "runtime/Behavior.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
-#include "runtime/FirstPersonController.h"
+#include "runtime/ScriptModuleApi.h"
 #include "scene/BaseScene.h"
 #include "scene/SceneContext.h"
 #include "scene/SceneManager.h"

@@ -18,7 +18,6 @@
 #include "model/Model.h"
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
-#include "runtime/FirstPersonController.h"
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 #include "world/WorldCollision.h"
@@ -355,18 +354,6 @@ DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
     return position;
 }
 
-class RotatorBehavior final : public Behavior {
-public:
-    void OnUpdate(World& world, EntityId entity, float deltaTime) override {
-        WorldEntity* target = world.Find(entity);
-        if (target == nullptr) {
-            return;
-        }
-        target->transform.rotationDegrees.y =
-            std::fmod(target->transform.rotationDegrees.y + 45.0f * deltaTime, 360.0f);
-    }
-};
-
 }
 
 EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
@@ -380,9 +367,6 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
       imguiSettingsPath_(std::move(imguiSettingsPath)),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
-    behaviorRegistry_.Register("Rotator", [] {
-        return std::make_unique<RotatorBehavior>();
-    });
     recentScenePaths_ = recentScenesStore_.Load();
     std::error_code error;
     if (std::filesystem::is_regular_file(scenePath_, error) && !error) {
@@ -397,13 +381,12 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
 
 void EditorScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
-    if (ctx.systems.input != nullptr) {
-        behaviorRegistry_.Register("FirstPersonController", [input = ctx.systems.input] {
-            return std::make_unique<FirstPersonController>(input);
-        }, {.characterController = true});
-    }
     std::string behaviorRequirementError;
-    if (!ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {
+    std::string scriptModuleError;
+    if (!projectScripts_.Load(projectRoot_, ctx.systems.input, behaviorRegistry_,
+                              scriptModuleError)) {
+        status_ = "Error: " + scriptModuleError;
+    } else if (!ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {
         status_ = "Error: Scene contains an invalid Behavior: " +
                   behaviorRequirementError;
     }
@@ -1347,10 +1330,10 @@ void EditorScene::DrawProjectPanel() {
     ImGui::InputTextWithHint("##AssetSearch", "Search assets...", assetSearch_.data(),
                              assetSearch_.size());
 
-    constexpr const char* formatLabels[] = {"All formats", "Script", "glTF", "GLB", "OBJ",
+    constexpr const char* formatLabels[] = {"All formats", "C++ Script", "glTF", "GLB", "OBJ",
                                              "FBX", "DAE", "3DS", "PLY", "PNG", "JPG",
                                              "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
-    constexpr const char* formatExtensions[] = {"", ".likescript", ".gltf", ".glb", ".obj",
+    constexpr const char* formatExtensions[] = {"", ".cpp", ".gltf", ".glb", ".obj",
                                                  ".fbx", ".dae",  ".3ds", ".ply",
                                                  ".png", ".jpg",  ".jpeg", ".tga",
                                                  ".bmp", ".dds",  ".hdr", ".exr"};
@@ -1488,9 +1471,14 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const std::string id = logicalPath.generic_string();
     const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
     const bool script = !directory && ScriptAssets::IsScriptFile(relativePath);
+    const bool scriptSource =
+        !directory && ScriptAssets::IsScriptSourceFile(relativePath);
+    const bool scriptHeader = scriptSource && !script;
     const std::string label = std::string(directory ? "[Folder] "
                                                      : texture ? "[Texture] "
-                                                     : script ? "[Script] " : "[Model] ") +
+                                                     : script ? "[Script] "
+                                                     : scriptSource ? "[C++ Script] "
+                                                                    : "[Model] ") +
                               relativePath.filename().string();
     ImGui::PushID(id.c_str());
     const bool selected = selectedAsset_ == relativePath;
@@ -1499,12 +1487,20 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         selectedAsset_ = relativePath;
         if (directory && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             NavigateAssetBrowser(relativePath);
+        } else if (scriptSource &&
+                   ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            const std::filesystem::path physical = assetRoot_ / relativePath;
+            if (reinterpret_cast<intptr_t>(ShellExecuteW(
+                    nullptr, L"open", physical.c_str(), nullptr,
+                    physical.parent_path().c_str(), SW_SHOWNORMAL)) <= 32) {
+                status_ = "Could not open Script source: " + id;
+            }
         }
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", id.c_str());
     }
-    if (!directory && ImGui::BeginDragDropSource()) {
+    if (!directory && !scriptHeader && ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload(texture ? kTextureAssetDragPayload
                                           : script ? kScriptAssetDragPayload
                                                    : kModelAssetDragPayload,
@@ -1517,6 +1513,15 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         if (directory) {
             if (ImGui::MenuItem("Open")) {
                 NavigateAssetBrowser(relativePath);
+            }
+        } else if (scriptHeader) {
+            if (ImGui::MenuItem("Open")) {
+                const std::filesystem::path physical = assetRoot_ / relativePath;
+                if (reinterpret_cast<intptr_t>(ShellExecuteW(
+                        nullptr, L"open", physical.c_str(), nullptr,
+                        physical.parent_path().c_str(), SW_SHOWNORMAL)) <= 32) {
+                    status_ = "Could not open Script source: " + id;
+                }
             }
         } else if (script && ImGui::MenuItem("Attach to Selected Entity", nullptr, false,
                                              selection_.IsValid())) {
@@ -1596,7 +1601,11 @@ void EditorScene::DrawSelectedAssetDetails() {
                                 ? "Folder"
                                 : AssetImport::IsTextureFile(physical)
                                       ? "Texture"
-                                      : ScriptAssets::IsScriptFile(physical) ? "Script" : "Model";
+                                      : ScriptAssets::IsScriptFile(physical)
+                                            ? "Script"
+                                            : ScriptAssets::IsScriptSourceFile(physical)
+                                                  ? "C++ Script Source"
+                                                  : "Model";
     if (regularFile && !extension.empty()) {
         typeLabel += " (" + extension + ")";
     }
@@ -2884,10 +2893,13 @@ void EditorScene::DrawInspectorPanel() {
                 } else {
                     for (const std::filesystem::path& scriptAsset : scriptAssets_) {
                         const std::string assetPath = scriptAsset.generic_string();
+                        const std::string assetReference =
+                            "asset://" +
+                            scriptAsset.lexically_relative("assets").generic_string();
                         const std::string label =
                             scriptAsset.filename().generic_string() + "##" + assetPath;
                         if (ImGui::MenuItem(label.c_str(), nullptr,
-                                            behavior.scriptAssetPath == assetPath)) {
+                                            behavior.scriptAssetPath == assetReference)) {
                             AssignScriptAsset(selection_, scriptAsset, scriptIndex);
                         }
                         if (ImGui::IsItemHovered()) {
@@ -4134,20 +4146,17 @@ void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::pa
     if (!TryNormalizeScriptAssetReference(path, assetPath, physicalPath)) {
         return;
     }
-    ScriptAsset script{};
-    std::string error;
-    if (!ScriptAssets::Load(physicalPath, script, &error)) {
-        status_ = "Could not load Script asset: " + error;
-        return;
-    }
-    if (behaviorRegistry_.Requirements(script.type) == nullptr) {
-        status_ = "Script asset references an unregistered runtime type: " + script.type;
+    const std::string_view scriptType =
+        behaviorRegistry_.TypeFromSourceAsset(assetPath);
+    if (scriptType.empty()) {
+        status_ = "C++ Script source is not registered by the Project Script module: " +
+                  assetPath;
         return;
     }
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
     BehaviorComponent component{};
-    component.type = script.type;
+    component.type = scriptType;
     component.scriptAssetPath = assetPath;
     if (scriptIndex) {
         if (*scriptIndex >= entity->scripts.size()) {
@@ -4159,7 +4168,7 @@ void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::pa
     } else {
         entity->scripts.push_back(std::move(component));
     }
-    (void)behaviorRegistry_.EnsureRequirements(script.type, *entity);
+    (void)behaviorRegistry_.EnsureRequirements(scriptType, *entity);
     selection_ = entityId;
     RecordImmediateEdit(scriptIndex ? "Replace Script" : "Add Script", before,
                         selectionBefore);
@@ -4714,7 +4723,8 @@ void EditorScene::RefreshAssetBrowser() {
         } else if (!error && entry.is_regular_file(error) && !error &&
                    (AssetImport::IsModelFile(entry.path()) ||
                     AssetImport::IsTextureFile(entry.path()) ||
-                    ScriptAssets::IsScriptFile(entry.path()))) {
+                    ScriptAssets::IsScriptFile(entry.path()) ||
+                    ScriptAssets::IsScriptSourceFile(entry.path()))) {
             const std::filesystem::path relative =
                 std::filesystem::relative(entry.path(), assetRoot_, error);
             if (!error) {

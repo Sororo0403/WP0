@@ -6,15 +6,22 @@
 #include <utility>
 
 bool BehaviorRegistry::Register(std::string type, Factory factory,
-                                BehaviorRequirements requirements) {
+                                BehaviorRequirements requirements,
+                                std::string sourceAsset) {
     if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
-        !factory ||
+        !factory || sourceAsset.size() > 1024u ||
+        sourceAsset.find('\0') != std::string::npos ||
         std::ranges::any_of(entries_, [&type](const Entry& entry) {
             return entry.type == type;
-        })) {
+        }) ||
+        (!sourceAsset.empty() &&
+         std::ranges::any_of(entries_, [&sourceAsset](const Entry& entry) {
+             return entry.sourceAsset == sourceAsset;
+        }))) {
         return false;
     }
-    entries_.push_back({std::move(type), std::move(factory), requirements});
+    entries_.push_back(
+        {std::move(type), std::move(factory), requirements, std::move(sourceAsset)});
     return true;
 }
 
@@ -35,6 +42,18 @@ std::vector<std::string_view> BehaviorRegistry::Types() const {
 const BehaviorRequirements* BehaviorRegistry::Requirements(std::string_view type) const {
     const auto found = std::ranges::find(entries_, type, &Entry::type);
     return found == entries_.end() ? nullptr : &found->requirements;
+}
+
+std::string_view BehaviorRegistry::TypeFromSourceAsset(
+    std::string_view sourceAsset) const {
+    const auto found = std::ranges::find(entries_, sourceAsset, &Entry::sourceAsset);
+    return found == entries_.end() ? std::string_view{} : std::string_view(found->type);
+}
+
+std::string_view BehaviorRegistry::SourceAsset(std::string_view type) const {
+    const auto found = std::ranges::find(entries_, type, &Entry::type);
+    return found == entries_.end() ? std::string_view{} :
+                                     std::string_view(found->sourceAsset);
 }
 
 bool BehaviorRegistry::ValidateRequirements(std::string_view type,

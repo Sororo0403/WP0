@@ -1,5 +1,6 @@
 #include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
+#include "ProjectScriptLibrary.h"
 #include "RecentScenesStore.h"
 #include "ScriptAsset.h"
 #include "collision/CollisionUtil.h"
@@ -128,19 +129,38 @@ bool RotationRoundTrips(const DirectX::XMFLOAT3& degrees) {
 } // namespace
 
 int main() {
-    ScriptAsset scriptAsset{};
-    std::string scriptAssetError;
-    if (!Check(ScriptAssets::IsScriptFile("Player.likescript") &&
-                   ScriptAssets::Deserialize(
-                       R"({"version":1,"type":"FirstPersonController"})", scriptAsset,
-                       &scriptAssetError) &&
-                   scriptAsset.type == "FirstPersonController" &&
-                   !ScriptAssets::Deserialize(R"({"version":1,"type":""})", scriptAsset,
-                                              &scriptAssetError) &&
-                   !ScriptAssets::Deserialize(R"({"version":2,"type":"Rotator"})",
-                                              scriptAsset, &scriptAssetError),
+    if (!Check(ScriptAssets::IsScriptFile("Player.cpp") &&
+                   ScriptAssets::IsScriptSourceFile("Player.cpp") &&
+                   ScriptAssets::IsScriptSourceFile("Player.h") &&
+                   !ScriptAssets::IsScriptFile("Player.h"),
                "Script asset validation is invalid.")) {
         return 1;
+    }
+
+    const std::filesystem::path repositoryRoot =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    ProjectScriptLibrary projectScripts;
+    BehaviorRegistry projectBehaviorRegistry;
+    std::string projectScriptError;
+    const bool projectScriptsLoaded = projectScripts.Load(
+        repositoryRoot / L"projects" / L"test", nullptr, projectBehaviorRegistry,
+        projectScriptError);
+    std::unique_ptr<Behavior> firstPerson =
+        projectBehaviorRegistry.Create("FirstPersonController");
+    std::unique_ptr<Behavior> rotator = projectBehaviorRegistry.Create("Rotator");
+    if (!Check(projectScriptsLoaded && projectScripts.IsLoaded() && firstPerson && rotator &&
+                   projectBehaviorRegistry.Requirements("FirstPersonController") != nullptr &&
+                   projectBehaviorRegistry.Requirements("FirstPersonController")
+                       ->characterController &&
+                   projectBehaviorRegistry.TypeFromSourceAsset(
+                       "asset://Scripts/FirstPersonController.cpp") ==
+                       "FirstPersonController" &&
+                   projectBehaviorRegistry.SourceAsset("Rotator") ==
+                       "asset://Scripts/Rotator.cpp",
+               projectScriptError.empty() ?
+                   "Project Script module registration or factory is invalid." :
+                   projectScriptError.c_str())) {
+        return 140;
     }
 
     World behaviorWorld;
@@ -278,10 +298,10 @@ int main() {
     childEntity->light->type = LightType::Point;
     childEntity->light->intensity = 2.0f;
     childEntity->scripts.push_back(
-        {true, "Rotator", "asset://Scripts/Rotator.likescript"});
+        {true, "Rotator", "asset://Scripts/Rotator.cpp"});
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
-         "asset://Scripts/FirstPersonController.likescript"});
+         "asset://Scripts/FirstPersonController.cpp"});
     childEntity->scripts.emplace_back();
     childEntity->boxCollider = BoxColliderComponent{};
     childEntity->boxCollider->center = {0.25f, 0.5f, -0.25f};
@@ -410,7 +430,7 @@ int main() {
                    restoredChild->scripts[0].enabled &&
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
-                       "asset://Scripts/Rotator.likescript" &&
+                       "asset://Scripts/Rotator.cpp" &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -457,7 +477,7 @@ int main() {
                    duplicateChild->scripts.size() == 3u &&
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
-                       "asset://Scripts/Rotator.likescript" &&
+                       "asset://Scripts/Rotator.cpp" &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&

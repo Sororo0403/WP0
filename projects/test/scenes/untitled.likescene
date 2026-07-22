@@ -11,13 +11,6 @@
           "primary": true,
           "projection": "Perspective"
         },
-        "Scripts": [
-          {
-            "enabled": true,
-            "script": "asset://Scripts/Rotator.likescript",
-            "type": "Rotator"
-          }
-        ],
         "Transform": {
           "position": [
             0.0,
@@ -42,20 +35,6 @@
     },
     {
       "components": {
-        "BoxCollider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "isTrigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
         "CharacterController": {
           "center": [
             0.0,
@@ -100,6 +79,7 @@
         "Scripts": [
           {
             "enabled": true,
+            "script": "asset://Scripts/FirstPersonController.cpp",
             "type": "FirstPersonController"
           }
         ],
@@ -273,8 +253,8 @@
         "Transform": {
           "position": [
             0.0,
-            0.0,
-            5.008456707000732
+            -2.069087505340576,
+            6.373710632324219
           ],
           "rotation": [
             0.0,
@@ -282,274 +262,14 @@
             0.0
           ],
           "scale": [
-            9.69999885559082,
-            2.179999351501465,
-            1.5799946784973145
+            9.699996948242188,
+            2.179985523223877,
+            20.38038444519043
           ]
         }
       },
-      "id": "40557ad4-9aa7-dd9f-1ec6-5abd58e358ad",
+      "id": "4c0e3cef-cc1a-66a6-c7f6-6bf590a6d8bd",
       "name": "Box Copy",
-      "parent": null
-    },
-    {
-      "components": {
-        "BoxCollider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "isTrigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
-        "MaterialOverride": {
-          "alphaCutoff": 0.5,
-          "baseColor": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
-          "blendMode": "Opaque",
-          "cullMode": "Back",
-          "depthWrite": true,
-          "enabled": true,
-          "metallic": 1.0,
-          "metallicTexture": "",
-          "normalStrength": 4.0,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
-          "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
-        },
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "",
-          "primitive": 0,
-          "source": "Primitive"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            2.391866445541382
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            9.69999885559082,
-            2.179999351501465,
-            1.5799955129623413
-          ]
-        }
-      },
-      "id": "4ef4286b-b57e-92d5-e323-2ce0557f5c86",
-      "name": "Box Copy Copy",
-      "parent": null
-    },
-    {
-      "components": {
-        "BoxCollider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "isTrigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
-        "MaterialOverride": {
-          "alphaCutoff": 0.5,
-          "baseColor": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
-          "blendMode": "Opaque",
-          "cullMode": "Back",
-          "depthWrite": true,
-          "enabled": true,
-          "metallic": 0.0,
-          "metallicTexture": "",
-          "normalStrength": 4.0,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
-          "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
-        },
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "",
-          "primitive": 0,
-          "source": "Primitive"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            -2.3977911472320557
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            9.699997901916504,
-            2.1799991130828857,
-            1.5799955129623413
-          ]
-        }
-      },
-      "id": "442f900c-d612-b3d0-285a-1abbcf137c84",
-      "name": "Box Copy Copy Copy",
-      "parent": null
-    },
-    {
-      "components": {
-        "BoxCollider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "isTrigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
-        "MaterialOverride": {
-          "alphaCutoff": 0.5,
-          "baseColor": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
-          "blendMode": "Opaque",
-          "cullMode": "Back",
-          "depthWrite": true,
-          "enabled": true,
-          "metallic": 1.0,
-          "metallicTexture": "",
-          "normalStrength": 4.0,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
-          "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
-        },
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "",
-          "primitive": 0,
-          "source": "Primitive"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            -5.261970043182373
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            9.699997901916504,
-            2.1799991130828857,
-            1.5799955129623413
-          ]
-        }
-      },
-      "id": "4af344fb-2bfd-a6c7-42cc-12184b320aaa",
-      "name": "Box Copy Copy Copy Copy",
-      "parent": null
-    },
-    {
-      "components": {
-        "BoxCollider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "isTrigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
-        "MaterialOverride": {
-          "alphaCutoff": 0.5,
-          "baseColor": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
-          "blendMode": "Opaque",
-          "cullMode": "Back",
-          "depthWrite": true,
-          "enabled": true,
-          "metallic": 1.0,
-          "metallicTexture": "",
-          "normalStrength": 4.0,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
-          "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
-        },
-        "MeshRenderer": {
-          "enabled": true,
-          "model": "",
-          "primitive": 0,
-          "source": "Primitive"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            -8.626896858215332
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            9.699997901916504,
-            2.1799991130828857,
-            1.5799955129623413
-          ]
-        }
-      },
-      "id": "4d3a8e41-df98-3126-bb11-affae07ba39e",
-      "name": "Box Copy Copy Copy Copy Copy",
       "parent": null
     }
   ],

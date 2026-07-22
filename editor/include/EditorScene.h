@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetImportPlanner.h"
+#include "ProjectScriptLibrary.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
 #include "graphics/PostProcessSystem.h"
@@ -228,6 +229,7 @@ private:
     double runtimeElapsedSeconds_ = 0.0;
     RecentScenesStore recentScenesStore_;
     World world_;
+    ProjectScriptLibrary projectScripts_;
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
     EntityId selection_{};

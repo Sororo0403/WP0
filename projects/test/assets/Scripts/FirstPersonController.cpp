@@ -1,6 +1,6 @@
-#include "runtime/FirstPersonController.h"
-
 #include "input/Input.h"
+#include "runtime/Behavior.h"
+#include "runtime/ScriptModuleApi.h"
 #include "world/World.h"
 #include "world/WorldCollision.h"
 
@@ -8,12 +8,33 @@
 
 #include <algorithm>
 #include <cmath>
+#include <new>
+
+namespace {
+class FirstPersonController final : public Behavior {
+public:
+    explicit FirstPersonController(Input* input);
+
+    void OnStart(World& world, EntityId entity) override;
+    void OnUpdate(World& world, EntityId entity, float deltaTime) override;
+
+private:
+    Input* input_ = nullptr;
+    float verticalVelocity_ = 0.0f;
+};
 
 FirstPersonController::FirstPersonController(Input* input) : input_(input) {}
 
+void FirstPersonController::OnStart(World& world, EntityId entity) {
+    (void)world;
+    (void)entity;
+    verticalVelocity_ = 0.0f;
+}
+
 void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaTime) {
     WorldEntity* target = world.Find(entity);
-    if (target == nullptr || input_ == nullptr) {
+    if (target == nullptr || input_ == nullptr || !std::isfinite(deltaTime) ||
+        deltaTime <= 0.0f) {
         return;
     }
 
@@ -47,9 +68,6 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     }
     const float inputLength =
         std::sqrt(forwardInput * forwardInput + rightInput * rightInput);
-    if (inputLength <= 0.0001f) {
-        return;
-    }
     forwardInput /= (std::max)(1.0f, inputLength);
     rightInput /= (std::max)(1.0f, inputLength);
 
@@ -60,10 +78,30 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
         input_->IsKeyPress(DIK_LSHIFT) || input_->IsKeyPress(DIK_RSHIFT);
     const float speed = sprinting ? 8.0f : 4.0f;
     const float distance = speed * deltaTime;
+    constexpr float gravity = -24.0f;
+    constexpr float terminalVelocity = -50.0f;
+    verticalVelocity_ =
+        (std::max)(verticalVelocity_ + gravity * deltaTime, terminalVelocity);
     const DirectX::XMFLOAT3 displacement{
         (sinYaw * forwardInput + cosYaw * rightInput) * distance,
-        0.0f,
+        verticalVelocity_ * deltaTime,
         (cosYaw * forwardInput - sinYaw * rightInput) * distance,
     };
-    (void)MoveCharacterController(world, entity, displacement);
+    const CharacterMoveResult movement =
+        MoveCharacterController(world, entity, displacement);
+    if ((static_cast<uint8_t>(movement.flags) &
+         static_cast<uint8_t>(CharacterCollisionFlags::Below)) != 0u &&
+        verticalVelocity_ < 0.0f) {
+        verticalVelocity_ = 0.0f;
+    }
+}
+
+Behavior* CreateFirstPersonController(Input* input) {
+    return new (std::nothrow) FirstPersonController(input);
+}
+}
+
+ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
+    return {"FirstPersonController", "asset://Scripts/FirstPersonController.cpp",
+            &CreateFirstPersonController, {.characterController = true}};
 }
