@@ -3,14 +3,35 @@
 #include "world/World.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 bool BehaviorRegistry::Register(std::string type, Factory factory,
                                 BehaviorRequirements requirements,
-                                std::string sourceAsset) {
+                                std::string sourceAsset,
+                                std::vector<ScriptPropertyDefinition> properties) {
+    const bool invalidProperty = std::ranges::any_of(
+        properties, [&properties](const ScriptPropertyDefinition& property) {
+            const bool duplicate = std::ranges::count(
+                                       properties, property.name,
+                                       &ScriptPropertyDefinition::name) != 1;
+            const bool invalidFloat =
+                property.type == ScriptPropertyType::Float &&
+                (!std::isfinite(property.defaultFloat) ||
+                 !std::isfinite(property.minimumFloat) ||
+                 !std::isfinite(property.maximumFloat) ||
+                 property.minimumFloat > property.maximumFloat ||
+                 property.defaultFloat < property.minimumFloat ||
+                 property.defaultFloat > property.maximumFloat);
+            return property.name.empty() || property.name.size() > 128u ||
+                   property.name.find('\0') != std::string::npos || duplicate ||
+                   property.type < ScriptPropertyType::Float ||
+                   property.type > ScriptPropertyType::Entity || invalidFloat;
+        });
     if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
         !factory || sourceAsset.size() > 1024u ||
         sourceAsset.find('\0') != std::string::npos ||
+        properties.size() > 128u || invalidProperty ||
         std::ranges::any_of(entries_, [&type](const Entry& entry) {
             return entry.type == type;
         }) ||
@@ -20,8 +41,8 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
         }))) {
         return false;
     }
-    entries_.push_back(
-        {std::move(type), std::move(factory), requirements, std::move(sourceAsset)});
+    entries_.push_back({std::move(type), std::move(factory), requirements,
+                        std::move(sourceAsset), std::move(properties)});
     return true;
 }
 
@@ -54,6 +75,38 @@ std::string_view BehaviorRegistry::SourceAsset(std::string_view type) const {
     const auto found = std::ranges::find(entries_, type, &Entry::type);
     return found == entries_.end() ? std::string_view{} :
                                      std::string_view(found->sourceAsset);
+}
+
+const std::vector<ScriptPropertyDefinition>* BehaviorRegistry::Properties(
+    std::string_view type) const {
+    const auto found = std::ranges::find(entries_, type, &Entry::type);
+    return found == entries_.end() ? nullptr : &found->properties;
+}
+
+bool BehaviorRegistry::Configure(std::string_view type,
+                                 const BehaviorComponent& component,
+                                 Behavior& behavior) const {
+    const std::vector<ScriptPropertyDefinition>* definitions = Properties(type);
+    if (definitions == nullptr) {
+        return false;
+    }
+    std::vector<ScriptPropertyValueView> values;
+    values.reserve(definitions->size());
+    for (const ScriptPropertyDefinition& definition : *definitions) {
+        ScriptPropertyValueView value{};
+        value.name = definition.name.c_str();
+        value.type = definition.type;
+        value.floatValue = definition.defaultFloat;
+        const auto stored = std::ranges::find(component.properties, definition.name,
+                                              &ScriptPropertyValue::name);
+        if (stored != component.properties.end() && stored->type == definition.type) {
+            value.floatValue = stored->floatValue;
+            value.entityValue = stored->entityValue;
+        }
+        values.push_back(value);
+    }
+    behavior.OnConfigure(values.data(), values.size());
+    return true;
 }
 
 bool BehaviorRegistry::ValidateRequirements(std::string_view type,

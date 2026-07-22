@@ -3053,6 +3053,121 @@ void EditorScene::DrawInspectorPanel() {
             }
             ImGui::TextDisabled("Runtime type: %s",
                                 behavior.type.empty() ? "None" : behavior.type.c_str());
+            const std::vector<ScriptPropertyDefinition>* propertyDefinitions =
+                behaviorRegistry_.Properties(behavior.type);
+            if (propertyDefinitions != nullptr) {
+                for (size_t propertyIndex = 0u;
+                     propertyIndex < propertyDefinitions->size(); ++propertyIndex) {
+                    const ScriptPropertyDefinition& definition =
+                        (*propertyDefinitions)[propertyIndex];
+                    ImGui::PushID(static_cast<int>(propertyIndex));
+                    auto stored = std::ranges::find(behavior.properties, definition.name,
+                                                    &ScriptPropertyValue::name);
+                    if (definition.type == ScriptPropertyType::Float) {
+                        float value = stored != behavior.properties.end() &&
+                                              stored->type == definition.type
+                                          ? stored->floatValue
+                                          : definition.defaultFloat;
+                        const float speed = (std::max)(
+                            0.001f,
+                            (definition.maximumFloat - definition.minimumFloat) * 0.005f);
+                        if (ImGui::DragFloat(definition.name.c_str(), &value, speed,
+                                             definition.minimumFloat,
+                                             definition.maximumFloat, "%.3f",
+                                             ImGuiSliderFlags_AlwaysClamp)) {
+                            if (stored == behavior.properties.end()) {
+                                behavior.properties.push_back(
+                                    {definition.name, definition.type, value, {}});
+                            } else if (stored->type != definition.type) {
+                                *stored = {definition.name, definition.type, value, {}};
+                            } else {
+                                stored->floatValue = value;
+                            }
+                            RefreshDirty();
+                            status_ = "Modified Script property.";
+                        }
+                        if (ImGui::IsItemActivated()) {
+                            BeginHistoryEdit("Modify Script Property");
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            CommitHistoryEdit();
+                        }
+                    } else if (definition.type == ScriptPropertyType::Entity) {
+                        const EntityId referenced =
+                            stored != behavior.properties.end() &&
+                                    stored->type == definition.type
+                                ? stored->entityValue
+                                : EntityId{};
+                        const WorldEntity* referencedEntity = world_.Find(referenced);
+                        std::string label = referencedEntity != nullptr
+                                                ? referencedEntity->name
+                                                : referenced.IsValid() ? "Missing Entity"
+                                                                       : "None";
+                        label += "##EntityProperty";
+                        ImGui::TextUnformatted(definition.name.c_str());
+                        ImGui::SameLine();
+                        if (ImGui::Button(label.c_str(), {-FLT_MIN, 0.0f})) {
+                            ImGui::OpenPopup("EntityPropertyPicker");
+                        }
+                        const auto assignEntityProperty = [&](EntityId value) {
+                            auto destination = std::ranges::find(
+                                behavior.properties, definition.name,
+                                &ScriptPropertyValue::name);
+                            if ((destination == behavior.properties.end() &&
+                                 !value.IsValid()) ||
+                                (destination != behavior.properties.end() &&
+                                 destination->type == definition.type &&
+                                 destination->entityValue == value)) {
+                                return;
+                            }
+                            const std::string propertyBefore =
+                                WorldSerializer::Serialize(world_);
+                            if (destination == behavior.properties.end()) {
+                                behavior.properties.push_back(
+                                    {definition.name, definition.type, 0.0f, value});
+                            } else if (destination->type != definition.type) {
+                                *destination =
+                                    {definition.name, definition.type, 0.0f, value};
+                            } else {
+                                destination->entityValue = value;
+                            }
+                            RecordImmediateEdit("Assign Script Entity Property",
+                                                propertyBefore, selectionBefore);
+                            status_ = "Assigned Script Entity property.";
+                        };
+                        if (ImGui::BeginDragDropTarget()) {
+                            if (const ImGuiPayload* payload =
+                                    ImGui::AcceptDragDropPayload(kEntityDragPayload);
+                                payload != nullptr && payload->IsDelivery() &&
+                                payload->DataSize == sizeof(EntityId)) {
+                                const EntityId dropped =
+                                    *static_cast<const EntityId*>(payload->Data);
+                                if (world_.Contains(dropped)) {
+                                    assignEntityProperty(dropped);
+                                }
+                            }
+                            ImGui::EndDragDropTarget();
+                        }
+                        if (ImGui::BeginPopup("EntityPropertyPicker")) {
+                            if (ImGui::MenuItem("None", nullptr,
+                                                !referenced.IsValid())) {
+                                assignEntityProperty({});
+                            }
+                            ImGui::Separator();
+                            for (const WorldEntity& candidate : world_.Entities()) {
+                                const std::string candidateLabel =
+                                    candidate.name + "##" + candidate.id.ToString();
+                                if (ImGui::MenuItem(candidateLabel.c_str(), nullptr,
+                                                    candidate.id == referenced)) {
+                                    assignEntityProperty(candidate.id);
+                                }
+                            }
+                            ImGui::EndPopup();
+                        }
+                    }
+                    ImGui::PopID();
+                }
+            }
             if (behavior.type == "FirstPersonController" && !entity->characterController) {
                 ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.25f, 1.0f),
                                    "Character Controller is required for collision movement.");
@@ -5567,6 +5682,14 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
             }
             std::unique_ptr<Behavior> behavior = behaviorRegistry_.Create(script.type);
             if (behavior != nullptr) {
+                if (!behaviorRegistry_.Configure(script.type, script, *behavior)) {
+                    valid = false;
+                    if (error != nullptr && error->empty()) {
+                        *error = entity.name + " (" + script.type +
+                                 "): Script properties could not be configured.";
+                    }
+                    continue;
+                }
                 runtimeBehaviors_.Attach(entity.id, std::move(behavior));
             } else {
                 valid = false;

@@ -87,7 +87,7 @@
           "position": [
             0.0,
             2.9802322387695313e-08,
-            0.0
+            3.0100276470184326
           ],
           "rotation": [
             0.0,
@@ -103,6 +103,84 @@
       },
       "id": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497",
       "name": "Player",
+      "parent": null
+    },
+    {
+      "components": {
+        "CharacterController": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "height": 2.0,
+          "minMoveDistance": 0.0,
+          "radius": 0.5,
+          "skinWidth": 0.05000000074505806,
+          "slopeLimit": 45.0,
+          "stepOffset": 0.30000001192092896
+        },
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "asset://taro.png",
+          "blendMode": "Opaque",
+          "cullMode": "None",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 1.0,
+          "normalTexture": "",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.0,
+          "roughnessTexture": ""
+        },
+        "MeshRenderer": {
+          "enabled": true,
+          "model": "",
+          "primitive": 2,
+          "source": "Primitive"
+        },
+        "Scripts": [
+          {
+            "enabled": true,
+            "properties": {
+              "Target": {
+                "type": "Entity",
+                "value": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
+              }
+            },
+            "script": "asset://Scripts/ChasePlayer.cpp",
+            "type": "ChasePlayer"
+          }
+        ],
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            -0.9743517637252808
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "40aa24ff-628d-e18f-d1d3-5f5d47dbb38b",
+      "name": "Enemy",
       "parent": null
     },
     {
@@ -269,8 +347,66 @@
         }
       },
       "id": "48274ae7-51b3-0e1a-c294-a2bf25c0f899",
-      "name": "Entity",
+      "name": "Light",
       "parent": null
+    },
+    {
+      "components": {
+        "CharacterController": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "height": 2.0,
+          "minMoveDistance": 0.0,
+          "radius": 0.5,
+          "skinWidth": 0.05000000074505806,
+          "slopeLimit": 45.0,
+          "stepOffset": 0.30000001192092896
+        },
+        "Light": {
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 20.559999465942383,
+          "outerAngle": 45.0,
+          "range": 0.800000011920929,
+          "type": "Point"
+        },
+        "Scripts": [
+          {
+            "enabled": true,
+            "script": "asset://Scripts/ChasePlayer.cpp",
+            "type": "ChasePlayer"
+          }
+        ],
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4ce0d475-a42c-667b-f68b-650d2931bcaf",
+      "name": "Light",
+      "parent": "40aa24ff-628d-e18f-d1d3-5f5d47dbb38b"
     }
   ],
   "version": 1

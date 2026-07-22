@@ -79,6 +79,17 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         } else {
             duplicate->parent = duplicateIds.at(original.parent);
         }
+        for (BehaviorComponent& script : duplicate->scripts) {
+            for (ScriptPropertyValue& property : script.properties) {
+                if (property.type != ScriptPropertyType::Entity) {
+                    continue;
+                }
+                const auto remapped = duplicateIds.find(property.entityValue);
+                if (remapped != duplicateIds.end()) {
+                    property.entityValue = remapped->second;
+                }
+            }
+        }
     }
     return duplicateIds.at(source);
 }
@@ -109,6 +120,16 @@ bool World::DestroyEntity(EntityId id) {
     std::erase_if(entities_, [&removed](const WorldEntity& entity) {
         return removed.contains(entity.id);
     });
+    for (WorldEntity& entity : entities_) {
+        for (BehaviorComponent& script : entity.scripts) {
+            for (ScriptPropertyValue& property : script.properties) {
+                if (property.type == ScriptPropertyType::Entity &&
+                    removed.contains(property.entityValue)) {
+                    property.entityValue = {};
+                }
+            }
+        }
+    }
     return true;
 }
 
@@ -305,9 +326,27 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 script.type.find('\0') != std::string::npos ||
                 script.scriptAssetPath.size() > 1024u ||
                 script.scriptAssetPath.find('\0') != std::string::npos ||
-                (script.type.empty() && !script.scriptAssetPath.empty())) {
+                (script.type.empty() &&
+                 (!script.scriptAssetPath.empty() || !script.properties.empty()))) {
                 SetError(error, "Scene contains an invalid Script component.");
                 return false;
+            }
+            if (script.properties.size() > 128u) {
+                SetError(error, "Scene contains too many Script properties.");
+                return false;
+            }
+            std::unordered_set<std::string> propertyNames;
+            for (const ScriptPropertyValue& property : script.properties) {
+                if (property.name.empty() || property.name.size() > 128u ||
+                    property.name.find('\0') != std::string::npos ||
+                    !propertyNames.insert(property.name).second ||
+                    property.type < ScriptPropertyType::Float ||
+                    property.type > ScriptPropertyType::Entity ||
+                    (property.type == ScriptPropertyType::Float &&
+                     !std::isfinite(property.floatValue))) {
+                    SetError(error, "Scene contains an invalid Script property.");
+                    return false;
+                }
             }
         }
         if (entity.boxCollider) {

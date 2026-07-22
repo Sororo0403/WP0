@@ -90,6 +90,27 @@ private:
     TriggerEventCounts& counts_;
 };
 
+class ConfigurableBehavior final : public Behavior {
+public:
+    ConfigurableBehavior(float& speed, EntityId& target)
+        : speed_(speed), target_(target) {}
+
+    void OnConfigure(const ScriptPropertyValueView* properties, size_t count) override {
+        if (const ScriptPropertyValueView* speed = FindScriptProperty(
+                properties, count, "Speed", ScriptPropertyType::Float)) {
+            speed_ = speed->floatValue;
+        }
+        if (const ScriptPropertyValueView* target = FindScriptProperty(
+                properties, count, "Target", ScriptPropertyType::Entity)) {
+            target_ = target->entityValue;
+        }
+    }
+
+private:
+    float& speed_;
+    EntityId& target_;
+};
+
 bool Check(bool condition, const char* message) {
     if (!condition) {
         std::cerr << message << '\n';
@@ -201,10 +222,23 @@ int main() {
     std::unique_ptr<Behavior> firstPerson =
         projectBehaviorRegistry.Create("FirstPersonController");
     std::unique_ptr<Behavior> rotator = projectBehaviorRegistry.Create("Rotator");
+    std::unique_ptr<Behavior> chasePlayer =
+        projectBehaviorRegistry.Create("ChasePlayer");
+    const std::vector<ScriptPropertyDefinition>* chaseProperties =
+        projectBehaviorRegistry.Properties("ChasePlayer");
     if (!Check(projectScriptsLoaded && projectScripts.IsLoaded() && firstPerson && rotator &&
+                   chasePlayer &&
                    projectBehaviorRegistry.Requirements("FirstPersonController") != nullptr &&
                    projectBehaviorRegistry.Requirements("FirstPersonController")
                        ->characterController &&
+                   projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
+                   projectBehaviorRegistry.Requirements("ChasePlayer")
+                       ->characterController &&
+                   chaseProperties != nullptr && chaseProperties->size() == 4u &&
+                   (*chaseProperties)[0].name == "Target" &&
+                   (*chaseProperties)[0].type == ScriptPropertyType::Entity &&
+                   (*chaseProperties)[1].name == "Move Speed" &&
+                   (*chaseProperties)[1].defaultFloat == 2.5f &&
                    projectBehaviorRegistry.TypeFromSourceAsset(
                        "asset://Scripts/FirstPersonController.cpp") ==
                        "FirstPersonController" &&
@@ -217,6 +251,7 @@ int main() {
     }
     firstPerson.reset();
     rotator.reset();
+    chasePlayer.reset();
     std::string rebuildOutput;
     ProjectScriptLibrary reloadedProjectScripts;
     BehaviorRegistry reloadedProjectBehaviorRegistry;
@@ -231,7 +266,9 @@ int main() {
     }
     firstPerson = projectBehaviorRegistry.Create("FirstPersonController");
     rotator = projectBehaviorRegistry.Create("Rotator");
-    if (!Check(projectScriptsReloaded && !rebuildOutput.empty() && firstPerson && rotator,
+    chasePlayer = projectBehaviorRegistry.Create("ChasePlayer");
+    if (!Check(projectScriptsReloaded && !rebuildOutput.empty() && firstPerson && rotator &&
+                   chasePlayer,
                projectScriptError.empty() ?
                    "Project Script rebuild and reload is invalid." :
                    projectScriptError.c_str())) {
@@ -280,6 +317,39 @@ int main() {
                    !behaviorRegistry.EnsureRequirements("Missing", *dependencyTarget),
                "Behavior component requirements were not enforced.")) {
         return 140;
+    }
+    float configuredSpeed = 0.0f;
+    EntityId configuredTarget{};
+    const EntityId expectedConfiguredTarget = EntityId::New();
+    if (!Check(behaviorRegistry.Register(
+                   "Configurable",
+                   [&] {
+                       return std::make_unique<ConfigurableBehavior>(configuredSpeed,
+                                                                     configuredTarget);
+                   },
+                   {}, "",
+                   {{"Speed", ScriptPropertyType::Float, 2.5f, 0.0f, 20.0f},
+                    {"Target", ScriptPropertyType::Entity}}),
+               "Script property metadata could not be registered.")) {
+        return 146;
+    }
+    BehaviorComponent configurableComponent{};
+    configurableComponent.properties = {
+        {"Speed", ScriptPropertyType::Float, 7.5f, {}},
+        {"Target", ScriptPropertyType::Entity, 0.0f, expectedConfiguredTarget},
+    };
+    std::unique_ptr<Behavior> configurableBehavior =
+        behaviorRegistry.Create("Configurable");
+    const std::vector<ScriptPropertyDefinition>* configurableProperties =
+        behaviorRegistry.Properties("Configurable");
+    if (!Check(configurableBehavior && configurableProperties != nullptr &&
+                   configurableProperties->size() == 2u &&
+                   behaviorRegistry.Configure("Configurable", configurableComponent,
+                                              *configurableBehavior) &&
+                   configuredSpeed == 7.5f &&
+                   configuredTarget == expectedConfiguredTarget,
+               "Script property values were not configured on the Behavior.")) {
+        return 147;
     }
     BehaviorSystem behaviors;
     if (!Check(behaviors.Attach(behaviorEntity, behaviorRegistry.Create("Lifecycle")),
@@ -415,6 +485,10 @@ int main() {
     childEntity->light->intensity = 2.0f;
     childEntity->scripts.push_back(
         {true, "Rotator", "asset://Scripts/Rotator.cpp"});
+    childEntity->scripts[0].properties = {
+        {"Speed", ScriptPropertyType::Float, 3.5f, {}},
+        {"Target", ScriptPropertyType::Entity, 0.0f, root},
+    };
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -547,6 +621,15 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
+                   restoredChild->scripts[0].properties.size() == 2u &&
+                   restoredChild->scripts[0].properties[0].name == "Speed" &&
+                   restoredChild->scripts[0].properties[0].type ==
+                       ScriptPropertyType::Float &&
+                   restoredChild->scripts[0].properties[0].floatValue == 3.5f &&
+                   restoredChild->scripts[0].properties[1].name == "Target" &&
+                   restoredChild->scripts[0].properties[1].type ==
+                       ScriptPropertyType::Entity &&
+                   restoredChild->scripts[0].properties[1].entityValue == root &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -594,6 +677,9 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
+                   duplicateChild->scripts[0].properties.size() == 2u &&
+                   duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
+                   duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&
@@ -609,6 +695,21 @@ int main() {
     if (!Check(!source.DuplicateEntityHierarchy({}).IsValid(),
                "An invalid entity hierarchy was duplicated.")) {
         return 9;
+    }
+
+    World referenceWorld;
+    const EntityId scriptOwner = referenceWorld.CreateEntity("Script Owner");
+    const EntityId referencedTarget = referenceWorld.CreateEntity("Referenced Target");
+    referenceWorld.Find(scriptOwner)->scripts.push_back(
+        {true, "Configurable", "asset://Scripts/Configurable.cpp",
+         {{"Target", ScriptPropertyType::Entity, 0.0f, referencedTarget}}});
+    if (!Check(referenceWorld.DestroyEntity(referencedTarget) &&
+                   !referenceWorld.Find(scriptOwner)
+                        ->scripts[0]
+                        .properties[0]
+                        .entityValue.IsValid(),
+               "Destroyed Entity remained assigned to a Script property.")) {
+        return 148;
     }
 
     const std::filesystem::path testPath =
@@ -692,6 +793,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidBehavior, rejected, &error),
                "Invalid Behavior data was accepted.")) {
         return 128;
+    }
+    const std::string invalidScriptProperty =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Script Property","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Scripts":[{"enabled":true,"type":"Configurable","script":"asset://Scripts/Configurable.cpp","properties":{"Speed":{"type":"Number","value":2.5}}}]}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidScriptProperty, rejected, &error),
+               "Invalid Script property data was accepted.")) {
+        return 149;
     }
     const std::string invalidBoxCollider =
         R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Collider","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"BoxCollider":{"enabled":true,"center":[0,0,0],"size":[1,0,1],"isTrigger":false}}}]})";

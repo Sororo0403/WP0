@@ -174,6 +174,26 @@ std::string WorldSerializer::Serialize(const World& world) {
                 if (!script.scriptAssetPath.empty()) {
                     encodedScript["script"] = script.scriptAssetPath;
                 }
+                if (!script.properties.empty()) {
+                    Json properties = Json::object();
+                    for (const ScriptPropertyValue& property : script.properties) {
+                        Json encodedProperty;
+                        switch (property.type) {
+                        case ScriptPropertyType::Float:
+                            encodedProperty["type"] = "Float";
+                            encodedProperty["value"] = property.floatValue;
+                            break;
+                        case ScriptPropertyType::Entity:
+                            encodedProperty["type"] = "Entity";
+                            encodedProperty["value"] = property.entityValue.IsValid()
+                                                           ? Json(property.entityValue.ToString())
+                                                           : Json(nullptr);
+                            break;
+                        }
+                        properties[property.name] = std::move(encodedProperty);
+                    }
+                    encodedScript["properties"] = std::move(properties);
+                }
                 scripts.push_back(std::move(encodedScript));
             }
             encoded["components"]["Scripts"] = std::move(scripts);
@@ -512,12 +532,62 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 }
                 component.scriptAssetPath = behavior["script"].get<std::string>();
             }
+            if (behavior.contains("properties")) {
+                const Json& properties = behavior["properties"];
+                if (!properties.is_object() || properties.size() > 128u) {
+                    SetError(error, "Scene Script properties are invalid.");
+                    return false;
+                }
+                for (const auto& [name, encodedProperty] : properties.items()) {
+                    if (name.empty() || name.size() > 128u ||
+                        name.find('\0') != std::string::npos ||
+                        !encodedProperty.is_object() ||
+                        !encodedProperty.contains("type") ||
+                        !encodedProperty["type"].is_string() ||
+                        !encodedProperty.contains("value")) {
+                        SetError(error, "Scene Script property is invalid.");
+                        return false;
+                    }
+                    ScriptPropertyValue property{};
+                    property.name = name;
+                    const std::string propertyType =
+                        encodedProperty["type"].get<std::string>();
+                    if (propertyType == "Float") {
+                        if (!encodedProperty["value"].is_number()) {
+                            SetError(error, "Scene Script float property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::Float;
+                        property.floatValue =
+                            encodedProperty["value"].get<float>();
+                        if (!std::isfinite(property.floatValue)) {
+                            SetError(error, "Scene Script float property is invalid.");
+                            return false;
+                        }
+                    } else if (propertyType == "Entity") {
+                        property.type = ScriptPropertyType::Entity;
+                        if (!encodedProperty["value"].is_null() &&
+                            (!encodedProperty["value"].is_string() ||
+                             !EntityId::TryParse(
+                                 encodedProperty["value"].get_ref<const std::string&>(),
+                                 property.entityValue))) {
+                            SetError(error, "Scene Script Entity property is invalid.");
+                            return false;
+                        }
+                    } else {
+                        SetError(error, "Scene Script property type is invalid.");
+                        return false;
+                    }
+                    component.properties.push_back(std::move(property));
+                }
+            }
             if ((!allowUnassigned && component.type.empty()) ||
                 component.type.size() > 128u ||
                 component.type.find('\0') != std::string::npos ||
                 component.scriptAssetPath.size() > 1024u ||
                 component.scriptAssetPath.find('\0') != std::string::npos ||
-                (component.type.empty() && !component.scriptAssetPath.empty())) {
+                (component.type.empty() &&
+                 (!component.scriptAssetPath.empty() || !component.properties.empty()))) {
                 SetError(error, "Scene Script type is invalid.");
                 return false;
             }

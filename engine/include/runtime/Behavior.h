@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/ScriptProperty.h"
 #include "world/EntityId.h"
 
 class World;
@@ -7,6 +8,11 @@ class World;
 class Behavior {
 public:
     virtual ~Behavior() = default;
+
+    virtual void OnConfigure(const ScriptPropertyValueView* properties, size_t count) {
+        (void)properties;
+        (void)count;
+    }
 
     virtual void OnStart(World& world, EntityId entity) {
         (void)world;

@@ -7,7 +7,7 @@
 
 class Input;
 
-inline constexpr uint32_t kScriptModuleApiVersion = 2u;
+inline constexpr uint32_t kScriptModuleApiVersion = 3u;
 inline constexpr char kScriptModuleVersionExport[] =
     "LikeEngineScriptModuleApiVersion";
 inline constexpr char kScriptModuleTypesExport[] = "LikeEngineGetScriptTypes";
@@ -19,6 +19,8 @@ struct ScriptTypeRegistration {
     const char* sourceAsset = nullptr;
     ScriptBehaviorFactory create = nullptr;
     BehaviorRequirements requirements{};
+    const ScriptPropertyDescriptor* properties = nullptr;
+    size_t propertyCount = 0u;
 };
 
 using GetScriptModuleApiVersion = uint32_t (*)();

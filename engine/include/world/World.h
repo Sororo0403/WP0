@@ -1,5 +1,6 @@
 #pragma once
 
+#include "runtime/ScriptProperty.h"
 #include "world/EntityId.h"
 
 #include <DirectXMath.h>
@@ -98,10 +99,18 @@ struct LightComponent {
     float outerAngleDegrees = 45.0f;
 };
 
+struct ScriptPropertyValue {
+    std::string name;
+    ScriptPropertyType type = ScriptPropertyType::Float;
+    float floatValue = 0.0f;
+    EntityId entityValue{};
+};
+
 struct BehaviorComponent {
     bool enabled = true;
     std::string type;
     std::string scriptAssetPath;
+    std::vector<ScriptPropertyValue> properties;
 };
 
 struct BoxColliderComponent {

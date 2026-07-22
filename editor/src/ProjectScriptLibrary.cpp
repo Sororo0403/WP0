@@ -6,6 +6,7 @@
 #include <Windows.h>
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -120,7 +121,8 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
     for (size_t index = 0; index < count; ++index) {
         const ScriptTypeRegistration& registration = registrations[index];
         if (registration.type == nullptr || registration.sourceAsset == nullptr ||
-            registration.create == nullptr) {
+            registration.create == nullptr || registration.propertyCount > 128u ||
+            (registration.propertyCount > 0u && registration.properties == nullptr)) {
             FreeLibrary(module);
             error = "Project Script module contains an invalid Script type.";
             return false;
@@ -142,6 +144,37 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                 return false;
             }
         }
+        for (size_t propertyIndex = 0u; propertyIndex < registration.propertyCount;
+             ++propertyIndex) {
+            const ScriptPropertyDescriptor& property =
+                registration.properties[propertyIndex];
+            if (property.name == nullptr) {
+                FreeLibrary(module);
+                error = "Project Script module contains an invalid property.";
+                return false;
+            }
+            const std::string_view propertyName(property.name);
+            const bool invalidFloat =
+                property.type == ScriptPropertyType::Float &&
+                (!std::isfinite(property.defaultFloat) ||
+                 !std::isfinite(property.minimumFloat) ||
+                 !std::isfinite(property.maximumFloat) ||
+                 property.minimumFloat > property.maximumFloat ||
+                 property.defaultFloat < property.minimumFloat ||
+                 property.defaultFloat > property.maximumFloat);
+            bool duplicate = false;
+            for (size_t previous = 0u; previous < propertyIndex; ++previous) {
+                duplicate = duplicate ||
+                            propertyName == registration.properties[previous].name;
+            }
+            if (propertyName.empty() || propertyName.size() > 128u || duplicate ||
+                property.type < ScriptPropertyType::Float ||
+                property.type > ScriptPropertyType::Entity || invalidFloat) {
+                FreeLibrary(module);
+                error = "Project Script module contains an invalid property.";
+                return false;
+            }
+        }
         types.push_back(type);
     }
 
@@ -149,12 +182,22 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
     for (size_t index = 0; index < count; ++index) {
         const ScriptTypeRegistration registration = registrations[index];
         const std::string type(registration.type);
+        std::vector<ScriptPropertyDefinition> properties;
+        properties.reserve(registration.propertyCount);
+        for (size_t propertyIndex = 0u; propertyIndex < registration.propertyCount;
+             ++propertyIndex) {
+            const ScriptPropertyDescriptor& property =
+                registration.properties[propertyIndex];
+            properties.push_back({property.name, property.type, property.defaultFloat,
+                                  property.minimumFloat, property.maximumFloat});
+        }
         if (!registry.Register(
                 type,
                 [factory = registration.create, input] {
                     return std::unique_ptr<Behavior>(factory(input));
                 },
-                registration.requirements, registration.sourceAsset)) {
+                registration.requirements, registration.sourceAsset,
+                std::move(properties))) {
             error = "Project Script type could not be registered: " + type;
             return false;
         }
