@@ -30,6 +30,7 @@
         }
       },
       "id": "423e7470-bb1c-6a5f-c411-2b5ab0d64190",
+      "layer": 0,
       "name": "Camera",
       "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     },
@@ -108,6 +109,7 @@
         }
       },
       "id": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497",
+      "layer": 0,
       "name": "Player",
       "parent": null
     },
@@ -190,6 +192,7 @@
         }
       },
       "id": "40aa24ff-628d-e18f-d1d3-5f5d47dbb38b",
+      "layer": 1,
       "name": "Enemy",
       "parent": null
     },
@@ -255,6 +258,7 @@
         }
       },
       "id": "49f2cf35-b61b-944d-caff-52d73e96bc8d",
+      "layer": 0,
       "name": "Wall",
       "parent": null
     },
@@ -320,6 +324,7 @@
         }
       },
       "id": "4c0e3cef-cc1a-66a6-c7f6-6bf590a6d8bd",
+      "layer": 0,
       "name": "Field",
       "parent": null
     },
@@ -357,6 +362,7 @@
         }
       },
       "id": "48274ae7-51b3-0e1a-c294-a2bf25c0f899",
+      "layer": 0,
       "name": "Light",
       "parent": null
     },
@@ -394,6 +400,7 @@
         }
       },
       "id": "45430fd4-2ecf-fc46-e0e5-00e2d29b10ac",
+      "layer": 0,
       "name": "Light",
       "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     }

@@ -56,6 +56,21 @@ constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
 
+ImU32 PhysicsDebugLayerColor(uint8_t layer, bool enabled = true) {
+    constexpr std::array<std::array<uint8_t, 3>, 8> colors = {{
+        {80, 230, 130},
+        {80, 170, 255},
+        {255, 105, 105},
+        {245, 205, 75},
+        {185, 120, 255},
+        {65, 220, 215},
+        {255, 150, 75},
+        {245, 110, 190},
+    }};
+    const auto& color = colors[layer % colors.size()];
+    return IM_COL32(color[0], color[1], color[2], enabled ? 220 : 80);
+}
+
 bool ContainsCaseInsensitive(std::string value, std::string query) {
     std::ranges::transform(value, value.begin(), [](unsigned char character) {
         return static_cast<char>(std::tolower(character));
@@ -6560,8 +6575,10 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                           ? IM_COL32(90, 185, 255, 230)
                           : (entity.light ? IM_COL32(255, 215, 80, 230)
                                           : IM_COL32(80, 230, 130, 230));
-        const bool drawPhysicsShapes =
-            showPhysicsDebug_ && (entity.boxCollider || entity.characterController);
+        const bool physicsLayerVisible =
+            (physicsDebugLayerMask_ & (uint32_t{1} << entity.layer)) != 0u;
+        const bool drawPhysicsShapes = showPhysicsDebug_ && physicsLayerVisible &&
+                                       (entity.boxCollider || entity.characterController);
         if (active) {
             color = IM_COL32(255, 184, 56, 255);
         } else if (selected) {
@@ -6706,7 +6723,7 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 }
             }
 
-            if (entity.boxCollider && (active || showPhysicsDebug_)) {
+            if (entity.boxCollider && (active || drawPhysicsShapes)) {
                 OBB collider{};
                 if (TryBuildWorldBoxCollider(world_, entity.id, collider)) {
                     const XMVECTOR colliderCenter = XMLoadFloat3(&collider.center);
@@ -6737,12 +6754,17 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                         {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
                         {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
                     };
-                    const ImU32 guideColor =
-                        entity.boxCollider->isTrigger
-                            ? (entity.boxCollider->enabled ? IM_COL32(255, 170, 70, 220)
-                                                           : IM_COL32(255, 170, 70, 80))
-                            : (entity.boxCollider->enabled ? IM_COL32(80, 230, 130, 210)
-                                                           : IM_COL32(80, 230, 130, 80));
+                    const ImU32 guideColor = entity.boxCollider->isTrigger
+                                                 ? (entity.boxCollider->enabled
+                                                        ? IM_COL32(255, 170, 70, 220)
+                                                        : IM_COL32(255, 170, 70, 80))
+                                             : (!active && showPhysicsDebug_)
+                                                 ? PhysicsDebugLayerColor(
+                                                       entity.layer,
+                                                       entity.boxCollider->enabled)
+                                                 : (entity.boxCollider->enabled
+                                                        ? IM_COL32(80, 230, 130, 210)
+                                                        : IM_COL32(80, 230, 130, 80));
                     for (const auto& edge : colliderEdges) {
                         drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor,
                                       1.5f);
@@ -6750,12 +6772,16 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                 }
             }
 
-            if (entity.characterController && (active || showPhysicsDebug_)) {
+            if (entity.characterController && (active || drawPhysicsShapes)) {
                 CharacterCapsule capsule{};
                 if (TryBuildWorldCharacterCapsule(world_, entity.id, capsule)) {
-                    const ImU32 guideColor = entity.characterController->enabled
-                                                 ? IM_COL32(70, 220, 210, 220)
-                                                 : IM_COL32(70, 220, 210, 80);
+                    const ImU32 guideColor =
+                        !active && showPhysicsDebug_
+                            ? PhysicsDebugLayerColor(entity.layer,
+                                                     entity.characterController->enabled)
+                            : (entity.characterController->enabled
+                                   ? IM_COL32(70, 220, 210, 220)
+                                   : IM_COL32(70, 220, 210, 80));
                     const float segmentHalfHeight =
                         (std::max)(0.0f, capsule.height * 0.5f - capsule.radius);
                     auto capsulePoint = [&](float x, float y, float z) {
@@ -6816,6 +6842,17 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                     drawCapArc(false, false);
                 }
             }
+        }
+        if (drawPhysicsShapes) {
+            std::string layerLabel = physicsSettings_.layerNames[entity.layer];
+            if (layerLabel.empty()) {
+                layerLabel = "Layer " + std::to_string(entity.layer);
+            }
+            const ImVec2 labelPosition{center.x + 10.0f, center.y + 8.0f};
+            drawList->AddText({labelPosition.x + 1.0f, labelPosition.y + 1.0f},
+                              IM_COL32(0, 0, 0, 220), layerLabel.c_str());
+            drawList->AddText(labelPosition, PhysicsDebugLayerColor(entity.layer),
+                              layerLabel.c_str());
         }
         if (active && (!entity.meshRenderer || !entity.meshRenderer->enabled)) {
             drawList->AddText({center.x + 14.0f, center.y - ImGui::GetTextLineHeight() * 0.5f},
@@ -6957,7 +6994,47 @@ void EditorScene::DrawSceneGizmoToolbar() {
     ImGui::SameLine();
     ImGui::Checkbox("Physics", &showPhysicsDebug_);
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Show every BoxCollider and Character Controller in Scene View.");
+        ImGui::SetTooltip("Show BoxColliders and Character Controllers in Scene View.");
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!showPhysicsDebug_);
+    if (ImGui::SmallButton("Layers##PhysicsDebugLayers")) {
+        ImGui::OpenPopup("Physics Debug Layers");
+    }
+    ImGui::EndDisabled();
+    if (ImGui::BeginPopup("Physics Debug Layers")) {
+        ImGui::TextUnformatted("Visible Physics Layers");
+        if (ImGui::SmallButton("All")) {
+            physicsDebugLayerMask_ = 0xffffffffu;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("None")) {
+            physicsDebugLayerMask_ = 0u;
+        }
+        ImGui::Separator();
+        for (size_t layer = 0u; layer < PhysicsSettings::kLayerCount; ++layer) {
+            if (physicsSettings_.layerNames[layer].empty()) {
+                continue;
+            }
+            ImGui::PushID(static_cast<int>(layer));
+            const auto color = ImGui::ColorConvertU32ToFloat4(
+                PhysicsDebugLayerColor(static_cast<uint8_t>(layer)));
+            ImGui::TextColored(color, "\u25a0");
+            ImGui::SameLine();
+            bool visible = (physicsDebugLayerMask_ & (uint32_t{1} << layer)) != 0u;
+            const std::string label = std::to_string(layer) + ": " +
+                                      physicsSettings_.layerNames[layer];
+            if (ImGui::Checkbox(label.c_str(), &visible)) {
+                const uint32_t layerBit = uint32_t{1} << layer;
+                if (visible) {
+                    physicsDebugLayerMask_ |= layerBit;
+                } else {
+                    physicsDebugLayerMask_ &= ~layerBit;
+                }
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndPopup();
     }
     ImGui::SameLine();
     ImGui::TextDisabled("|");
