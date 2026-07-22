@@ -123,6 +123,10 @@ private:
     void DeleteSelection();
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);
+    bool SaveSelectionAsPrefab();
+    bool InstantiatePrefabAsset(
+        const std::filesystem::path& path, EntityId parent = {},
+        std::optional<DirectX::XMFLOAT3> position = std::nullopt);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
                                          std::string& assetPath);
     bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,
@@ -200,6 +204,8 @@ private:
     void AddRecentScene(const std::filesystem::path& path);
     [[nodiscard]] std::optional<std::filesystem::path> ShowOpenSceneDialog() const;
     [[nodiscard]] std::optional<std::filesystem::path> ShowSaveSceneDialog() const;
+    [[nodiscard]] std::optional<std::filesystem::path>
+    ShowSavePrefabDialog(std::string_view entityName) const;
     [[nodiscard]] std::vector<std::filesystem::path> ShowImportAssetDialog() const;
 
     struct HistoryState {
@@ -325,6 +331,7 @@ private:
     std::vector<std::filesystem::path> modelAssets_;
     std::vector<std::filesystem::path> textureAssets_;
     std::vector<std::filesystem::path> scriptAssets_;
+    std::vector<std::filesystem::path> prefabAssets_;
     struct AssetBrowserEntry {
         std::filesystem::path relativePath;
         bool directory = false;

@@ -152,6 +152,9 @@ class World {
 public:
     EntityId CreateEntity(std::string name = "Entity");
     EntityId DuplicateEntityHierarchy(EntityId source);
+    bool InstantiateEntityHierarchies(const World& source, EntityId parent,
+                                      std::vector<EntityId>& roots,
+                                      std::string* error = nullptr);
     bool DestroyEntity(EntityId id);
     bool SetParent(EntityId child, EntityId parent);
     bool MoveEntityBefore(EntityId entity, EntityId sibling);

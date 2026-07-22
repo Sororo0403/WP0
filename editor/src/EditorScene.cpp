@@ -50,6 +50,7 @@ constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
 constexpr const char* kScriptAssetDragPayload = "EDITOR_SCRIPT_ASSET";
+constexpr const char* kPrefabAssetDragPayload = "EDITOR_PREFAB_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
@@ -353,6 +354,10 @@ DirectX::XMFLOAT3 CalculateScenePlacementPosition(const Camera& camera,
         DirectX::XMVectorAdd(rayOrigin, DirectX::XMVectorScale(rayDirection, distance)));
     position.y = 0.0f;
     return position;
+}
+
+bool IsPrefabAsset(const std::filesystem::path& path) {
+    return LowercaseAscii(path.extension().string()) == ".likeprefab";
 }
 
 }
@@ -1448,6 +1453,10 @@ void EditorScene::DrawProjectPanel() {
         if (ImGui::MenuItem("Folder")) {
             RequestCreateAssetFolder();
         }
+        if (ImGui::MenuItem("Prefab from Selection...", nullptr, false,
+                            selection_.IsValid() && !IsInPlayMode())) {
+            SaveSelectionAsPrefab();
+        }
         if (ImGui::MenuItem("Import Assets...")) {
             ImportAssetFiles();
         }
@@ -1458,8 +1467,9 @@ void EditorScene::DrawProjectPanel() {
         RefreshAssetBrowser();
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu model(s), %zu texture(s), %zu script(s)",
-                        modelAssets_.size(), textureAssets_.size(), scriptAssets_.size());
+    ImGui::TextDisabled("%zu model(s), %zu texture(s), %zu script(s), %zu prefab(s)",
+                        modelAssets_.size(), textureAssets_.size(), scriptAssets_.size(),
+                        prefabAssets_.size());
     ImGui::Separator();
     if (!currentAssetDirectory_.empty()) {
         if (ImGui::Button("< Back")) {
@@ -1472,13 +1482,12 @@ void EditorScene::DrawProjectPanel() {
     ImGui::InputTextWithHint("##AssetSearch", "Search assets...", assetSearch_.data(),
                              assetSearch_.size());
 
-    constexpr const char* formatLabels[] = {"All formats", "C++ Script", "glTF", "GLB", "OBJ",
-                                             "FBX", "DAE", "3DS", "PLY", "PNG", "JPG",
-                                             "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
-    constexpr const char* formatExtensions[] = {"", ".cpp", ".gltf", ".glb", ".obj",
-                                                 ".fbx", ".dae",  ".3ds", ".ply",
-                                                 ".png", ".jpg",  ".jpeg", ".tga",
-                                                 ".bmp", ".dds",  ".hdr", ".exr"};
+    constexpr const char* formatLabels[] = {
+        "All formats", "Prefab", "C++ Script", "glTF", "GLB", "OBJ", "FBX", "DAE",
+        "3DS", "PLY", "PNG", "JPG", "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR"};
+    constexpr const char* formatExtensions[] = {
+        "", ".likeprefab", ".cpp", ".gltf", ".glb", ".obj", ".fbx", ".dae", ".3ds",
+        ".ply", ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds", ".hdr", ".exr"};
     constexpr const char* sortLabels[] = {"Name", "Type", "Size"};
     ImGui::SetNextItemWidth(105.0f);
     ImGui::Combo("##AssetFormat", &assetFormatFilter_, formatLabels,
@@ -1549,6 +1558,7 @@ void EditorScene::DrawProjectPanel() {
             appendMatches(modelAssets_);
             appendMatches(textureAssets_);
             appendMatches(scriptAssets_);
+            appendMatches(prefabAssets_);
             std::ranges::sort(matches, comparePaths);
             for (const std::filesystem::path& relativePath : matches) {
                 DrawAssetBrowserEntry(relativePath, false);
@@ -1616,7 +1626,9 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const bool scriptSource =
         !directory && ScriptAssets::IsScriptSourceFile(relativePath);
     const bool scriptHeader = scriptSource && !script;
+    const bool prefab = !directory && IsPrefabAsset(relativePath);
     const std::string label = std::string(directory ? "[Folder] "
+                                                     : prefab ? "[Prefab] "
                                                      : texture ? "[Texture] "
                                                      : script ? "[Script] "
                                                      : scriptSource ? "[C++ Script] "
@@ -1629,6 +1641,8 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         selectedAsset_ = relativePath;
         if (directory && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             NavigateAssetBrowser(relativePath);
+        } else if (prefab && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            InstantiatePrefabAsset(logicalPath);
         } else if (scriptSource &&
                    ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             const std::filesystem::path physical = assetRoot_ / relativePath;
@@ -1643,7 +1657,8 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::SetTooltip("%s", id.c_str());
     }
     if (!directory && !scriptHeader && ImGui::BeginDragDropSource()) {
-        ImGui::SetDragDropPayload(texture ? kTextureAssetDragPayload
+        ImGui::SetDragDropPayload(prefab ? kPrefabAssetDragPayload
+                                          : texture ? kTextureAssetDragPayload
                                           : script ? kScriptAssetDragPayload
                                                    : kModelAssetDragPayload,
                                   id.c_str(), id.size() + 1u);
@@ -1665,6 +1680,8 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
                     status_ = "Could not open Script source: " + id;
                 }
             }
+        } else if (prefab && ImGui::MenuItem("Instantiate")) {
+            InstantiatePrefabAsset(logicalPath);
         } else if (script && ImGui::MenuItem("Attach to Selected Entity", nullptr, false,
                                              selection_.IsValid())) {
             AssignScriptAsset(selection_, logicalPath);
@@ -1741,6 +1758,8 @@ void EditorScene::DrawSelectedAssetDetails() {
     const std::string extension = physical.extension().string();
     std::string typeLabel = directory
                                 ? "Folder"
+                                : IsPrefabAsset(physical)
+                                      ? "Prefab"
                                 : AssetImport::IsTextureFile(physical)
                                       ? "Texture"
                                       : ScriptAssets::IsScriptFile(physical)
@@ -2554,6 +2573,12 @@ void EditorScene::DrawHierarchyPanel() {
             std::memcpy(&child, payload->Data, sizeof(child));
             ReparentSelection(child, {});
         }
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload(kPrefabAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            InstantiatePrefabAsset(static_cast<const char*>(payload->Data));
+        }
         ImGui::EndDragDropTarget();
     }
     if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
@@ -2761,6 +2786,10 @@ void EditorScene::DrawEntityNode(EntityId id) {
             DuplicateSelection();
             hierarchyChanged = true;
         }
+        if (ImGui::MenuItem("Save as Prefab...", nullptr, false,
+                            editing && GetTopLevelSelectedEntities().size() == 1u)) {
+            SaveSelectionAsPrefab();
+        }
         if (ImGui::MenuItem("Copy", "Ctrl+C")) {
             CopySelection();
         }
@@ -2837,6 +2866,12 @@ void EditorScene::DrawEntityNode(EntityId id) {
             payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
             static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
             AssignScriptAsset(id, static_cast<const char*>(payload->Data));
+        }
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload(kPrefabAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            InstantiatePrefabAsset(static_cast<const char*>(payload->Data), id);
         }
         ImGui::EndDragDropTarget();
     }
@@ -4236,53 +4271,20 @@ bool EditorScene::PasteEntityClipboard(EntityId parent) {
         status_ = "Paste failed: " + (error.empty() ? std::string("clipboard is empty.") : error);
         return false;
     }
-    const size_t rootCount = static_cast<size_t>(std::ranges::count_if(
-        clipboardWorld.Entities(), [](const WorldEntity& entity) {
-            return !entity.parent.IsValid();
-        }));
-    if (rootCount == 0u) {
-        status_ = "Paste failed: clipboard has no entity hierarchy roots.";
-        return false;
-    }
-
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
-    std::unordered_map<EntityId, EntityId, EntityIdHash> pastedIds;
-    pastedIds.reserve(clipboardWorld.Entities().size());
     std::vector<EntityId> pastedRoots;
-    pastedRoots.reserve(rootCount);
-    for (const WorldEntity& source : clipboardWorld.Entities()) {
-        const EntityId pasted = world_.CreateEntity(source.name);
-        pastedIds.emplace(source.id, pasted);
-        WorldEntity* destination = world_.Find(pasted);
-        if (destination == nullptr) {
-            continue;
-        }
-        destination->transform = source.transform;
-        destination->meshRenderer = source.meshRenderer;
-        if (!source.parent.IsValid()) {
-            pastedRoots.push_back(pasted);
-            destination->name += " Copy";
-        }
-    }
-    bool valid = pastedRoots.size() == rootCount;
-    for (const WorldEntity& source : clipboardWorld.Entities()) {
-        const EntityId pasted = pastedIds.at(source.id);
-        const EntityId pastedParent = source.parent.IsValid() ? pastedIds.at(source.parent) : parent;
-        if (pastedParent.IsValid() && !world_.SetParent(pasted, pastedParent)) {
-            valid = false;
-            break;
-        }
-    }
-    if (!valid) {
-        World restored;
-        if (WorldSerializer::Deserialize(before, restored, nullptr)) {
-            world_ = std::move(restored);
-        }
-        selection_ = selectionBefore;
-        status_ = "Paste failed while rebuilding the entity hierarchy.";
+    if (!world_.InstantiateEntityHierarchies(clipboardWorld, parent, pastedRoots,
+                                              &error)) {
+        status_ = "Paste failed: " + error;
         return false;
     }
+    for (EntityId root : pastedRoots) {
+        if (WorldEntity* pastedRoot = world_.Find(root)) {
+            pastedRoot->name += " Copy";
+        }
+    }
+    const size_t rootCount = pastedRoots.size();
     hierarchySelection_.clear();
     hierarchySelection_.insert(pastedRoots.begin(), pastedRoots.end());
     selection_ = pastedRoots.front();
@@ -4687,6 +4689,13 @@ void EditorScene::HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& ima
             sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos());
         CreateModelEntityFromAsset(static_cast<const char*>(payload->Data), position);
     }
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kPrefabAssetDragPayload);
+        payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+        static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+        const DirectX::XMFLOAT3 position = CalculateScenePlacementPosition(
+            sceneViewCamera_, imageMin, imageMax, ImGui::GetMousePos());
+        InstantiatePrefabAsset(static_cast<const char*>(payload->Data), {}, position);
+    }
     ImGui::EndDragDropTarget();
 }
 
@@ -5017,6 +5026,125 @@ void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
     status_ = "Created model entity: " + assetPath;
 }
 
+bool EditorScene::SaveSelectionAsPrefab() {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before creating a Prefab.";
+        return false;
+    }
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.size() != 1u) {
+        status_ = "Select exactly one entity hierarchy to create a Prefab.";
+        return false;
+    }
+    const WorldEntity* rootEntity = world_.Find(roots.front());
+    if (rootEntity == nullptr) {
+        status_ = "The selected entity no longer exists.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> destination =
+        ShowSavePrefabDialog(rootEntity->name);
+    if (!destination) {
+        status_ = "Prefab save cancelled.";
+        return false;
+    }
+
+    std::unordered_set<EntityId, EntityIdHash> includedIds;
+    includedIds.insert(roots.front());
+    for (const WorldEntity& candidate : world_.Entities()) {
+        EntityId current = candidate.parent;
+        for (size_t depth = 0u; current.IsValid() && depth <= world_.Entities().size();
+             ++depth) {
+            if (current == roots.front()) {
+                includedIds.insert(candidate.id);
+                break;
+            }
+            const WorldEntity* parent = world_.Find(current);
+            current = parent != nullptr ? parent->parent : EntityId{};
+        }
+    }
+
+    std::vector<WorldEntity> entities;
+    entities.reserve(includedIds.size());
+    for (const WorldEntity& source : world_.Entities()) {
+        if (!includedIds.contains(source.id)) {
+            continue;
+        }
+        WorldEntity prefabEntity = source;
+        if (prefabEntity.id == roots.front()) {
+            prefabEntity.parent = {};
+        }
+        for (BehaviorComponent& script : prefabEntity.scripts) {
+            for (ScriptPropertyValue& property : script.properties) {
+                if (property.type == ScriptPropertyType::Entity &&
+                    property.entityValue.IsValid() &&
+                    !includedIds.contains(property.entityValue)) {
+                    property.entityValue = {};
+                }
+            }
+        }
+        entities.push_back(std::move(prefabEntity));
+    }
+    World prefab;
+    std::string error;
+    if (!prefab.ReplaceEntities(std::move(entities), &error) ||
+        !WorldSerializer::Save(prefab, *destination, &error)) {
+        status_ = "Prefab save failed: " + error;
+        return false;
+    }
+    RefreshAssetBrowser();
+    std::error_code relativeError;
+    selectedAsset_ = std::filesystem::relative(*destination, assetRoot_, relativeError);
+    if (relativeError) {
+        selectedAsset_.clear();
+    }
+    status_ = "Saved Prefab: " + destination->string();
+    return true;
+}
+
+bool EditorScene::InstantiatePrefabAsset(
+    const std::filesystem::path& path, EntityId parent,
+    std::optional<DirectX::XMFLOAT3> position) {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before instantiating a Prefab.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolved = ResolveProjectAssetPath(path);
+    std::error_code filesystemError;
+    if (!resolved || !IsPrefabAsset(*resolved) ||
+        !std::filesystem::is_regular_file(*resolved, filesystemError) || filesystemError ||
+        !IsPathWithinRoot(assetRoot_, *resolved)) {
+        status_ = "The Prefab asset is invalid or outside the project assets directory.";
+        return false;
+    }
+    World prefab;
+    std::string error;
+    if (!WorldSerializer::Load(*resolved, prefab, &error)) {
+        status_ = "Prefab load failed: " + error;
+        return false;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    std::vector<EntityId> roots;
+    if (!world_.InstantiateEntityHierarchies(prefab, parent, roots, &error) ||
+        roots.empty()) {
+        status_ = "Prefab instantiate failed: " + error;
+        return false;
+    }
+    if (position && roots.size() == 1u) {
+        if (WorldEntity* root = world_.Find(roots.front())) {
+            root->transform.position = *position;
+        }
+    }
+    hierarchySelection_.clear();
+    hierarchySelection_.insert(roots.begin(), roots.end());
+    selection_ = roots.front();
+    hierarchySelectionAnchor_ = selection_;
+    RecordImmediateEdit("Instantiate Prefab", before, selectionBefore);
+    status_ = "Instantiated Prefab: " + resolved->filename().string();
+    return true;
+}
+
 void EditorScene::RefreshAssetBrowser() {
     assetPreviewAsset_.clear();
     assetPreviewModel_ = {};
@@ -5025,6 +5153,7 @@ void EditorScene::RefreshAssetBrowser() {
     modelAssets_.clear();
     textureAssets_.clear();
     scriptAssets_.clear();
+    prefabAssets_.clear();
     assetBrowserEntries_.clear();
     std::error_code error;
     if (!std::filesystem::is_directory(assetRoot_, error) || error) {
@@ -5056,6 +5185,7 @@ void EditorScene::RefreshAssetBrowser() {
         } else if (!error && entry.is_regular_file(error) && !error &&
                    (AssetImport::IsModelFile(entry.path()) ||
                     AssetImport::IsTextureFile(entry.path()) ||
+                    IsPrefabAsset(entry.path()) ||
                     ScriptAssets::IsScriptFile(entry.path()) ||
                     ScriptAssets::IsScriptSourceFile(entry.path()))) {
             const std::filesystem::path relative =
@@ -5083,11 +5213,14 @@ void EditorScene::RefreshAssetBrowser() {
         if (iterator->is_regular_file(error) && !error &&
             (AssetImport::IsModelFile(iterator->path()) ||
              AssetImport::IsTextureFile(iterator->path()) ||
+             IsPrefabAsset(iterator->path()) ||
              ScriptAssets::IsScriptFile(iterator->path()))) {
             std::filesystem::path relative =
                 std::filesystem::relative(iterator->path(), assetRoot_, error);
             if (!error) {
-                auto& assets = AssetImport::IsTextureFile(iterator->path())
+                auto& assets = IsPrefabAsset(iterator->path())
+                                   ? prefabAssets_
+                               : AssetImport::IsTextureFile(iterator->path())
                                    ? textureAssets_
                                    : ScriptAssets::IsScriptFile(iterator->path())
                                          ? scriptAssets_
@@ -5104,6 +5237,9 @@ void EditorScene::RefreshAssetBrowser() {
         return path.generic_string();
     });
     std::ranges::sort(scriptAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    std::ranges::sort(prefabAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
 }
@@ -6744,6 +6880,54 @@ std::optional<std::filesystem::path> EditorScene::ShowSaveSceneDialog() const {
     }
     const std::filesystem::path selected(buffer.data());
     return selected.extension() == L".likescene" && IsPathWithinRoot(sceneRoot_, selected)
+               ? std::optional<std::filesystem::path>(selected)
+               : std::nullopt;
+}
+
+std::optional<std::filesystem::path> EditorScene::ShowSavePrefabDialog(
+    std::string_view entityName) const {
+    std::wstring filename = L"Prefab";
+    if (!entityName.empty()) {
+        const int length = MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, entityName.data(),
+            static_cast<int>(entityName.size()), nullptr, 0);
+        if (length > 0) {
+            filename.resize(static_cast<size_t>(length));
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, entityName.data(),
+                                static_cast<int>(entityName.size()), filename.data(), length);
+        }
+    }
+    for (wchar_t& character : filename) {
+        if (character < L' ' || wcschr(L"\\/:*?\"<>|", character) != nullptr) {
+            character = L'_';
+        }
+    }
+    while (!filename.empty() && (filename.back() == L' ' || filename.back() == L'.')) {
+        filename.pop_back();
+    }
+    if (filename.empty()) {
+        filename = L"Prefab";
+    }
+    filename += L".likeprefab";
+
+    std::array<wchar_t, 32768> buffer{};
+    wcsncpy_s(buffer.data(), buffer.size(), filename.c_str(), _TRUNCATE);
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = L"LikeEngine Prefab (*.likeprefab)\0*.likeprefab\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    const std::filesystem::path initialPath = assetRoot_ / currentAssetDirectory_;
+    const std::wstring initialDirectory = initialPath.wstring();
+    dialog.lpstrInitialDir = initialDirectory.c_str();
+    dialog.lpstrDefExt = L"likeprefab";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                   OFN_DONTADDTORECENT;
+    if (!GetSaveFileNameW(&dialog)) {
+        return std::nullopt;
+    }
+    const std::filesystem::path selected(buffer.data());
+    return IsPrefabAsset(selected) && IsPathWithinRoot(assetRoot_, selected)
                ? std::optional<std::filesystem::path>(selected)
                : std::nullopt;
 }

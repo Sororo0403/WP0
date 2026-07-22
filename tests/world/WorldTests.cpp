@@ -756,6 +756,61 @@ int main() {
         return 7;
     }
 
+    World instantiatedWorld;
+    const EntityId instanceParent = instantiatedWorld.CreateEntity("Instance Parent");
+    ScriptPropertyValue externalReference{};
+    externalReference.name = "External Target";
+    externalReference.type = ScriptPropertyType::Entity;
+    externalReference.entityValue = EntityId::New();
+    restored.Find(child)->scripts[0].properties.push_back(externalReference);
+    std::vector<EntityId> instanceRoots;
+    if (!Check(instantiatedWorld.InstantiateEntityHierarchies(
+                   restored, instanceParent, instanceRoots, &error) &&
+                   instanceRoots.size() == 1u,
+               error.empty() ? "Entity hierarchy template could not be instantiated."
+                             : error.c_str())) {
+        return 153;
+    }
+    const WorldEntity* instanceRoot = instantiatedWorld.Find(instanceRoots.front());
+    const std::vector<EntityId> instanceChildren =
+        instantiatedWorld.GetChildren(instanceRoots.front());
+    const WorldEntity* instanceChild = instanceChildren.size() == 1u
+                                           ? instantiatedWorld.Find(instanceChildren.front())
+                                           : nullptr;
+    const ScriptPropertyValue* instanceTarget =
+        instanceChild != nullptr && !instanceChild->scripts.empty()
+            ? FindStoredScriptProperty(instanceChild->scripts[0], "Target")
+            : nullptr;
+    const ScriptPropertyValue* instanceExternalTarget =
+        instanceChild != nullptr && !instanceChild->scripts.empty()
+            ? FindStoredScriptProperty(instanceChild->scripts[0], "External Target")
+            : nullptr;
+    if (!Check(instanceRoot != nullptr && instanceRoot->id != root &&
+                   instanceRoot->parent == instanceParent && instanceRoot->camera &&
+                   !instanceRoot->camera->primary && instanceChild != nullptr &&
+                   instanceChild->id != child && instanceChild->parent == instanceRoot->id &&
+                   instanceChild->meshRenderer && instanceChild->materialOverride &&
+                   instanceChild->light && instanceChild->boxCollider &&
+                   instanceChild->characterController && instanceChild->scripts.size() == 3u &&
+                   instanceTarget != nullptr &&
+                   instanceTarget->entityValue == instanceRoot->id &&
+                   instanceExternalTarget != nullptr &&
+                   !instanceExternalTarget->entityValue.IsValid(),
+               "Entity hierarchy instantiation lost components or internal references.")) {
+        return 154;
+    }
+    World emptyTemplate;
+    const size_t instanceCountBeforeFailure = instantiatedWorld.Entities().size();
+    if (!Check(!instantiatedWorld.InstantiateEntityHierarchies(
+                   emptyTemplate, {}, instanceRoots, &error) &&
+                   instantiatedWorld.Entities().size() == instanceCountBeforeFailure &&
+                   !instantiatedWorld.InstantiateEntityHierarchies(
+                       restored, EntityId::New(), instanceRoots, &error) &&
+                   instantiatedWorld.Entities().size() == instanceCountBeforeFailure,
+               "Invalid entity hierarchy instantiation modified the destination World.")) {
+        return 155;
+    }
+
     const EntityId duplicateRoot = source.DuplicateEntityHierarchy(root);
     const WorldEntity* duplicateRootEntity = source.Find(duplicateRoot);
     const std::vector<EntityId> duplicateChildren = source.GetChildren(duplicateRoot);

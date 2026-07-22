@@ -94,6 +94,80 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
     return duplicateIds.at(source);
 }
 
+bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
+                                         std::vector<EntityId>& roots,
+                                         std::string* error) {
+    roots.clear();
+    if (source.Empty()) {
+        SetError(error, "Entity template is empty.");
+        return false;
+    }
+    if (parent.IsValid() && !Contains(parent)) {
+        SetError(error, "Entity template parent does not exist.");
+        return false;
+    }
+
+    const std::vector<WorldEntity> sourceEntities = source.entities_;
+    std::unordered_set<EntityId, EntityIdHash> usedIds;
+    usedIds.reserve(entities_.size() + sourceEntities.size());
+    for (const WorldEntity& entity : entities_) {
+        usedIds.insert(entity.id);
+    }
+    std::unordered_map<EntityId, EntityId, EntityIdHash> instantiatedIds;
+    instantiatedIds.reserve(sourceEntities.size());
+    for (const WorldEntity& sourceEntity : sourceEntities) {
+        EntityId instantiated{};
+        do {
+            instantiated = EntityId::New();
+        } while (!instantiated.IsValid() || usedIds.contains(instantiated));
+        usedIds.insert(instantiated);
+        instantiatedIds.emplace(sourceEntity.id, instantiated);
+    }
+
+    std::vector<WorldEntity> combined = entities_;
+    combined.reserve(combined.size() + sourceEntities.size());
+    std::vector<EntityId> instantiatedRoots;
+    for (const WorldEntity& sourceEntity : sourceEntities) {
+        WorldEntity instantiated = sourceEntity;
+        instantiated.id = instantiatedIds.at(sourceEntity.id);
+        if (sourceEntity.parent.IsValid()) {
+            const auto mappedParent = instantiatedIds.find(sourceEntity.parent);
+            if (mappedParent == instantiatedIds.end()) {
+                SetError(error, "Entity template contains an external parent.");
+                return false;
+            }
+            instantiated.parent = mappedParent->second;
+        } else {
+            instantiated.parent = parent;
+            instantiatedRoots.push_back(instantiated.id);
+        }
+        if (instantiated.camera) {
+            instantiated.camera->primary = false;
+        }
+        for (BehaviorComponent& script : instantiated.scripts) {
+            for (ScriptPropertyValue& property : script.properties) {
+                if (property.type != ScriptPropertyType::Entity ||
+                    !property.entityValue.IsValid()) {
+                    continue;
+                }
+                const auto mapped = instantiatedIds.find(property.entityValue);
+                property.entityValue = mapped != instantiatedIds.end()
+                                           ? mapped->second
+                                           : EntityId{};
+            }
+        }
+        combined.push_back(std::move(instantiated));
+    }
+    if (instantiatedRoots.empty() || !ReplaceEntities(std::move(combined), error)) {
+        if (instantiatedRoots.empty()) {
+            SetError(error, "Entity template has no hierarchy root.");
+        }
+        return false;
+    }
+    roots = std::move(instantiatedRoots);
+    return true;
+}
+
 bool World::SetPrimaryCamera(EntityId id) {
     WorldEntity* target = Find(id);
     if (target == nullptr || !target->camera) {
