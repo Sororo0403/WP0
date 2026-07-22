@@ -79,6 +79,12 @@
         "Scripts": [
           {
             "enabled": true,
+            "properties": {
+              "Move Speed": {
+                "type": "Float",
+                "value": 20.0
+              }
+            },
             "script": "asset://Scripts/FirstPersonController.cpp",
             "type": "FirstPersonController"
           }

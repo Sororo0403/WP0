@@ -258,13 +258,15 @@ int main() {
                    projectBehaviorRegistry.Requirements("FirstPersonController")
                        ->characterController &&
                    controllerProperties != nullptr &&
-                   controllerProperties->size() == 6u &&
+                   controllerProperties->size() == 7u &&
                    (*controllerProperties)[0].name == "Move Speed" &&
                    (*controllerProperties)[0].defaultFloat == 4.0f &&
                    (*controllerProperties)[1].name == "Sprint Speed" &&
                    (*controllerProperties)[1].defaultFloat == 8.0f &&
-                   (*controllerProperties)[5].name == "Invert Y" &&
-                   (*controllerProperties)[5].type == ScriptPropertyType::Boolean &&
+                   (*controllerProperties)[5].name == "Jump Height" &&
+                   (*controllerProperties)[5].defaultFloat == 1.5f &&
+                   (*controllerProperties)[6].name == "Invert Y" &&
+                   (*controllerProperties)[6].type == ScriptPropertyType::Boolean &&
                    projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
                    projectBehaviorRegistry.Requirements("ChasePlayer")
                        ->characterController &&

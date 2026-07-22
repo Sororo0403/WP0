@@ -27,8 +27,10 @@ private:
     float mouseSensitivity_ = 0.1f;
     float gamepadLookSpeed_ = 120.0f;
     float gravity_ = -24.0f;
+    float jumpHeight_ = 1.5f;
     bool invertY_ = false;
     float verticalVelocity_ = 0.0f;
+    bool grounded_ = false;
 };
 
 FirstPersonController::FirstPersonController(Input* input) : input_(input) {}
@@ -56,6 +58,10 @@ void FirstPersonController::OnConfigure(const ScriptPropertyValueView* propertie
         gravity_ = value->floatValue;
     }
     if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Jump Height", ScriptPropertyType::Float)) {
+        jumpHeight_ = value->floatValue;
+    }
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
             properties, count, "Invert Y", ScriptPropertyType::Boolean)) {
         invertY_ = value->booleanValue;
     }
@@ -65,6 +71,7 @@ void FirstPersonController::OnStart(World& world, EntityId entity) {
     (void)world;
     (void)entity;
     verticalVelocity_ = 0.0f;
+    grounded_ = false;
 }
 
 void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaTime) {
@@ -114,6 +121,12 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
         input_->IsKeyPress(DIK_LSHIFT) || input_->IsKeyPress(DIK_RSHIFT);
     const float speed = sprinting ? sprintSpeed_ : moveSpeed_;
     const float distance = speed * deltaTime;
+    const bool jumpRequested = input_->IsKeyTrigger(DIK_SPACE) ||
+                               input_->IsGamepadButtonTrigger(XINPUT_GAMEPAD_A);
+    if (grounded_ && jumpRequested && gravity_ < 0.0f && jumpHeight_ > 0.0f) {
+        verticalVelocity_ = std::sqrt(jumpHeight_ * -2.0f * gravity_);
+        grounded_ = false;
+    }
     constexpr float terminalVelocity = -50.0f;
     verticalVelocity_ =
         (std::max)(verticalVelocity_ + gravity_ * deltaTime, terminalVelocity);
@@ -124,9 +137,14 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     };
     const CharacterMoveResult movement =
         MoveCharacterController(world, entity, displacement);
-    if ((static_cast<uint8_t>(movement.flags) &
-         static_cast<uint8_t>(CharacterCollisionFlags::Below)) != 0u &&
-        verticalVelocity_ < 0.0f) {
+    grounded_ = (static_cast<uint8_t>(movement.flags) &
+                 static_cast<uint8_t>(CharacterCollisionFlags::Below)) != 0u;
+    const bool hitCeiling =
+        (static_cast<uint8_t>(movement.flags) &
+         static_cast<uint8_t>(CharacterCollisionFlags::Above)) != 0u;
+    if (grounded_ && verticalVelocity_ < 0.0f) {
+        verticalVelocity_ = 0.0f;
+    } else if (hitCeiling && verticalVelocity_ > 0.0f) {
         verticalVelocity_ = 0.0f;
     }
 }
@@ -163,6 +181,11 @@ ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
                                  .defaultFloat = -24.0f,
                                  .minimumFloat = -100.0f,
                                  .maximumFloat = 0.0f},
+        ScriptPropertyDescriptor{.name = "Jump Height",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 1.5f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 10.0f},
         ScriptPropertyDescriptor{.name = "Invert Y",
                                  .type = ScriptPropertyType::Boolean,
                                  .defaultBoolean = false},
