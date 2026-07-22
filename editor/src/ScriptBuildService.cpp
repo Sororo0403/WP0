@@ -625,3 +625,35 @@ bool ScriptBuildService::GetSourceFingerprint(
     }
     return true;
 }
+
+bool ScriptBuildService::ParseDiagnosticLocation(
+    std::string_view outputLine, std::filesystem::path& sourcePath,
+    uint32_t& line, uint32_t& column) {
+    sourcePath.clear();
+    line = 0u;
+    column = 0u;
+    static const std::regex pattern(
+        R"(^\s*(.+)\(([0-9]+)(?:,([0-9]+))?\)\s*:)",
+        std::regex_constants::ECMAScript);
+    const std::string text(outputLine);
+    std::smatch match;
+    if (!std::regex_search(text, match, pattern) || match.size() < 3u) {
+        return false;
+    }
+    try {
+        const unsigned long parsedLine = std::stoul(match[2].str());
+        const unsigned long parsedColumn = match[3].matched ? std::stoul(match[3].str()) : 0u;
+        if (parsedLine == 0u || parsedLine > UINT32_MAX || parsedColumn > UINT32_MAX) {
+            return false;
+        }
+        sourcePath = std::filesystem::path(match[1].str()).lexically_normal();
+        line = static_cast<uint32_t>(parsedLine);
+        column = static_cast<uint32_t>(parsedColumn);
+        return !sourcePath.empty();
+    } catch (const std::exception&) {
+        sourcePath.clear();
+        line = 0u;
+        column = 0u;
+        return false;
+    }
+}

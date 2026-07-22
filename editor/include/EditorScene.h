@@ -78,7 +78,10 @@ private:
     void DrawInspectorPanel();
     void DrawConsolePanel();
     void CaptureConsoleStatus();
-    void AddConsoleEntry(std::string message, ConsoleSeverity severity);
+    void AddConsoleEntry(std::string message, ConsoleSeverity severity,
+                         std::filesystem::path sourcePath = {}, uint32_t sourceLine = 0u,
+                         uint32_t sourceColumn = 0u);
+    bool OpenConsoleSource(const std::filesystem::path& sourcePath, uint32_t sourceLine);
     void InitializeScriptMonitoring();
     void UpdateScriptCompilation();
     void StartScriptCompilation();
@@ -282,6 +285,9 @@ private:
         std::string message;
         double timestampSeconds = 0.0;
         ConsoleSeverity severity = ConsoleSeverity::Info;
+        std::filesystem::path sourcePath;
+        uint32_t sourceLine = 0u;
+        uint32_t sourceColumn = 0u;
     };
     std::vector<ConsoleEntry> consoleEntries_;
     std::string lastCapturedStatus_;

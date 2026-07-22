@@ -231,6 +231,24 @@ int main() {
                "Script asset validation is invalid.")) {
         return 1;
     }
+    std::filesystem::path diagnosticPath;
+    uint32_t diagnosticLine = 0u;
+    uint32_t diagnosticColumn = 0u;
+    if (!Check(ScriptBuildService::ParseDiagnosticLocation(
+                   R"(C:\Game Project\assets\Player.cpp(42,7): error C2065: unknown)",
+                   diagnosticPath, diagnosticLine, diagnosticColumn) &&
+                   diagnosticPath.filename() == L"Player.cpp" && diagnosticLine == 42u &&
+                   diagnosticColumn == 7u &&
+                   ScriptBuildService::ParseDiagnosticLocation(
+                       R"(  C:\Game\assets\Enemy.h(9): warning C4100: unused)",
+                       diagnosticPath, diagnosticLine, diagnosticColumn) &&
+                   diagnosticLine == 9u && diagnosticColumn == 0u &&
+                   !ScriptBuildService::ParseDiagnosticLocation(
+                       "Project Scripts build failed.", diagnosticPath, diagnosticLine,
+                       diagnosticColumn),
+               "Project Script diagnostic location parsing is invalid.")) {
+        return 142;
+    }
 
     const std::filesystem::path repositoryRoot =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();

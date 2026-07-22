@@ -37,14 +37,14 @@
       "components": {
         "CharacterController": {
           "center": [
-            0.7295893430709839,
+            0.0,
             0.0,
             0.0
           ],
           "enabled": true,
-          "height": 1.0,
+          "height": 2.0,
           "minMoveDistance": 0.0,
-          "radius": 0.5,
+          "radius": 1.0,
           "skinWidth": 0.05000000074505806,
           "slopeLimit": 45.0,
           "stepOffset": 0.30000001192092896

@@ -36,6 +36,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
@@ -1186,11 +1187,14 @@ void EditorScene::CaptureConsoleStatus() {
     AddConsoleEntry(status_, severity);
 }
 
-void EditorScene::AddConsoleEntry(std::string message, ConsoleSeverity severity) {
+void EditorScene::AddConsoleEntry(std::string message, ConsoleSeverity severity,
+                                  std::filesystem::path sourcePath,
+                                  uint32_t sourceLine, uint32_t sourceColumn) {
     if (message.empty()) {
         return;
     }
-    consoleEntries_.push_back({std::move(message), ImGui::GetTime(), severity});
+    consoleEntries_.push_back({std::move(message), ImGui::GetTime(), severity,
+                               std::move(sourcePath), sourceLine, sourceColumn});
     constexpr size_t kMaxConsoleEntries = 512u;
     if (consoleEntries_.size() > kMaxConsoleEntries) {
         consoleEntries_.erase(consoleEntries_.begin(),
@@ -1199,6 +1203,31 @@ void EditorScene::AddConsoleEntry(std::string message, ConsoleSeverity severity)
                                                          kMaxConsoleEntries));
     }
     consoleScrollToBottom_ = true;
+}
+
+bool EditorScene::OpenConsoleSource(const std::filesystem::path& sourcePath,
+                                    uint32_t sourceLine) {
+    std::filesystem::path physical = sourcePath;
+    if (physical.is_relative()) {
+        physical = projectRoot_ / physical;
+    }
+    std::error_code error;
+    physical = std::filesystem::weakly_canonical(physical, error);
+    if (error || !std::filesystem::is_regular_file(physical, error) || error) {
+        status_ = "Could not open compiler source because the file no longer exists.";
+        return false;
+    }
+    if (reinterpret_cast<intptr_t>(ShellExecuteW(
+            nullptr, L"open", physical.c_str(), nullptr,
+            physical.parent_path().c_str(), SW_SHOWNORMAL)) <= 32) {
+        status_ = "Could not open compiler source: " + physical.generic_string();
+        return false;
+    }
+    status_ = "Opened compiler source: " + physical.filename().string();
+    if (sourceLine > 0u) {
+        status_ += " (line " + std::to_string(sourceLine) + ").";
+    }
+    return true;
 }
 
 void EditorScene::InitializeScriptMonitoring() {
@@ -1290,9 +1319,32 @@ void EditorScene::FinishScriptCompilation() {
                                     completion.output.size() - maximumOutputLength);
             completion.output.insert(0u, "... compiler output truncated ...\n");
         }
-        AddConsoleEntry("Project Script compiler output:\n" + completion.output,
-                        completion.succeeded ? ConsoleSeverity::Info :
-                                               ConsoleSeverity::Error);
+        AddConsoleEntry("Project Script compiler output:", ConsoleSeverity::Info);
+        std::istringstream stream(completion.output);
+        std::string outputLine;
+        while (std::getline(stream, outputLine)) {
+            if (!outputLine.empty() && outputLine.back() == '\r') {
+                outputLine.pop_back();
+            }
+            if (outputLine.empty()) {
+                continue;
+            }
+            std::string normalized = LowercaseAscii(outputLine);
+            ConsoleSeverity severity = ConsoleSeverity::Info;
+            if (normalized.find("error") != std::string::npos ||
+                normalized.find("failed") != std::string::npos) {
+                severity = ConsoleSeverity::Error;
+            } else if (normalized.find("warning") != std::string::npos) {
+                severity = ConsoleSeverity::Warning;
+            }
+            std::filesystem::path sourcePath;
+            uint32_t sourceLine = 0u;
+            uint32_t sourceColumn = 0u;
+            ScriptBuildService::ParseDiagnosticLocation(
+                outputLine, sourcePath, sourceLine, sourceColumn);
+            AddConsoleEntry(std::move(outputLine), severity, std::move(sourcePath),
+                            sourceLine, sourceColumn);
+        }
     }
     if (!completion.succeeded) {
         status_ = "Error: " +
@@ -1422,12 +1474,41 @@ void EditorScene::DrawConsolePanel() {
                                            ? ImVec4{1.0f, 0.75f, 0.25f, 1.0f}
                                            : ImGui::GetStyleColorVec4(ImGuiCol_Text);
             ImGui::PushID(static_cast<int>(index));
+            ImGui::BeginGroup();
             ImGui::TextDisabled("[%7.2f]", entry.timestampSeconds);
             ImGui::SameLine();
             ImGui::TextColored(color, "[%s]", label);
             ImGui::SameLine();
             ImGui::TextUnformatted(entry.message.c_str());
+            ImGui::EndGroup();
+            const bool hasSource = !entry.sourcePath.empty() && entry.sourceLine > 0u;
+            if (hasSource && ImGui::IsItemHovered()) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                if (entry.sourceColumn > 0u) {
+                    ImGui::SetTooltip("Double-click to open %s:%u:%u",
+                                      entry.sourcePath.filename().string().c_str(),
+                                      entry.sourceLine, entry.sourceColumn);
+                } else {
+                    ImGui::SetTooltip("Double-click to open %s:%u",
+                                      entry.sourcePath.filename().string().c_str(),
+                                      entry.sourceLine);
+                }
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    OpenConsoleSource(entry.sourcePath, entry.sourceLine);
+                }
+            }
             if (ImGui::BeginPopupContextItem("MessageContext")) {
+                if (hasSource && ImGui::MenuItem("Open Source")) {
+                    OpenConsoleSource(entry.sourcePath, entry.sourceLine);
+                }
+                if (hasSource && ImGui::MenuItem("Copy Source Location")) {
+                    std::string location = entry.sourcePath.generic_string() + ":" +
+                                           std::to_string(entry.sourceLine);
+                    if (entry.sourceColumn > 0u) {
+                        location += ":" + std::to_string(entry.sourceColumn);
+                    }
+                    ImGui::SetClipboardText(location.c_str());
+                }
                 if (ImGui::MenuItem("Copy Message")) {
                     ImGui::SetClipboardText(entry.message.c_str());
                 }
