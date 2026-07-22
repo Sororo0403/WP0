@@ -140,6 +140,7 @@ struct WorldEntity {
     EntityId id{};
     EntityId parent{};
     std::string name = "Entity";
+    bool active = true;
     uint8_t layer = 0u;
     TransformComponent transform{};
     std::optional<MeshRendererComponent> meshRenderer;
@@ -167,6 +168,7 @@ public:
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;
     bool Contains(EntityId id) const;
+    [[nodiscard]] bool IsActiveInHierarchy(EntityId id) const;
 
     [[nodiscard]] std::vector<EntityId> GetRootEntities() const;
     [[nodiscard]] std::vector<EntityId> GetChildren(EntityId parent) const;

@@ -453,14 +453,18 @@ int main() {
     }
     behaviors.Start(behaviorWorld);
     behaviors.Update(0.25f);
+    behaviorWorld.Find(behaviorEntity)->active = false;
+    behaviors.Update(0.5f);
+    behaviorWorld.Find(behaviorEntity)->active = true;
+    behaviors.Update(0.75f);
     behaviors.Stop();
     const WorldEntity* behaviorTarget = behaviorWorld.Find(behaviorEntity);
     if (!Check(!behaviors.IsRunning() && behaviors.Size() == 1u &&
-                   behaviorStartCount == 1 && behaviorUpdateCount == 1 &&
-                   behaviorStopCount == 1 && behaviorLastDeltaTime == 0.25f &&
-                   behaviorTarget != nullptr && behaviorTarget->transform.position.x == 1.0f &&
-                   behaviorTarget->transform.position.y == 0.25f,
-               "Runtime Behavior lifecycle did not run in order.")) {
+                   behaviorStartCount == 2 && behaviorUpdateCount == 2 &&
+                   behaviorStopCount == 2 && behaviorLastDeltaTime == 0.75f &&
+                   behaviorTarget != nullptr && behaviorTarget->transform.position.x == 2.0f &&
+                   behaviorTarget->transform.position.y == 1.0f,
+               "Runtime Behavior lifecycle or Entity activation handling is invalid.")) {
         return 126;
     }
 
@@ -722,6 +726,21 @@ int main() {
         return 138;
     }
 
+    groundWorld.Find(floor)->active = false;
+    const CharacterMoveResult inactiveFloorMovement =
+        MoveCharacterController(groundWorld, groundedController, {0.0f, -1.0f, 0.0f});
+    if (!Check(inactiveFloorMovement.appliedMotion.y < -0.9f &&
+                   inactiveFloorMovement.flags == CharacterCollisionFlags::None,
+               "An inactive Entity still blocked CharacterController movement.")) {
+        return 156;
+    }
+
+    source.Find(root)->active = false;
+    if (!Check(source.Find(child)->active && !source.IsActiveInHierarchy(child),
+               "A child of an inactive Entity remained active in the hierarchy.")) {
+        return 157;
+    }
+
     const std::string serialized = WorldSerializer::Serialize(source);
     World restored;
     std::string error;
@@ -744,6 +763,8 @@ int main() {
     const ScriptPropertyValue* restoredVector = hasRestoredScript
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Offset") : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
+                   restored.Find(root) != nullptr && !restored.Find(root)->active &&
+                   restoredChild->active && !restored.IsActiveInHierarchy(child) &&
                    restoredChild->parent == root && restoredChild->layer == 2u &&
                    restoredChild->transform.position.x == 1.0f &&
                    restoredChild->transform.rotationDegrees.z == 30.0f &&

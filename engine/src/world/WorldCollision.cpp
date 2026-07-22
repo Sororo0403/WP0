@@ -69,13 +69,14 @@ bool CapsuleOverlapsBox(const CharacterCapsule& capsule, const OBB& box) {
 bool HasBlockingOverlap(const World& world, EntityId movingEntity) {
     const WorldEntity* movingEntityData = world.Find(movingEntity);
     CharacterCapsule movingCapsule{};
-    if (movingEntityData == nullptr ||
+    if (movingEntityData == nullptr || !world.IsActiveInHierarchy(movingEntity) ||
         !TryBuildWorldCharacterCapsule(world, movingEntity, movingCapsule)) {
         return false;
     }
 
     for (const WorldEntity& other : world.Entities()) {
-        if (other.id == movingEntity || !other.boxCollider || !other.boxCollider->enabled ||
+        if (other.id == movingEntity || !world.IsActiveInHierarchy(other.id) ||
+            !other.boxCollider || !other.boxCollider->enabled ||
             other.boxCollider->isTrigger ||
             !world.LayersCollide(movingEntityData->layer, other.layer)) {
             continue;
@@ -203,6 +204,8 @@ bool CheckCharacterControllerBoxOverlap(const World& world, EntityId characterEn
     const WorldEntity* character = world.Find(characterEntity);
     const WorldEntity* boxEntityData = world.Find(boxEntity);
     if (character == nullptr || boxEntityData == nullptr ||
+        !world.IsActiveInHierarchy(characterEntity) ||
+        !world.IsActiveInHierarchy(boxEntity) ||
         !world.LayersCollide(character->layer, boxEntityData->layer)) {
         return false;
     }
@@ -217,7 +220,8 @@ CharacterMoveResult MoveCharacterController(
     World& world, EntityId entityId, const DirectX::XMFLOAT3& motion) {
     CharacterMoveResult result{};
     WorldEntity* entity = world.Find(entityId);
-    if (entity == nullptr || !std::isfinite(motion.x) || !std::isfinite(motion.y) ||
+    if (entity == nullptr || !world.IsActiveInHierarchy(entityId) ||
+        !std::isfinite(motion.x) || !std::isfinite(motion.y) ||
         !std::isfinite(motion.z)) {
         return result;
     }

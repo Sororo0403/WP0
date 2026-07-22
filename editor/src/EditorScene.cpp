@@ -558,7 +558,8 @@ void EditorScene::SubmitLighting(LightingScene& lightingScene) {
     size_t pointLightIndex = 0u;
     bool spotAssigned = false;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.light || !entity.light->enabled || entity.light->intensity <= 0.0f) {
+        if (!world_.IsActiveInHierarchy(entity.id) || !entity.light ||
+            !entity.light->enabled || entity.light->intensity <= 0.0f) {
             continue;
         }
         DirectX::XMFLOAT4X4 storedWorld{};
@@ -2958,24 +2959,19 @@ void EditorScene::DrawEntityNode(EntityId id) {
     const std::string idText = id.ToString();
     ImGui::PushID(idText.c_str());
     const bool editing = !IsInPlayMode();
-    const bool hasMeshRenderer = entity->meshRenderer.has_value();
-    bool rendererEnabled = hasMeshRenderer && entity->meshRenderer->enabled;
-    if (hasMeshRenderer) {
-        ImGui::BeginDisabled(!editing);
-        if (ImGui::Checkbox("##RendererVisible", &rendererEnabled)) {
-            SetSelectedMeshRenderersEnabled(id, rendererEnabled);
-        }
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            ImGui::SetTooltip(editing ? (rendererEnabled ? "Hide MeshRenderer"
-                                                        : "Show MeshRenderer")
-                                      : "MeshRenderer state (read-only in Play Mode)");
-        }
-    } else {
-        ImGui::Dummy({ImGui::GetFrameHeight(), ImGui::GetFrameHeight()});
+    bool active = entity->active;
+    ImGui::BeginDisabled(!editing);
+    if (ImGui::Checkbox("##EntityActive", &active)) {
+        SetSelectedEntitiesActive(id, active);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip(editing ? (active ? "Deactivate Entity" : "Activate Entity")
+                                  : "Entity active state (read-only in Play Mode)");
     }
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    if (hasMeshRenderer && !rendererEnabled) {
+    const bool activeInHierarchy = world_.IsActiveInHierarchy(id);
+    if (!activeInHierarchy) {
         const ImVec4 textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
         ImGui::PushStyleColor(ImGuiCol_Text,
                               {textColor.x, textColor.y, textColor.z, textColor.w * 0.45f});
@@ -2983,7 +2979,7 @@ void EditorScene::DrawEntityNode(EntityId id) {
     const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
     const ImVec2 nodeMin = ImGui::GetItemRectMin();
     const ImVec2 nodeMax = ImGui::GetItemRectMax();
-    if (hasMeshRenderer && !rendererEnabled) {
+    if (!activeInHierarchy) {
         ImGui::PopStyleColor();
     }
     if (ImGui::IsItemClicked()) {
@@ -3012,9 +3008,8 @@ void EditorScene::DrawEntityNode(EntityId id) {
             SelectHierarchyEntity(id, false, false);
             FocusSceneCameraOnSelection();
         }
-        if (entity->meshRenderer && ImGui::MenuItem("Renderer Enabled", nullptr,
-                                                    entity->meshRenderer->enabled, editing)) {
-            SetSelectedMeshRenderersEnabled(id, !entity->meshRenderer->enabled);
+        if (ImGui::MenuItem("Active", nullptr, entity->active, editing)) {
+            SetSelectedEntitiesActive(id, !entity->active);
         }
         const WorldEntity* contextEntity = world_.Find(id);
         const std::vector<EntityId> siblings =
@@ -3153,6 +3148,22 @@ void EditorScene::DrawInspectorPanel() {
         inspectedEntities.push_back(selection_);
     }
     const bool multipleEntities = inspectedEntities.size() > 1u;
+
+    bool displayedActive = entity->active;
+    const bool mixedActive = std::ranges::any_of(
+        inspectedEntities, [&](EntityId inspected) {
+            const WorldEntity* target = world_.Find(inspected);
+            return target != nullptr && target->active != displayedActive;
+        });
+    if (mixedActive) {
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+    }
+    if (ImGui::Checkbox("Active", &displayedActive)) {
+        SetSelectedEntitiesActive(selection_, displayedActive);
+    }
+    if (mixedActive) {
+        ImGui::PopItemFlag();
+    }
 
     if (multipleEntities) {
         ImGui::Text("%zu Entities Selected", inspectedEntities.size());
@@ -4500,7 +4511,7 @@ std::vector<EntityId> EditorScene::GetTopLevelSelectedEntities() const {
     return roots;
 }
 
-void EditorScene::SetSelectedMeshRenderersEnabled(EntityId source, bool enabled) {
+void EditorScene::SetSelectedEntitiesActive(EntityId source, bool active) {
     if (!world_.Contains(source)) {
         return;
     }
@@ -4509,15 +4520,13 @@ void EditorScene::SetSelectedMeshRenderersEnabled(EntityId source, bool enabled)
     if (hierarchySelection_.contains(source)) {
         targets.reserve(hierarchySelection_.size());
         for (const WorldEntity& entity : world_.Entities()) {
-            if (hierarchySelection_.contains(entity.id) && entity.meshRenderer &&
-                entity.meshRenderer->enabled != enabled) {
+            if (hierarchySelection_.contains(entity.id) && entity.active != active) {
                 targets.push_back(entity.id);
             }
         }
     } else {
         const WorldEntity* entity = world_.Find(source);
-        if (entity != nullptr && entity->meshRenderer &&
-            entity->meshRenderer->enabled != enabled) {
+        if (entity != nullptr && entity->active != active) {
             targets.push_back(source);
         }
     }
@@ -4529,17 +4538,17 @@ void EditorScene::SetSelectedMeshRenderersEnabled(EntityId source, bool enabled)
     const EntityId selectionBefore = selection_;
     for (EntityId target : targets) {
         WorldEntity* entity = world_.Find(target);
-        if (entity != nullptr && entity->meshRenderer) {
-            entity->meshRenderer->enabled = enabled;
+        if (entity != nullptr) {
+            entity->active = active;
         }
     }
-    RecordImmediateEdit(enabled ? "Show Mesh Renderers" : "Hide Mesh Renderers", before,
+    RecordImmediateEdit(active ? "Activate Entities" : "Deactivate Entities", before,
                         selectionBefore);
     if (targets.size() == 1u) {
-        status_ = enabled ? "Enabled the MeshRenderer." : "Disabled the MeshRenderer.";
+        status_ = active ? "Activated the Entity." : "Deactivated the Entity.";
     } else {
-        status_ = enabled ? "Enabled the selected MeshRenderers."
-                          : "Disabled the selected MeshRenderers.";
+        status_ = active ? "Activated the selected Entities."
+                         : "Deactivated the selected Entities.";
     }
 }
 
@@ -5904,7 +5913,8 @@ TextureHandle EditorScene::ResolveLinearTexture(const std::string& path) const {
 bool EditorScene::UpdateGameViewCamera() {
     const WorldEntity* primaryCamera = nullptr;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (entity.camera && entity.camera->enabled && entity.camera->primary) {
+        if (world_.IsActiveInHierarchy(entity.id) && entity.camera &&
+            entity.camera->enabled && entity.camera->primary) {
             primaryCamera = &entity;
             break;
         }
@@ -5920,7 +5930,7 @@ bool EditorScene::UpdateGameViewCamera() {
 bool EditorScene::UpdateCameraFromEntity(EntityId entityId, Camera& targetCamera, int width,
                                          int height) const {
     const WorldEntity* entity = world_.Find(entityId);
-    if (entity == nullptr || !entity->camera) {
+    if (entity == nullptr || !world_.IsActiveInHierarchy(entityId) || !entity->camera) {
         return false;
     }
 
@@ -5953,7 +5963,8 @@ bool EditorScene::DrawSelectedCameraPreview(const ImVec2& imageMin,
     const WorldEntity* entity = world_.Find(selection_);
     ImVec2 previewMin{};
     ImVec2 previewMax{};
-    if (entity == nullptr || !entity->camera || !cameraPreviewSurface_.IsReady() ||
+    if (entity == nullptr || !world_.IsActiveInHierarchy(selection_) || !entity->camera ||
+        !cameraPreviewSurface_.IsReady() ||
         !cameraPreviewPostProcess_.IsReady() || ctx_ == nullptr ||
         ctx_->rendering.dxCommon == nullptr || ctx_->rendering.model == nullptr ||
         !TryGetCameraPreviewRect(imageMin, imageMax, previewMin, previewMax) ||
@@ -6097,7 +6108,8 @@ void EditorScene::BuildRenderScene() {
         return;
     }
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.meshRenderer || !entity.meshRenderer->enabled ||
+        if (!world_.IsActiveInHierarchy(entity.id) || !entity.meshRenderer ||
+            !entity.meshRenderer->enabled ||
             !entity.materialOverride || !entity.materialOverride->enabled) {
             continue;
         }
@@ -6577,18 +6589,21 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                           : IM_COL32(80, 230, 130, 230));
         const bool physicsLayerVisible =
             (physicsDebugLayerMask_ & (uint32_t{1} << entity.layer)) != 0u;
-        const bool drawPhysicsShapes = showPhysicsDebug_ && physicsLayerVisible &&
+        const bool entityActive = world_.IsActiveInHierarchy(entity.id);
+        const bool drawPhysicsShapes = showPhysicsDebug_ && entityActive &&
+                                       physicsLayerVisible &&
                                        (entity.boxCollider || entity.characterController);
         if (active) {
             color = IM_COL32(255, 184, 56, 255);
         } else if (selected) {
             color = IM_COL32(90, 190, 255, 255);
         }
-        const bool enabled = (entity.camera && entity.camera->enabled) ||
-                             (entity.light && entity.light->enabled) ||
-                             (entity.boxCollider && entity.boxCollider->enabled) ||
-                             (entity.characterController &&
-                              entity.characterController->enabled);
+        const bool enabled = entityActive &&
+                             ((entity.camera && entity.camera->enabled) ||
+                              (entity.light && entity.light->enabled) ||
+                              (entity.boxCollider && entity.boxCollider->enabled) ||
+                              (entity.characterController &&
+                               entity.characterController->enabled));
         if (!enabled) {
             color = (color & 0x00FFFFFFu) | (100u << 24u);
         }
@@ -6877,7 +6892,8 @@ void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin,
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(imageMin, imageMax, true);
     auto drawEntityOutline = [&](const WorldEntity& entity, bool active) {
-        if (!entity.meshRenderer || !entity.meshRenderer->enabled) {
+        if (!world_.IsActiveInHierarchy(entity.id) || !entity.meshRenderer ||
+            !entity.meshRenderer->enabled) {
             return;
         }
         const ModelHandle handle = ResolveModel(*entity.meshRenderer);

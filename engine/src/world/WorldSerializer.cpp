@@ -65,6 +65,7 @@ std::string WorldSerializer::Serialize(const World& world) {
         encoded["parent"] =
             entity.parent.IsValid() ? Json(entity.parent.ToString()) : Json(nullptr);
         encoded["name"] = entity.name;
+        encoded["active"] = entity.active;
         encoded["layer"] = entity.layer;
         encoded["components"]["Transform"]["position"] =
             EncodeFloat3(entity.transform.position);
@@ -271,6 +272,13 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             return false;
         }
         entity.name = encoded["name"].get<std::string>();
+        if (encoded.contains("active")) {
+            if (!encoded["active"].is_boolean()) {
+                SetError(error, "Scene Entity active state is invalid.");
+                return false;
+            }
+            entity.active = encoded["active"].get<bool>();
+        }
         if (encoded.contains("layer")) {
             if (!encoded["layer"].is_number_unsigned() ||
                 encoded["layer"].get<uint64_t>() >= PhysicsSettings::kLayerCount) {

@@ -58,6 +58,8 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         const EntityId duplicateId = CreateEntity(original.name);
         duplicateIds.emplace(original.id, duplicateId);
         WorldEntity* duplicate = Find(duplicateId);
+        duplicate->active = original.active;
+        duplicate->layer = original.layer;
         duplicate->transform = original.transform;
         duplicate->meshRenderer = original.meshRenderer;
         duplicate->materialOverride = original.materialOverride;
@@ -277,6 +279,21 @@ const WorldEntity* World::Find(EntityId id) const {
 
 bool World::Contains(EntityId id) const {
     return Find(id) != nullptr;
+}
+
+bool World::IsActiveInHierarchy(EntityId id) const {
+    EntityId current = id;
+    for (size_t depth = 0; depth <= entities_.size(); ++depth) {
+        const WorldEntity* entity = Find(current);
+        if (entity == nullptr || !entity->active) {
+            return false;
+        }
+        if (!entity->parent.IsValid()) {
+            return true;
+        }
+        current = entity->parent;
+    }
+    return false;
 }
 
 std::vector<EntityId> World::GetRootEntities() const {

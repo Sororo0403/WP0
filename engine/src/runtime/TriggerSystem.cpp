@@ -22,13 +22,15 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
 
     for (size_t firstIndex = 0u; firstIndex < entities.size(); ++firstIndex) {
         const WorldEntity& first = entities[firstIndex];
-        if (!first.boxCollider || !first.boxCollider->enabled) {
+        if (!world.IsActiveInHierarchy(first.id) || !first.boxCollider ||
+            !first.boxCollider->enabled) {
             continue;
         }
         for (size_t secondIndex = firstIndex + 1u; secondIndex < entities.size();
              ++secondIndex) {
             const WorldEntity& second = entities[secondIndex];
-            if (!second.boxCollider || !second.boxCollider->enabled ||
+            if (!world.IsActiveInHierarchy(second.id) || !second.boxCollider ||
+                !second.boxCollider->enabled ||
                 (!first.boxCollider->isTrigger && !second.boxCollider->isTrigger) ||
                 !world.LayersCollide(first.layer, second.layer)) {
                 continue;
@@ -44,11 +46,13 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
     }
 
     for (const WorldEntity& character : entities) {
-        if (!character.characterController || !character.characterController->enabled) {
+        if (!world.IsActiveInHierarchy(character.id) || !character.characterController ||
+            !character.characterController->enabled) {
             continue;
         }
         for (const WorldEntity& trigger : entities) {
-            if (trigger.id == character.id || !trigger.boxCollider ||
+            if (trigger.id == character.id || !world.IsActiveInHierarchy(trigger.id) ||
+                !trigger.boxCollider ||
                 !trigger.boxCollider->enabled || !trigger.boxCollider->isTrigger) {
                 continue;
             }

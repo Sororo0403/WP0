@@ -11,7 +11,7 @@ bool BehaviorSystem::Attach(EntityId entity, std::unique_ptr<Behavior> behavior)
     }
 
     Entry entry{entity, std::move(behavior), false};
-    if (world_ != nullptr) {
+    if (world_ != nullptr && world_->IsActiveInHierarchy(entity)) {
         entry.behavior->OnStart(*world_, entity);
         entry.started = true;
     }
@@ -23,7 +23,7 @@ void BehaviorSystem::Start(World& world) {
     Stop();
     world_ = &world;
     for (Entry& entry : entries_) {
-        if (!world.Contains(entry.entity)) {
+        if (!world.IsActiveInHierarchy(entry.entity)) {
             continue;
         }
         entry.behavior->OnStart(world, entry.entity);
@@ -36,7 +36,15 @@ void BehaviorSystem::Update(float deltaTime) {
         return;
     }
     for (Entry& entry : entries_) {
-        if (entry.started && world_->Contains(entry.entity)) {
+        const bool active = world_->IsActiveInHierarchy(entry.entity);
+        if (active && !entry.started) {
+            entry.behavior->OnStart(*world_, entry.entity);
+            entry.started = true;
+        } else if (!active && entry.started) {
+            entry.behavior->OnStop(*world_, entry.entity);
+            entry.started = false;
+        }
+        if (entry.started && active) {
             entry.behavior->OnUpdate(*world_, entry.entity, deltaTime);
         }
     }
@@ -44,7 +52,7 @@ void BehaviorSystem::Update(float deltaTime) {
 
 void BehaviorSystem::DispatchTriggerEvent(TriggerEvent event, EntityId entity,
                                           EntityId other) {
-    if (world_ == nullptr || !world_->Contains(entity)) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
         return;
     }
     for (Entry& entry : entries_) {
