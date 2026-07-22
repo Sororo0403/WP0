@@ -14,8 +14,11 @@
 #include "world/World.h"
 
 #include <array>
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -41,6 +44,17 @@ public:
                         int screenY) override;
 
 private:
+    enum class ConsoleSeverity : uint8_t {
+        Info,
+        Warning,
+        Error,
+    };
+    struct ScriptBuildCompletion {
+        bool succeeded = false;
+        std::string error;
+        std::string output;
+    };
+
     void DrawMainMenu();
     void EnterPlayMode();
     void StopPlayMode();
@@ -63,6 +77,12 @@ private:
     void DrawInspectorPanel();
     void DrawConsolePanel();
     void CaptureConsoleStatus();
+    void AddConsoleEntry(std::string message, ConsoleSeverity severity);
+    void InitializeScriptMonitoring();
+    void UpdateScriptCompilation();
+    void StartScriptCompilation();
+    void FinishScriptCompilation();
+    bool ReloadProjectScripts(std::string& error);
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
     void SynchronizeHierarchySelection();
@@ -232,6 +252,14 @@ private:
     ProjectScriptLibrary projectScripts_;
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
+    std::future<ScriptBuildCompletion> scriptBuildFuture_;
+    uint64_t scriptSourceFingerprint_ = 0u;
+    bool scriptFingerprintInitialized_ = false;
+    bool scriptBuildInProgress_ = false;
+    bool scriptBuildPending_ = false;
+    bool scriptChangesDeferredMessageShown_ = false;
+    std::chrono::steady_clock::time_point lastScriptScanTime_{};
+    std::chrono::steady_clock::time_point lastScriptChangeTime_{};
     EntityId selection_{};
     std::unordered_set<EntityId, EntityIdHash> hierarchySelection_;
     EntityId hierarchySelectionAnchor_{};
@@ -240,11 +268,6 @@ private:
     PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;
     std::filesystem::path pendingScenePath_;
     std::string status_ = "Editor session started.";
-    enum class ConsoleSeverity : uint8_t {
-        Info,
-        Warning,
-        Error,
-    };
     struct ConsoleEntry {
         std::string message;
         double timestampSeconds = 0.0;

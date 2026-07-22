@@ -13,6 +13,8 @@ public:
 
     ProjectScriptLibrary(const ProjectScriptLibrary&) = delete;
     ProjectScriptLibrary& operator=(const ProjectScriptLibrary&) = delete;
+    ProjectScriptLibrary(ProjectScriptLibrary&& other) noexcept;
+    ProjectScriptLibrary& operator=(ProjectScriptLibrary&& other) noexcept;
 
     bool Load(const std::filesystem::path& projectRoot, Input* input,
               BehaviorRegistry& registry, std::string& error);
@@ -20,6 +22,8 @@ public:
     [[nodiscard]] const std::filesystem::path& Path() const;
 
 private:
+    void Unload();
+
     void* module_ = nullptr;
     std::filesystem::path path_;
     std::filesystem::path loadedPath_;

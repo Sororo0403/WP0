@@ -8,6 +8,7 @@
 #include <chrono>
 #include <memory>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -19,7 +20,7 @@ std::filesystem::path ResolveModulePath(const std::filesystem::path& projectRoot
 #else
     constexpr wchar_t configuration[] = L"Release";
 #endif
-    return (projectRoot / L"Library" / L"ScriptAssemblies" / L"x64" / configuration /
+    return (projectRoot / L"library" / L"ScriptAssemblies" / L"x64" / configuration /
             L"ProjectScripts.dll")
         .lexically_normal();
 }
@@ -33,11 +34,35 @@ std::filesystem::path CreateLoadPath(const std::filesystem::path& modulePath) {
 }
 
 ProjectScriptLibrary::~ProjectScriptLibrary() {
+    Unload();
+}
+
+ProjectScriptLibrary::ProjectScriptLibrary(ProjectScriptLibrary&& other) noexcept
+    : module_(std::exchange(other.module_, nullptr)), path_(std::move(other.path_)),
+      loadedPath_(std::move(other.loadedPath_)) {
+    other.loadedPath_.clear();
+}
+
+ProjectScriptLibrary&
+ProjectScriptLibrary::operator=(ProjectScriptLibrary&& other) noexcept {
+    if (this != &other) {
+        Unload();
+        module_ = std::exchange(other.module_, nullptr);
+        path_ = std::move(other.path_);
+        loadedPath_ = std::move(other.loadedPath_);
+        other.loadedPath_.clear();
+    }
+    return *this;
+}
+
+void ProjectScriptLibrary::Unload() {
     if (module_ != nullptr) {
         FreeLibrary(static_cast<HMODULE>(module_));
+        module_ = nullptr;
     }
     std::error_code error;
     std::filesystem::remove(loadedPath_, error);
+    loadedPath_.clear();
 }
 
 bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input* input,

@@ -372,4 +372,4 @@ imgui.ini
 app/imgui.ini
 
 # LikeEngine project import and Script build cache
-/projects/*/Library/
+/projects/*/library/

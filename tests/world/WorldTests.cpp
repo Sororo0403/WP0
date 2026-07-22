@@ -184,6 +184,28 @@ int main() {
                    projectScriptError.c_str())) {
         return 140;
     }
+    firstPerson.reset();
+    rotator.reset();
+    std::string rebuildOutput;
+    ProjectScriptLibrary reloadedProjectScripts;
+    BehaviorRegistry reloadedProjectBehaviorRegistry;
+    const bool projectScriptsReloaded =
+        ScriptBuildService::Build(testProjectRoot, projectScriptError, &rebuildOutput) &&
+        reloadedProjectScripts.Load(testProjectRoot, nullptr,
+                                    reloadedProjectBehaviorRegistry,
+                                    projectScriptError);
+    if (projectScriptsReloaded) {
+        projectBehaviorRegistry = std::move(reloadedProjectBehaviorRegistry);
+        projectScripts = std::move(reloadedProjectScripts);
+    }
+    firstPerson = projectBehaviorRegistry.Create("FirstPersonController");
+    rotator = projectBehaviorRegistry.Create("Rotator");
+    if (!Check(projectScriptsReloaded && !rebuildOutput.empty() && firstPerson && rotator,
+               projectScriptError.empty() ?
+                   "Project Script rebuild and reload is invalid." :
+                   projectScriptError.c_str())) {
+        return 143;
+    }
 
     World behaviorWorld;
     const EntityId behaviorEntity = behaviorWorld.CreateEntity("Behavior Entity");
@@ -686,6 +708,44 @@ int main() {
                "Project creation accepted a non-empty directory.")) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 20;
+    }
+    std::ifstream ignoreStream(projectDirectory / L".gitignore");
+    const std::string ignoreContents{std::istreambuf_iterator<char>(ignoreStream),
+                                     std::istreambuf_iterator<char>()};
+    ignoreStream.close();
+    const std::filesystem::path scriptDirectory =
+        createdProject.assetRoot / L"Scripts";
+    std::filesystem::create_directories(scriptDirectory, projectFilesystemError);
+    {
+        std::ofstream scriptHeader(scriptDirectory / L"FingerprintTest.h",
+                                   std::ios::trunc);
+        scriptHeader << "// first version\n";
+    }
+    uint64_t firstScriptFingerprint = 0u;
+    uint64_t repeatedScriptFingerprint = 0u;
+    uint64_t changedScriptFingerprint = 0u;
+    std::string fingerprintError;
+    const bool initialFingerprintValid =
+        !projectFilesystemError &&
+        ScriptBuildService::GetSourceFingerprint(
+            createdProject.root, firstScriptFingerprint, fingerprintError) &&
+        ScriptBuildService::GetSourceFingerprint(
+            createdProject.root, repeatedScriptFingerprint, fingerprintError);
+    {
+        std::ofstream scriptHeader(scriptDirectory / L"FingerprintTest.h",
+                                   std::ios::trunc);
+        scriptHeader << "// second version\n";
+    }
+    if (!Check(ignoreContents == "/library/\n" && initialFingerprintValid &&
+                   firstScriptFingerprint == repeatedScriptFingerprint &&
+                   ScriptBuildService::GetSourceFingerprint(
+                       createdProject.root, changedScriptFingerprint, fingerprintError) &&
+                   changedScriptFingerprint != firstScriptFingerprint,
+               fingerprintError.empty() ?
+                   "Project Script fingerprint or library ignore path is invalid." :
+                   fingerprintError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 142;
     }
     if (!Check(WorldSerializer::Save(source, createdProject.startupScene, &error), error.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);

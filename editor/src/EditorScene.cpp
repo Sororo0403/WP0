@@ -439,9 +439,11 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     assetPreviewCamera_.Initialize(1.0f);
     RefreshAssetBrowser();
     ResolveMeshResources();
+    InitializeScriptMonitoring();
 }
 
 void EditorScene::Update() {
+    UpdateScriptCompilation();
     if (playModeState_ == PlayModeState::Playing && ctx_ != nullptr) {
         UpdateRuntimeWorld(ctx_->frame.deltaTime);
     }
@@ -1162,10 +1164,18 @@ void EditorScene::CaptureConsoleStatus() {
                normalized.find("cannot") != std::string::npos ||
                normalized.find("invalid") != std::string::npos ||
                normalized.find("rejected") != std::string::npos ||
+               normalized.find("warning") != std::string::npos ||
                normalized.find("unavailable") != std::string::npos) {
         severity = ConsoleSeverity::Warning;
     }
-    consoleEntries_.push_back({status_, ImGui::GetTime(), severity});
+    AddConsoleEntry(status_, severity);
+}
+
+void EditorScene::AddConsoleEntry(std::string message, ConsoleSeverity severity) {
+    if (message.empty()) {
+        return;
+    }
+    consoleEntries_.push_back({std::move(message), ImGui::GetTime(), severity});
     constexpr size_t kMaxConsoleEntries = 512u;
     if (consoleEntries_.size() > kMaxConsoleEntries) {
         consoleEntries_.erase(consoleEntries_.begin(),
@@ -1174,6 +1184,153 @@ void EditorScene::CaptureConsoleStatus() {
                                                          kMaxConsoleEntries));
     }
     consoleScrollToBottom_ = true;
+}
+
+void EditorScene::InitializeScriptMonitoring() {
+    lastScriptScanTime_ = std::chrono::steady_clock::now();
+    lastScriptChangeTime_ = lastScriptScanTime_;
+    std::string error;
+    if (ScriptBuildService::GetSourceFingerprint(projectRoot_, scriptSourceFingerprint_,
+                                                 error)) {
+        scriptFingerprintInitialized_ = true;
+    } else {
+        status_ = "Warning: Project Script monitoring could not start: " + error;
+    }
+}
+
+void EditorScene::UpdateScriptCompilation() {
+    constexpr auto scanInterval = std::chrono::milliseconds(500);
+    constexpr auto buildDebounce = std::chrono::milliseconds(750);
+    const auto now = std::chrono::steady_clock::now();
+
+    if (scriptBuildInProgress_ &&
+        scriptBuildFuture_.wait_for(std::chrono::seconds(0)) ==
+            std::future_status::ready) {
+        FinishScriptCompilation();
+    }
+
+    if (now - lastScriptScanTime_ >= scanInterval) {
+        lastScriptScanTime_ = now;
+        uint64_t fingerprint = 0u;
+        std::string error;
+        if (ScriptBuildService::GetSourceFingerprint(projectRoot_, fingerprint, error)) {
+            if (!scriptFingerprintInitialized_) {
+                scriptSourceFingerprint_ = fingerprint;
+                scriptFingerprintInitialized_ = true;
+            } else if (fingerprint != scriptSourceFingerprint_) {
+                scriptSourceFingerprint_ = fingerprint;
+                scriptBuildPending_ = true;
+                lastScriptChangeTime_ = now;
+                if (IsInPlayMode()) {
+                    if (!scriptChangesDeferredMessageShown_) {
+                        status_ = "Project Script changes detected. Compilation is deferred "
+                                  "until Play Mode stops.";
+                        scriptChangesDeferredMessageShown_ = true;
+                    }
+                } else {
+                    status_ = "Project Script changes detected.";
+                }
+            }
+        } else {
+            status_ = "Warning: Project Script change detection failed: " + error;
+        }
+    }
+
+    if (!scriptBuildInProgress_ && scriptBuildPending_ && !IsInPlayMode() &&
+        now - lastScriptChangeTime_ >= buildDebounce) {
+        StartScriptCompilation();
+    }
+}
+
+void EditorScene::StartScriptCompilation() {
+    if (scriptBuildInProgress_ || IsInPlayMode()) {
+        return;
+    }
+    scriptBuildPending_ = false;
+    scriptBuildInProgress_ = true;
+    scriptChangesDeferredMessageShown_ = false;
+    status_ = "Compiling Project Scripts...";
+    const std::filesystem::path projectRoot = projectRoot_;
+    try {
+        scriptBuildFuture_ = std::async(std::launch::async, [projectRoot] {
+            ScriptBuildCompletion completion{};
+            completion.succeeded = ScriptBuildService::Build(
+                projectRoot, completion.error, &completion.output);
+            return completion;
+        });
+    } catch (const std::exception& exception) {
+        scriptBuildInProgress_ = false;
+        status_ = "Error: Could not start Project Script compilation: " +
+                  std::string(exception.what());
+    }
+}
+
+void EditorScene::FinishScriptCompilation() {
+    ScriptBuildCompletion completion = scriptBuildFuture_.get();
+    scriptBuildInProgress_ = false;
+    if (!completion.output.empty()) {
+        constexpr size_t maximumOutputLength = 48u * 1024u;
+        if (completion.output.size() > maximumOutputLength) {
+            completion.output.erase(0u,
+                                    completion.output.size() - maximumOutputLength);
+            completion.output.insert(0u, "... compiler output truncated ...\n");
+        }
+        AddConsoleEntry("Project Script compiler output:\n" + completion.output,
+                        completion.succeeded ? ConsoleSeverity::Info :
+                                               ConsoleSeverity::Error);
+    }
+    if (!completion.succeeded) {
+        status_ = "Error: " +
+                  (completion.error.empty() ?
+                       std::string("Project Script compilation failed.") :
+                       completion.error);
+        return;
+    }
+    if (IsInPlayMode()) {
+        scriptBuildPending_ = true;
+        lastScriptChangeTime_ = std::chrono::steady_clock::now();
+        scriptChangesDeferredMessageShown_ = true;
+        status_ = "Project Script compilation finished during Play Mode. Reload is "
+                  "deferred until Play Mode stops.";
+        return;
+    }
+    if (scriptBuildPending_) {
+        status_ = "Project Scripts changed again during compilation. Rebuilding...";
+        return;
+    }
+
+    std::string reloadError;
+    if (!ReloadProjectScripts(reloadError)) {
+        status_ = "Error: Project Script reload failed: " + reloadError;
+        return;
+    }
+    std::string requirementError;
+    if (!ValidateWorldBehaviorRequirements(&requirementError)) {
+        status_ = "Warning: Project Scripts reloaded, but the scene contains an invalid "
+                  "Behavior: " + requirementError;
+    } else {
+        status_ = "Project Scripts compiled and reloaded successfully (" +
+                  std::to_string(behaviorRegistry_.Types().size()) + " type(s)).";
+    }
+}
+
+bool EditorScene::ReloadProjectScripts(std::string& error) {
+    if (IsInPlayMode() || ctx_ == nullptr) {
+        error = "Project Scripts can only be reloaded in Edit Mode.";
+        return false;
+    }
+    ProjectScriptLibrary newLibrary;
+    BehaviorRegistry newRegistry;
+    if (!newLibrary.Load(projectRoot_, ctx_->systems.input, newRegistry, error)) {
+        return false;
+    }
+
+    // Destroy factories that point into the old DLL before unloading that DLL.
+    behaviorRegistry_ = std::move(newRegistry);
+    projectScripts_ = std::move(newLibrary);
+    RefreshAssetBrowser();
+    error.clear();
+    return true;
 }
 
 void EditorScene::DrawConsolePanel() {

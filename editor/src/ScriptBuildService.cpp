@@ -25,6 +25,60 @@ struct ScriptSource {
     std::string registrationFunction;
 };
 
+class ScopedBuildMutex {
+public:
+    ScopedBuildMutex() = default;
+
+    ~ScopedBuildMutex() {
+        if (handle_ != nullptr) {
+            if (owns_) {
+                ReleaseMutex(handle_);
+            }
+            CloseHandle(handle_);
+        }
+    }
+
+    ScopedBuildMutex(const ScopedBuildMutex&) = delete;
+    ScopedBuildMutex& operator=(const ScopedBuildMutex&) = delete;
+
+    bool Acquire(const std::filesystem::path& buildProject, std::string& error) {
+        std::error_code filesystemError;
+        std::wstring key =
+            std::filesystem::absolute(buildProject, filesystemError).generic_wstring();
+        if (filesystemError) {
+            error = "Could not resolve the Project Script build path.";
+            return false;
+        }
+        std::ranges::transform(key, key.begin(), ::towlower);
+        uint64_t hash = 14695981039346656037ull;
+        for (const wchar_t character : key) {
+            hash ^= static_cast<uint64_t>(character);
+            hash *= 1099511628211ull;
+        }
+        const std::wstring name =
+            L"Local\\LikeEngine.ProjectScriptBuild." + std::to_wstring(hash);
+        handle_ = CreateMutexW(nullptr, FALSE, name.c_str());
+        if (handle_ == nullptr) {
+            error = "Could not create the Project Script build lock.";
+            return false;
+        }
+        constexpr DWORD waitMilliseconds = 120000u;
+        const DWORD waitResult = WaitForSingleObject(handle_, waitMilliseconds);
+        if (waitResult != WAIT_OBJECT_0 && waitResult != WAIT_ABANDONED) {
+            error = waitResult == WAIT_TIMEOUT ?
+                        "Timed out waiting for another Project Script build." :
+                        "Could not acquire the Project Script build lock.";
+            return false;
+        }
+        owns_ = true;
+        return true;
+    }
+
+private:
+    HANDLE handle_ = nullptr;
+    bool owns_ = false;
+};
+
 std::filesystem::path FindEngineRoot(std::filesystem::path directory) {
     std::error_code error;
     directory = std::filesystem::absolute(directory, error).lexically_normal();
@@ -60,6 +114,49 @@ std::filesystem::path ExecutableDirectory() {
         }
         buffer.resize(buffer.size() * 2u);
     }
+}
+
+bool EnsureLowercaseLibraryDirectory(const std::filesystem::path& projectRoot,
+                                     std::string& error) {
+    std::error_code filesystemError;
+    for (std::filesystem::directory_iterator iterator(projectRoot, filesystemError), end;
+         iterator != end && !filesystemError; iterator.increment(filesystemError)) {
+        if (!iterator->is_directory(filesystemError) || filesystemError) {
+            filesystemError.clear();
+            continue;
+        }
+        std::wstring lowercase = iterator->path().filename().wstring();
+        std::ranges::transform(lowercase, lowercase.begin(), ::towlower);
+        if (lowercase != L"library" || iterator->path().filename() == L"library") {
+            continue;
+        }
+        const std::filesystem::path temporary =
+            projectRoot / L".likeengine_library_case_migration";
+        const std::filesystem::path destination = projectRoot / L"library";
+        if (std::filesystem::exists(temporary, filesystemError) || filesystemError) {
+            error = "Could not migrate the Project library directory casing.";
+            return false;
+        }
+        const std::filesystem::path source = iterator->path();
+        std::filesystem::rename(source, temporary, filesystemError);
+        if (filesystemError) {
+            error = "Could not rename the Project Library directory to library.";
+            return false;
+        }
+        std::filesystem::rename(temporary, destination, filesystemError);
+        if (filesystemError) {
+            std::error_code rollbackError;
+            std::filesystem::rename(temporary, source, rollbackError);
+            error = "Could not finish renaming the Project library directory.";
+            return false;
+        }
+        return true;
+    }
+    if (filesystemError) {
+        error = "Could not inspect the Project library directory.";
+        return false;
+    }
+    return true;
 }
 
 std::string ReadText(const std::filesystem::path& path) {
@@ -224,11 +321,11 @@ std::string GenerateProject(const std::filesystem::path& projectRoot,
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
-    <OutDir>)" << project << R"(/Library/ScriptAssemblies/$(Platform)/$(Configuration)/</OutDir>
-    <IntDir>)" << project << R"(/Library/ScriptBuild/obj/$(Platform)/$(Configuration)/</IntDir>
+    <OutDir>)" << project << R"(/library/ScriptAssemblies/$(Platform)/$(Configuration)/</OutDir>
+    <IntDir>)" << project << R"(/library/ScriptBuild/obj/$(Platform)/$(Configuration)/</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary><AdditionalIncludeDirectories>)"
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary><DebugInformationFormat>OldStyle</DebugInformationFormat><AdditionalIncludeDirectories>)"
            << project << "/assets/Scripts;" << engine << "/engine/public;" << engine
            << R"(/engine/include;)" << engine << R"(/engine/externals;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions></ClCompile>
     <Link><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
@@ -284,10 +381,15 @@ std::filesystem::path FindMsBuild() {
 }
 
 bool RunBuild(const std::filesystem::path& buildProject,
-              const std::filesystem::path& logPath, std::string& error) {
+              const std::filesystem::path& logPath, std::string& error,
+              std::string* output) {
     const std::filesystem::path msbuild = FindMsBuild();
     if (msbuild.empty()) {
         error = "MSBuild was not found. Install Visual Studio C++ build tools.";
+        return false;
+    }
+    ScopedBuildMutex buildMutex;
+    if (!buildMutex.Acquire(buildProject, error)) {
         return false;
     }
     SECURITY_ATTRIBUTES security{};
@@ -301,7 +403,8 @@ bool RunBuild(const std::filesystem::path& buildProject,
     }
     std::wstring command = L"\"" + msbuild.wstring() + L"\" \"" +
                            buildProject.wstring() +
-                           L"\" /nologo /m:1 /nodeReuse:false /p:Configuration=" +
+                           L"\" /nologo /m:1 /nodeReuse:false /verbosity:minimal "
+                           L"/p:Configuration=" +
                            kConfiguration +
                            L" /p:Platform=x64 /p:BuildProjectReferences=false";
     STARTUPINFOW startup{};
@@ -324,6 +427,9 @@ bool RunBuild(const std::filesystem::path& buildProject,
     GetExitCodeProcess(process.hProcess, &exitCode);
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
+    if (output != nullptr) {
+        *output = ReadText(logPath);
+    }
     if (exitCode != 0u) {
         error = "Project Script compilation failed. See " + logPath.generic_string();
         return false;
@@ -333,6 +439,9 @@ bool RunBuild(const std::filesystem::path& buildProject,
 
 bool GenerateBuildFiles(const std::filesystem::path& projectRoot,
                         std::vector<ScriptSource>& scripts, std::string& error) {
+    if (!EnsureLowercaseLibraryDirectory(projectRoot, error)) {
+        return false;
+    }
     std::filesystem::path engineRoot = FindEngineRoot(projectRoot);
     if (engineRoot.empty()) {
         engineRoot = FindEngineRoot(ExecutableDirectory());
@@ -349,7 +458,7 @@ bool GenerateBuildFiles(const std::filesystem::path& projectRoot,
     if (!error.empty()) {
         return false;
     }
-    const std::filesystem::path buildRoot = projectRoot / L"Library" / L"ScriptBuild";
+    const std::filesystem::path buildRoot = projectRoot / L"library" / L"ScriptBuild";
     return WriteIfChanged(buildRoot / L"GeneratedScriptRegistry.cpp",
                           GenerateRegistry(scripts), error) &&
            WriteIfChanged(buildRoot / L"ProjectScripts.vcxproj",
@@ -357,7 +466,7 @@ bool GenerateBuildFiles(const std::filesystem::path& projectRoot,
 }
 
 std::filesystem::path AssemblyPath(const std::filesystem::path& projectRoot) {
-    return projectRoot / L"Library" / L"ScriptAssemblies" / L"x64" /
+    return projectRoot / L"library" / L"ScriptAssemblies" / L"x64" /
            kConfiguration / L"ProjectScripts.dll";
 }
 
@@ -394,7 +503,7 @@ bool ScriptBuildService::BuildIfNeeded(const std::filesystem::path& projectRoot,
             return Build(projectRoot, error);
         }
     }
-    const std::filesystem::path buildRoot = projectRoot / L"Library" / L"ScriptBuild";
+    const std::filesystem::path buildRoot = projectRoot / L"library" / L"ScriptBuild";
     if (IsNewerThan(buildRoot / L"GeneratedScriptRegistry.cpp", assemblyTime) ||
         IsNewerThan(buildRoot / L"ProjectScripts.vcxproj", assemblyTime)) {
         return Build(projectRoot, error);
@@ -416,13 +525,79 @@ bool ScriptBuildService::BuildIfNeeded(const std::filesystem::path& projectRoot,
 }
 
 bool ScriptBuildService::Build(const std::filesystem::path& projectRoot,
-                               std::string& error) {
+                               std::string& error, std::string* output) {
     error.clear();
+    if (output != nullptr) {
+        output->clear();
+    }
     std::vector<ScriptSource> scripts;
     if (!GenerateBuildFiles(projectRoot, scripts, error)) {
         return false;
     }
-    const std::filesystem::path buildRoot = projectRoot / L"Library" / L"ScriptBuild";
+    const std::filesystem::path buildRoot = projectRoot / L"library" / L"ScriptBuild";
     return RunBuild(buildRoot / L"ProjectScripts.vcxproj",
-                    buildRoot / L"ProjectScripts.log", error);
+                    buildRoot / L"ProjectScripts.log", error, output);
+}
+
+bool ScriptBuildService::GetSourceFingerprint(
+    const std::filesystem::path& projectRoot, uint64_t& fingerprint,
+    std::string& error) {
+    error.clear();
+    fingerprint = 14695981039346656037ull;
+    const std::filesystem::path assetRoot = projectRoot / L"assets";
+    std::error_code filesystemError;
+    if (!std::filesystem::is_directory(assetRoot, filesystemError) || filesystemError) {
+        error = "Project assets directory was not found.";
+        return false;
+    }
+    std::vector<std::filesystem::path> sources;
+    for (std::filesystem::recursive_directory_iterator iterator(assetRoot, filesystemError), end;
+         iterator != end && !filesystemError; iterator.increment(filesystemError)) {
+        if (iterator->is_regular_file(filesystemError) && !filesystemError &&
+            IsScriptDependency(iterator->path())) {
+            sources.push_back(iterator->path().lexically_normal());
+        }
+        filesystemError.clear();
+    }
+    if (filesystemError) {
+        error = "Could not enumerate Project Script sources.";
+        return false;
+    }
+    std::ranges::sort(sources, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    const auto hashBytes = [&fingerprint](std::string_view bytes) {
+        for (const unsigned char byte : bytes) {
+            fingerprint ^= byte;
+            fingerprint *= 1099511628211ull;
+        }
+    };
+    for (const std::filesystem::path& source : sources) {
+        const std::filesystem::path relative =
+            std::filesystem::relative(source, assetRoot, filesystemError);
+        if (filesystemError) {
+            error = "Could not resolve a Project Script source path.";
+            return false;
+        }
+        const std::string relativeText = relative.generic_string();
+        hashBytes(relativeText);
+        hashBytes(std::string_view("\0", 1u));
+        std::ifstream stream(source, std::ios::binary);
+        if (!stream) {
+            error = "Could not read Project Script source: " + source.generic_string();
+            return false;
+        }
+        std::array<char, 8192> buffer{};
+        while (stream) {
+            stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            hashBytes(std::string_view(buffer.data(),
+                                       static_cast<size_t>(stream.gcount())));
+        }
+        if (!stream.eof()) {
+            error = "Could not read Project Script source: " + source.generic_string();
+            return false;
+        }
+        hashBytes(std::string_view("\xff", 1u));
+    }
+    return true;
 }
