@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetImportPlanner.h"
+#include "PhysicsSettingsStore.h"
 #include "ProjectScriptLibrary.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
@@ -77,6 +78,8 @@ private:
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
     void DrawConsolePanel();
+    void DrawProjectSettingsWindow();
+    bool SavePhysicsSettings();
     void CaptureConsoleStatus();
     void AddConsoleEntry(std::string message, ConsoleSeverity severity,
                          std::filesystem::path sourcePath = {}, uint32_t sourceLine = 0u,
@@ -244,6 +247,7 @@ private:
     bool showGamePanel_ = true;
     bool showConsolePanel_ = true;
     bool showInspectorPanel_ = true;
+    bool showProjectSettings_ = false;
     enum class PlayModeState : uint8_t {
         Edit,
         Playing,
@@ -259,6 +263,9 @@ private:
     int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;
     double runtimeElapsedSeconds_ = 0.0;
+    PhysicsSettingsStore physicsSettingsStore_;
+    PhysicsSettings physicsSettings_ = PhysicsSettings::Defaults();
+    bool physicsSettingsDirty_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     ProjectScriptLibrary projectScripts_;

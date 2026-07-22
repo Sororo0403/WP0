@@ -1,5 +1,7 @@
 #pragma once
 
+#include "world/PhysicsSettings.h"
+
 #include "runtime/ScriptProperty.h"
 #include "world/EntityId.h"
 
@@ -138,6 +140,7 @@ struct WorldEntity {
     EntityId id{};
     EntityId parent{};
     std::string name = "Entity";
+    uint8_t layer = 0u;
     TransformComponent transform{};
     std::optional<MeshRendererComponent> meshRenderer;
     std::optional<MaterialOverrideComponent> materialOverride;
@@ -170,6 +173,9 @@ public:
     [[nodiscard]] const std::vector<WorldEntity>& Entities() const;
     [[nodiscard]] bool Empty() const;
     [[nodiscard]] bool TryGetWorldMatrix(EntityId id, DirectX::XMFLOAT4X4& result) const;
+    void SetPhysicsSettings(const PhysicsSettings& settings);
+    [[nodiscard]] const PhysicsSettings& GetPhysicsSettings() const;
+    [[nodiscard]] bool LayersCollide(uint8_t first, uint8_t second) const;
 
     void Clear();
     bool ReplaceEntities(std::vector<WorldEntity> entities, std::string* error = nullptr);
@@ -178,4 +184,5 @@ private:
     bool IsDescendantOf(EntityId candidate, EntityId ancestor) const;
 
     std::vector<WorldEntity> entities_;
+    PhysicsSettings physicsSettings_ = PhysicsSettings::Defaults();
 };

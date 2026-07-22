@@ -244,6 +244,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\ScriptModuleApi.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\ScriptProperty.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\World.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\world\PhysicsSettings.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldCollision.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldSerializer.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\Animator.h" />

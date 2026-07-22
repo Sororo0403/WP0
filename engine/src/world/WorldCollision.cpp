@@ -67,14 +67,17 @@ bool CapsuleOverlapsBox(const CharacterCapsule& capsule, const OBB& box) {
 }
 
 bool HasBlockingOverlap(const World& world, EntityId movingEntity) {
+    const WorldEntity* movingEntityData = world.Find(movingEntity);
     CharacterCapsule movingCapsule{};
-    if (!TryBuildWorldCharacterCapsule(world, movingEntity, movingCapsule)) {
+    if (movingEntityData == nullptr ||
+        !TryBuildWorldCharacterCapsule(world, movingEntity, movingCapsule)) {
         return false;
     }
 
     for (const WorldEntity& other : world.Entities()) {
         if (other.id == movingEntity || !other.boxCollider || !other.boxCollider->enabled ||
-            other.boxCollider->isTrigger) {
+            other.boxCollider->isTrigger ||
+            !world.LayersCollide(movingEntityData->layer, other.layer)) {
             continue;
         }
 
@@ -197,6 +200,12 @@ bool TryBuildWorldCharacterCapsule(const World& world, EntityId entityId,
 
 bool CheckCharacterControllerBoxOverlap(const World& world, EntityId characterEntity,
                                         EntityId boxEntity) {
+    const WorldEntity* character = world.Find(characterEntity);
+    const WorldEntity* boxEntityData = world.Find(boxEntity);
+    if (character == nullptr || boxEntityData == nullptr ||
+        !world.LayersCollide(character->layer, boxEntityData->layer)) {
+        return false;
+    }
     CharacterCapsule capsule{};
     OBB box{};
     return TryBuildWorldCharacterCapsule(world, characterEntity, capsule) &&

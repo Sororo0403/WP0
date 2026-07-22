@@ -1,5 +1,6 @@
 #include "AssetImportPlanner.h"
 #include "ProjectDescriptor.h"
+#include "PhysicsSettingsStore.h"
 #include "ProjectScriptLibrary.h"
 #include "ScriptBuildService.h"
 #include "RecentScenesStore.h"
@@ -557,6 +558,7 @@ int main() {
     }
     childEntity->transform.position = {1.0f, 2.0f, 3.0f};
     childEntity->transform.rotationDegrees = {10.0f, 20.0f, 30.0f};
+    childEntity->layer = 2u;
     childEntity->meshRenderer = MeshRendererComponent{};
     childEntity->meshRenderer->primitive = MeshPrimitive::Sphere;
     childEntity->materialOverride = MaterialOverrideComponent{};
@@ -672,6 +674,37 @@ int main() {
         return 135;
     }
 
+    World layerFilteredWorld;
+    PhysicsSettings layerSettings = PhysicsSettings::Defaults();
+    layerSettings.layerNames[1] = "Player";
+    layerSettings.layerNames[2] = "Environment";
+    layerSettings.SetLayersCollide(1u, 2u, false);
+    layerFilteredWorld.SetPhysicsSettings(layerSettings);
+    const EntityId filteredMover = layerFilteredWorld.CreateEntity("Filtered Mover");
+    const EntityId filteredWall = layerFilteredWorld.CreateEntity("Filtered Wall");
+    layerFilteredWorld.Find(filteredMover)->layer = 1u;
+    layerFilteredWorld.Find(filteredMover)->characterController =
+        CharacterControllerComponent{};
+    layerFilteredWorld.Find(filteredMover)->boxCollider = BoxColliderComponent{};
+    layerFilteredWorld.Find(filteredWall)->layer = 2u;
+    layerFilteredWorld.Find(filteredWall)->boxCollider = BoxColliderComponent{};
+    layerFilteredWorld.Find(filteredWall)->transform.position.x = 1.0f;
+    const CharacterMoveResult filteredMovement =
+        MoveCharacterController(layerFilteredWorld, filteredMover, {2.0f, 0.0f, 0.0f});
+    layerFilteredWorld.Find(filteredWall)->boxCollider->isTrigger = true;
+    TriggerSystem filteredTriggers;
+    BehaviorSystem filteredTriggerBehaviors;
+    filteredTriggerBehaviors.Start(layerFilteredWorld);
+    filteredTriggers.Update(layerFilteredWorld, filteredTriggerBehaviors);
+    if (!Check(std::abs(filteredMovement.appliedMotion.x - 2.0f) < 0.001f &&
+                   filteredMovement.flags == CharacterCollisionFlags::None &&
+                   !CheckCharacterControllerBoxOverlap(layerFilteredWorld, filteredMover,
+                                                       filteredWall) &&
+                   filteredTriggers.ActivePairCount() == 0u,
+               "Physics Layer matrix did not filter movement or Trigger overlap.")) {
+        return 150;
+    }
+
     World groundWorld;
     const EntityId groundedController = groundWorld.CreateEntity("Grounded Controller");
     const EntityId floor = groundWorld.CreateEntity("Floor");
@@ -711,7 +744,8 @@ int main() {
     const ScriptPropertyValue* restoredVector = hasRestoredScript
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Offset") : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
-                   restoredChild->parent == root && restoredChild->transform.position.x == 1.0f &&
+                   restoredChild->parent == root && restoredChild->layer == 2u &&
+                   restoredChild->transform.position.x == 1.0f &&
                    restoredChild->transform.rotationDegrees.z == 30.0f &&
                    restoredChild->meshRenderer &&
                    restoredChild->meshRenderer->primitive == MeshPrimitive::Sphere &&
@@ -921,6 +955,13 @@ int main() {
     if (!Check(restored.Entities().size() == 2u,
                "Failed replacement modified the existing world.")) {
         return 12;
+    }
+    std::vector<WorldEntity> invalidLayerEntities(1u);
+    invalidLayerEntities[0].id = EntityId::New();
+    invalidLayerEntities[0].layer = 32u;
+    if (!Check(!restored.ReplaceEntities(std::move(invalidLayerEntities), &error),
+               "Invalid Entity Layer was accepted.")) {
+        return 151;
     }
     std::vector<WorldEntity> invalidColliderEntities(1u);
     invalidColliderEntities[0].id = EntityId::New();
@@ -1148,6 +1189,34 @@ int main() {
                "Recent scenes were not safely restored.")) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 23;
+    }
+    const std::filesystem::path physicsSettingsPath =
+        projectDirectory / L"settings" / L"physics.json";
+    PhysicsSettingsStore physicsStore(physicsSettingsPath);
+    PhysicsSettings physicsSettings{};
+    std::string physicsSettingsError;
+    const bool defaultPhysicsSettingsLoaded =
+        physicsStore.Load(physicsSettings, physicsSettingsError);
+    physicsSettings.layerNames[1] = "Player";
+    physicsSettings.layerNames[2] = "Enemy";
+    physicsSettings.SetLayersCollide(1u, 2u, false);
+    const bool physicsSettingsSaved =
+        defaultPhysicsSettingsLoaded && physicsStore.Save(physicsSettings, physicsSettingsError);
+    PhysicsSettings restoredPhysicsSettings{};
+    if (!Check(physicsSettingsSaved &&
+                   physicsStore.Load(restoredPhysicsSettings, physicsSettingsError) &&
+                   restoredPhysicsSettings.layerNames[0] == "Default" &&
+                   restoredPhysicsSettings.layerNames[1] == "Player" &&
+                   restoredPhysicsSettings.layerNames[2] == "Enemy" &&
+                   !restoredPhysicsSettings.LayersCollide(1u, 2u) &&
+                   !restoredPhysicsSettings.LayersCollide(2u, 1u) &&
+                   restoredPhysicsSettings.LayersCollide(0u, 1u) &&
+                   std::filesystem::is_regular_file(physicsSettingsPath),
+               physicsSettingsError.empty() ?
+                   "Physics settings were not safely persisted." :
+                   physicsSettingsError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 143;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {

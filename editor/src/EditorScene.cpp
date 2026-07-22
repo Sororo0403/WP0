@@ -372,8 +372,13 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
     : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
       imguiSettingsPath_(std::move(imguiSettingsPath)),
+      physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
+    std::string physicsSettingsError;
+    const bool physicsSettingsLoaded =
+        physicsSettingsStore_.Load(physicsSettings_, physicsSettingsError);
+    world_.SetPhysicsSettings(physicsSettings_);
     recentScenePaths_ = recentScenesStore_.Load();
     std::error_code error;
     if (std::filesystem::is_regular_file(scenePath_, error) && !error) {
@@ -384,6 +389,9 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
         NewScene(false);
     }
     ClearHistory(true);
+    if (!physicsSettingsLoaded) {
+        status_ = "Warning: Could not load Physics Settings: " + physicsSettingsError;
+    }
 }
 
 void EditorScene::Initialize(const SceneContext& ctx) {
@@ -593,12 +601,16 @@ void EditorScene::DrawPostProcessOverlay() {
     DrawEntityRenameDialog();
     DrawAssetOperationDialogs();
     DrawPanels();
+    DrawProjectSettingsWindow();
     CaptureConsoleStatus();
 }
 
 bool EditorScene::OnCloseRequested() {
     if (IsInPlayMode()) {
         StopPlayMode();
+    }
+    if (physicsSettingsDirty_ && !SavePhysicsSettings()) {
+        return false;
     }
     if (!dirty_) {
         return true;
@@ -696,6 +708,10 @@ void EditorScene::DrawMainMenu() {
         }
         if (ImGui::MenuItem("Delete", "Delete", false, canDuplicate)) {
             DeleteSelection();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Project Settings...")) {
+            showProjectSettings_ = true;
         }
         ImGui::EndMenu();
     }
@@ -1160,6 +1176,134 @@ void EditorScene::DrawPanels() {
         }
         ImGui::End();
     }
+}
+
+bool EditorScene::SavePhysicsSettings() {
+    std::string error;
+    if (!physicsSettingsStore_.Save(physicsSettings_, error)) {
+        status_ = "Error: Could not save Physics Settings: " + error;
+        return false;
+    }
+    world_.SetPhysicsSettings(physicsSettings_);
+    physicsSettingsDirty_ = false;
+    status_ = "Saved Physics Settings.";
+    return true;
+}
+
+void EditorScene::DrawProjectSettingsWindow() {
+    if (!showProjectSettings_) {
+        return;
+    }
+    ImGui::SetNextWindowSize({760.0f, 620.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Project Settings", &showProjectSettings_)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::SeparatorText("Physics");
+    ImGui::TextDisabled("Project file: %s",
+                        physicsSettingsStore_.Path().generic_string().c_str());
+    ImGui::TextWrapped("Define project Layers and which Layer pairs are allowed to collide. "
+                       "The matrix filters Character Controller blocking and Trigger events.");
+    ImGui::BeginDisabled(IsInPlayMode());
+    ImGui::BeginDisabled(!physicsSettingsDirty_);
+    if (ImGui::Button("Save")) {
+        SavePhysicsSettings();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Revert")) {
+        PhysicsSettings restored{};
+        std::string error;
+        if (physicsSettingsStore_.Load(restored, error)) {
+            physicsSettings_ = std::move(restored);
+            world_.SetPhysicsSettings(physicsSettings_);
+            physicsSettingsDirty_ = false;
+            status_ = "Reverted Physics Settings.";
+        } else {
+            status_ = "Error: Could not reload Physics Settings: " + error;
+        }
+    }
+    ImGui::EndDisabled();
+    if (physicsSettingsDirty_) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.75f, 0.25f, 1.0f}, "Unsaved changes");
+    }
+
+    ImGui::SeparatorText("Layers");
+    ImGui::TextDisabled("Layer 0 is reserved as Default. Empty Layer names are unused.");
+    if (ImGui::BeginChild("PhysicsLayers", {0.0f, 220.0f}, ImGuiChildFlags_Borders)) {
+        for (size_t index = 0u; index < PhysicsSettings::kLayerCount; ++index) {
+            ImGui::PushID(static_cast<int>(index));
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%2zu", index);
+            ImGui::SameLine();
+            std::array<char, 65> buffer{};
+            strncpy_s(buffer.data(), buffer.size(),
+                      physicsSettings_.layerNames[index].c_str(), _TRUNCATE);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::BeginDisabled(index == 0u);
+            if (ImGui::InputText("##LayerName", buffer.data(), buffer.size())) {
+                physicsSettings_.layerNames[index] = buffer.data();
+                physicsSettingsDirty_ = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+
+    std::vector<size_t> definedLayers;
+    for (size_t index = 0u; index < PhysicsSettings::kLayerCount; ++index) {
+        if (!physicsSettings_.layerNames[index].empty()) {
+            definedLayers.push_back(index);
+        }
+    }
+    ImGui::SeparatorText("Layer Collision Matrix");
+    ImGui::TextDisabled("A checked pair will be allowed to collide.");
+    std::vector<std::string> columnLabels;
+    columnLabels.reserve(definedLayers.size());
+    for (size_t layer : definedLayers) {
+        columnLabels.push_back(std::to_string(layer));
+    }
+    constexpr ImGuiTableFlags matrixFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX |
+        ImGuiTableFlags_SizingFixedFit;
+    if (ImGui::BeginTable("PhysicsCollisionMatrix",
+                          static_cast<int>(definedLayers.size() + 1u), matrixFlags,
+                          {0.0f, 250.0f})) {
+        ImGui::TableSetupScrollFreeze(1, 1);
+        ImGui::TableSetupColumn("Layer", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+        for (const std::string& label : columnLabels) {
+            ImGui::TableSetupColumn(label.c_str(), ImGuiTableColumnFlags_WidthFixed, 30.0f);
+        }
+        ImGui::TableHeadersRow();
+        for (size_t row = 0u; row < definedLayers.size(); ++row) {
+            const size_t first = definedLayers[row];
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%zu: %s", first, physicsSettings_.layerNames[first].c_str());
+            for (size_t column = 0u; column < definedLayers.size(); ++column) {
+                ImGui::TableSetColumnIndex(static_cast<int>(column + 1u));
+                if (column > row) {
+                    continue;
+                }
+                const size_t second = definedLayers[column];
+                bool collide = physicsSettings_.LayersCollide(first, second);
+                ImGui::PushID(static_cast<int>(first));
+                ImGui::PushID(static_cast<int>(second));
+                if (ImGui::Checkbox("##Collide", &collide)) {
+                    physicsSettings_.SetLayersCollide(first, second, collide);
+                    world_.SetPhysicsSettings(physicsSettings_);
+                    physicsSettingsDirty_ = true;
+                }
+                ImGui::PopID();
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+    ImGui::EndDisabled();
+    ImGui::End();
 }
 
 void EditorScene::CaptureConsoleStatus() {
@@ -3017,6 +3161,47 @@ void EditorScene::DrawInspectorPanel() {
         }
         ImGui::TextDisabled("ID: %s", entity->id.ToString().c_str());
     }
+    uint8_t displayedLayer = entity->layer;
+    const bool mixedLayers = std::ranges::any_of(
+        inspectedEntities, [&](EntityId inspected) {
+            const WorldEntity* target = world_.Find(inspected);
+            return target != nullptr && target->layer != displayedLayer;
+        });
+    std::string layerPreview = mixedLayers ? "Mixed" : physicsSettings_.layerNames[displayedLayer];
+    if (layerPreview.empty()) {
+        layerPreview = "Layer " + std::to_string(displayedLayer) + " (Undefined)";
+    }
+    if (ImGui::BeginCombo("Layer", layerPreview.c_str())) {
+        for (size_t layer = 0u; layer < PhysicsSettings::kLayerCount; ++layer) {
+            if (physicsSettings_.layerNames[layer].empty()) {
+                continue;
+            }
+            const bool selected = !mixedLayers && displayedLayer == layer;
+            const std::string label = std::to_string(layer) + ": " +
+                                      physicsSettings_.layerNames[layer];
+            if (ImGui::Selectable(label.c_str(), selected)) {
+                CommitHistoryEdit();
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                for (EntityId inspected : inspectedEntities) {
+                    if (WorldEntity* target = world_.Find(inspected)) {
+                        target->layer = static_cast<uint8_t>(layer);
+                    }
+                }
+                RecordImmediateEdit(inspectedEntities.size() > 1u ? "Set Entity Layers"
+                                                                  : "Set Entity Layer",
+                                    before, selectionBefore);
+                status_ = inspectedEntities.size() > 1u
+                              ? "Changed the selected Entity Layers."
+                              : "Changed the Entity Layer.";
+                displayedLayer = static_cast<uint8_t>(layer);
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
     ImGui::Separator();
     ImGui::TextUnformatted(multipleEntities ? "Transforms" : "Transform");
     ImGui::SameLine();
@@ -4538,6 +4723,7 @@ void EditorScene::DuplicateSelection() {
             World restored;
             if (WorldSerializer::Deserialize(before, restored, nullptr)) {
                 world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
             }
             selection_ = selectionBefore;
             hierarchySelection_.clear();
@@ -4633,6 +4819,7 @@ void EditorScene::ReparentSelection(EntityId draggedEntity, EntityId parent) {
             World restored;
             if (WorldSerializer::Deserialize(before, restored, nullptr)) {
                 world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
             }
             status_ = "Cannot create a cyclic or invalid hierarchy.";
             return;
@@ -4642,6 +4829,7 @@ void EditorScene::ReparentSelection(EntityId draggedEntity, EntityId parent) {
             World restored;
             if (WorldSerializer::Deserialize(before, restored, nullptr)) {
                 world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
             }
             status_ = "A reparented entity no longer exists.";
             return;
@@ -5503,6 +5691,7 @@ bool EditorScene::RestoreHistoryState(const HistoryState& state) {
         return false;
     }
     world_ = std::move(restored);
+    world_.SetPhysicsSettings(physicsSettings_);
     selection_ = world_.Contains(state.selection) ? state.selection : EntityId{};
     hierarchySelection_.clear();
     if (selection_.IsValid()) {
@@ -6030,6 +6219,7 @@ void EditorScene::EnterPlayMode() {
     playModeDirtySnapshot_ = dirty_;
     editModeWorld_.emplace(std::move(world_));
     world_ = std::move(runtimeWorld);
+    world_.SetPhysicsSettings(physicsSettings_);
     std::string runtimeError;
     const bool allBehaviorsStarted = BeginRuntimeWorld(&runtimeError);
     playModeState_ = PlayModeState::Playing;
@@ -7250,6 +7440,7 @@ void EditorScene::NewScene(bool clearPath) {
         return;
     }
     world_.Clear();
+    world_.SetPhysicsSettings(physicsSettings_);
     const EntityId camera = world_.CreateEntity("Main Camera");
     if (WorldEntity* cameraEntity = world_.Find(camera)) {
         cameraEntity->transform.position = {0.0f, 2.0f, -5.0f};
@@ -7328,6 +7519,7 @@ bool EditorScene::LoadScene(const std::filesystem::path& path) {
         return false;
     }
     world_ = std::move(loaded);
+    world_.SetPhysicsSettings(physicsSettings_);
     scenePath_ = path;
     selection_ = world_.Empty() ? EntityId{} : world_.Entities().front().id;
     dirty_ = false;

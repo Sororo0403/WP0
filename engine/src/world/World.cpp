@@ -342,12 +342,28 @@ void World::Clear() {
     entities_.clear();
 }
 
+void World::SetPhysicsSettings(const PhysicsSettings& settings) {
+    physicsSettings_ = settings;
+}
+
+const PhysicsSettings& World::GetPhysicsSettings() const {
+    return physicsSettings_;
+}
+
+bool World::LayersCollide(uint8_t first, uint8_t second) const {
+    return physicsSettings_.LayersCollide(first, second);
+}
+
 bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* error) {
     std::unordered_set<EntityId, EntityIdHash> ids;
     ids.reserve(entities.size());
     for (WorldEntity& entity : entities) {
         if (!entity.id.IsValid() || !ids.insert(entity.id).second) {
             SetError(error, "Scene contains an invalid or duplicate entity id.");
+            return false;
+        }
+        if (entity.layer >= PhysicsSettings::kLayerCount) {
+            SetError(error, "Scene contains an invalid Entity Layer.");
             return false;
         }
         if (!IsFinite(entity.transform.position) || !IsFinite(entity.transform.rotationDegrees) ||

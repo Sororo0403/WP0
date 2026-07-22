@@ -27,6 +27,9 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectLauncher.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\PhysicsSettingsStore.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentProjectsStore.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -51,6 +54,9 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectLauncher.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\PhysicsSettingsStore.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentProjectsStore.h">

@@ -29,7 +29,8 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
              ++secondIndex) {
             const WorldEntity& second = entities[secondIndex];
             if (!second.boxCollider || !second.boxCollider->enabled ||
-                (!first.boxCollider->isTrigger && !second.boxCollider->isTrigger)) {
+                (!first.boxCollider->isTrigger && !second.boxCollider->isTrigger) ||
+                !world.LayersCollide(first.layer, second.layer)) {
                 continue;
             }
             OBB firstBox{};

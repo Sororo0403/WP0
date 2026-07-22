@@ -110,6 +110,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ApplicationPaths.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectLauncher.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\PhysicsSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectScriptLibrary.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentProjectsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentScenesStore.cpp" />
@@ -125,6 +126,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectLauncher.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\PhysicsSettingsStore.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectScriptLibrary.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentProjectsStore.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\RecentScenesStore.h" />
