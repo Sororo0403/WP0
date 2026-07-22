@@ -1018,7 +1018,14 @@ void EditorScene::DrawPanels() {
                 }
                 DrawSceneComponentGizmos(imageMin, imageMax);
                 DrawSceneSelectionOutline(imageMin, imageMax);
-                if (IsInPlayMode() || !DrawSceneTransformGizmo(imageMin, imageMax)) {
+                bool sceneGizmoHovered = false;
+                if (!IsInPlayMode()) {
+                    sceneGizmoHovered =
+                        boxColliderGizmoMode_ != BoxColliderGizmoMode::None
+                            ? DrawBoxColliderGizmo(imageMin, imageMax)
+                            : DrawSceneTransformGizmo(imageMin, imageMax);
+                }
+                if (IsInPlayMode() || !sceneGizmoHovered) {
                     PickSceneEntity(imageMin, imageMax, imageHovered);
                 }
                 if (imageHovered) {
@@ -3292,10 +3299,36 @@ void EditorScene::DrawInspectorPanel() {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
             entity->boxCollider.reset();
+            if (boxColliderGizmoEntity_ == selection_) {
+                boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
+                boxColliderGizmoEntity_ = {};
+            }
             RecordImmediateEdit("Remove BoxCollider", before, selectionBefore);
             status_ = "Removed BoxCollider.";
         } else {
             BoxColliderComponent& collider = *entity->boxCollider;
+            auto colliderGizmoButton = [&](const char* label, BoxColliderGizmoMode mode) {
+                const bool selected = boxColliderGizmoEntity_ == selection_ &&
+                                      boxColliderGizmoMode_ == mode;
+                if (selected) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,
+                                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                }
+                if (ImGui::Button(label)) {
+                    boxColliderGizmoMode_ = selected ? BoxColliderGizmoMode::None : mode;
+                    boxColliderGizmoEntity_ = selected ? EntityId{} : selection_;
+                }
+                if (selected) {
+                    ImGui::PopStyleColor();
+                }
+            };
+            colliderGizmoButton("Edit Center", BoxColliderGizmoMode::Center);
+            ImGui::SameLine();
+            colliderGizmoButton("Edit Size", BoxColliderGizmoMode::Size);
+            if (boxColliderGizmoEntity_ == selection_ &&
+                boxColliderGizmoMode_ != BoxColliderGizmoMode::None) {
+                ImGui::TextDisabled("Editing in Scene View. Click the active button to finish.");
+            }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
             if (ImGui::Checkbox("Enabled##BoxCollider", &collider.enabled)) {
@@ -6545,6 +6578,130 @@ void EditorScene::DrawSceneGizmoToolbar() {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Enable Snap or hold Ctrl while manipulating.");
     }
+}
+
+bool EditorScene::DrawBoxColliderGizmo(const ImVec2& imageMin,
+                                       const ImVec2& imageMax) {
+    WorldEntity* entity = world_.Find(selection_);
+    if (entity == nullptr || !entity->boxCollider || boxColliderGizmoEntity_ != selection_) {
+        if (gizmoWasUsing_) {
+            CommitHistoryEdit();
+            gizmoWasUsing_ = false;
+        }
+        boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
+        boxColliderGizmoEntity_ = {};
+        return false;
+    }
+
+    DirectX::XMFLOAT4X4 storedEntityWorld{};
+    OBB worldCollider{};
+    if (!world_.TryGetWorldMatrix(selection_, storedEntityWorld) ||
+        !TryBuildWorldBoxCollider(world_, selection_, worldCollider)) {
+        return false;
+    }
+
+    using namespace DirectX;
+    const XMMATRIX entityWorld = XMLoadFloat4x4(&storedEntityWorld);
+    XMVECTOR entityScale{};
+    XMVECTOR entityRotation{};
+    XMVECTOR entityTranslation{};
+    if (!XMMatrixDecompose(&entityScale, &entityRotation, &entityTranslation, entityWorld)) {
+        return false;
+    }
+
+    XMFLOAT4X4 gizmoMatrix{};
+    const XMVECTOR colliderCenter = XMLoadFloat3(&worldCollider.center);
+    const XMVECTOR colliderRotation = XMLoadFloat4(&worldCollider.rotation);
+    if (boxColliderGizmoMode_ == BoxColliderGizmoMode::Center) {
+        XMStoreFloat4x4(&gizmoMatrix,
+                        XMMatrixAffineTransformation(XMVectorReplicate(1.0f),
+                                                     XMVectorZero(), colliderRotation,
+                                                     colliderCenter));
+    } else {
+        XMStoreFloat4x4(&gizmoMatrix,
+                        XMMatrixScaling(worldCollider.size.x, worldCollider.size.y,
+                                        worldCollider.size.z) *
+                            XMMatrixRotationQuaternion(colliderRotation) *
+                            XMMatrixTranslationFromVector(colliderCenter));
+    }
+
+    XMFLOAT4X4 view{};
+    XMFLOAT4X4 projection{};
+    XMStoreFloat4x4(&view, sceneViewCamera_.GetView());
+    XMStoreFloat4x4(&projection, sceneViewCamera_.GetProj());
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x,
+                      imageMax.y - imageMin.y);
+    ImGuizmo::SetOrthographic(false);
+
+    const ImGuizmo::OPERATION operation =
+        boxColliderGizmoMode_ == BoxColliderGizmoMode::Center ? ImGuizmo::TRANSLATE
+                                                              : ImGuizmo::SCALE;
+    float snapValues[3]{};
+    std::ranges::fill(snapValues, boxColliderGizmoMode_ == BoxColliderGizmoMode::Center
+                                       ? translationSnap_
+                                       : scaleSnap_);
+    const bool snapActive = gizmoSnapEnabled_ || ImGui::GetIO().KeyCtrl;
+    const bool manipulated = ImGuizmo::Manipulate(
+        &view._11, &projection._11, operation, ImGuizmo::LOCAL, &gizmoMatrix._11, nullptr,
+        snapActive ? snapValues : nullptr);
+    const bool usingNow = ImGuizmo::IsUsing();
+    if (usingNow && !gizmoWasUsing_) {
+        BeginHistoryEdit(boxColliderGizmoMode_ == BoxColliderGizmoMode::Center
+                             ? "Modify BoxCollider Center"
+                             : "Modify BoxCollider Size");
+    }
+
+    if (manipulated) {
+        BoxColliderComponent& collider = *entity->boxCollider;
+        if (boxColliderGizmoMode_ == BoxColliderGizmoMode::Center) {
+            XMVECTOR determinant{};
+            const XMMATRIX inverseEntity = XMMatrixInverse(&determinant, entityWorld);
+            const float determinantValue = XMVectorGetX(determinant);
+            if (std::isfinite(determinantValue) && std::abs(determinantValue) > 1.0e-8f) {
+                XMVECTOR scale{};
+                XMVECTOR rotation{};
+                XMVECTOR translation{};
+                if (XMMatrixDecompose(&scale, &rotation, &translation,
+                                      XMLoadFloat4x4(&gizmoMatrix))) {
+                    XMStoreFloat3(&collider.center,
+                                  XMVector3TransformCoord(translation, inverseEntity));
+                    RefreshDirty();
+                }
+            }
+        } else {
+            XMVECTOR manipulatedScale{};
+            XMVECTOR rotation{};
+            XMVECTOR translation{};
+            if (XMMatrixDecompose(&manipulatedScale, &rotation, &translation,
+                                  XMLoadFloat4x4(&gizmoMatrix))) {
+                XMFLOAT3 storedManipulatedScale{};
+                XMFLOAT3 storedEntityScale{};
+                XMStoreFloat3(&storedManipulatedScale, manipulatedScale);
+                XMStoreFloat3(&storedEntityScale, entityScale);
+                const auto localSize = [](float worldSize, float worldScale) {
+                    constexpr float minimumSize = 0.001f;
+                    constexpr float minimumScale = 1.0e-6f;
+                    return (std::max)(minimumSize,
+                                      std::abs(worldSize) /
+                                          (std::max)(minimumScale, std::abs(worldScale)));
+                };
+                collider.size = {localSize(storedManipulatedScale.x, storedEntityScale.x),
+                                 localSize(storedManipulatedScale.y, storedEntityScale.y),
+                                 localSize(storedManipulatedScale.z, storedEntityScale.z)};
+                RefreshDirty();
+            }
+        }
+    }
+
+    if (!usingNow && gizmoWasUsing_) {
+        CommitHistoryEdit();
+        status_ = boxColliderGizmoMode_ == BoxColliderGizmoMode::Center
+                      ? "Modified BoxCollider center from Scene View."
+                      : "Modified BoxCollider size from Scene View.";
+    }
+    gizmoWasUsing_ = usingNow;
+    return ImGuizmo::IsOver() || usingNow;
 }
 
 bool EditorScene::DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax) {
