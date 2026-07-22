@@ -1020,10 +1020,15 @@ void EditorScene::DrawPanels() {
                 DrawSceneSelectionOutline(imageMin, imageMax);
                 bool sceneGizmoHovered = false;
                 if (!IsInPlayMode()) {
-                    sceneGizmoHovered =
-                        boxColliderGizmoMode_ != BoxColliderGizmoMode::None
-                            ? DrawBoxColliderGizmo(imageMin, imageMax)
-                            : DrawSceneTransformGizmo(imageMin, imageMax);
+                    if (boxColliderGizmoMode_ != BoxColliderGizmoMode::None) {
+                        sceneGizmoHovered = DrawBoxColliderGizmo(imageMin, imageMax);
+                    } else if (characterControllerGizmoMode_ !=
+                               CharacterControllerGizmoMode::None) {
+                        sceneGizmoHovered =
+                            DrawCharacterControllerGizmo(imageMin, imageMax);
+                    } else {
+                        sceneGizmoHovered = DrawSceneTransformGizmo(imageMin, imageMax);
+                    }
                 }
                 if (IsInPlayMode() || !sceneGizmoHovered) {
                     PickSceneEntity(imageMin, imageMax, imageHovered);
@@ -3317,6 +3322,8 @@ void EditorScene::DrawInspectorPanel() {
                 if (ImGui::Button(label)) {
                     boxColliderGizmoMode_ = selected ? BoxColliderGizmoMode::None : mode;
                     boxColliderGizmoEntity_ = selected ? EntityId{} : selection_;
+                    characterControllerGizmoMode_ = CharacterControllerGizmoMode::None;
+                    characterControllerGizmoEntity_ = {};
                 }
                 if (selected) {
                     ImGui::PopStyleColor();
@@ -3387,10 +3394,45 @@ void EditorScene::DrawInspectorPanel() {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
             entity->characterController.reset();
+            if (characterControllerGizmoEntity_ == selection_) {
+                characterControllerGizmoMode_ = CharacterControllerGizmoMode::None;
+                characterControllerGizmoEntity_ = {};
+            }
             RecordImmediateEdit("Remove CharacterController", before, selectionBefore);
             status_ = "Removed CharacterController.";
         } else {
             CharacterControllerComponent& controller = *entity->characterController;
+            auto controllerGizmoButton = [&](const char* label,
+                                             CharacterControllerGizmoMode mode) {
+                const bool selected = characterControllerGizmoEntity_ == selection_ &&
+                                      characterControllerGizmoMode_ == mode;
+                if (selected) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,
+                                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                }
+                if (ImGui::Button(label)) {
+                    characterControllerGizmoMode_ =
+                        selected ? CharacterControllerGizmoMode::None : mode;
+                    characterControllerGizmoEntity_ = selected ? EntityId{} : selection_;
+                    boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
+                    boxColliderGizmoEntity_ = {};
+                }
+                if (selected) {
+                    ImGui::PopStyleColor();
+                }
+            };
+            controllerGizmoButton("Edit Center##CharacterController",
+                                  CharacterControllerGizmoMode::Center);
+            ImGui::SameLine();
+            controllerGizmoButton("Edit Radius##CharacterController",
+                                  CharacterControllerGizmoMode::Radius);
+            ImGui::SameLine();
+            controllerGizmoButton("Edit Height##CharacterController",
+                                  CharacterControllerGizmoMode::Height);
+            if (characterControllerGizmoEntity_ == selection_ &&
+                characterControllerGizmoMode_ != CharacterControllerGizmoMode::None) {
+                ImGui::TextDisabled("Editing in Scene View. Click the active button to finish.");
+            }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
             if (ImGui::Checkbox("Enabled##CharacterController", &controller.enabled)) {
@@ -5825,6 +5867,11 @@ void EditorScene::EnterPlayMode() {
         return;
     }
     CommitHistoryEdit();
+    gizmoWasUsing_ = false;
+    boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
+    boxColliderGizmoEntity_ = {};
+    characterControllerGizmoMode_ = CharacterControllerGizmoMode::None;
+    characterControllerGizmoEntity_ = {};
     const std::string runtimeSnapshot = WorldSerializer::Serialize(world_);
     World runtimeWorld;
     std::string error;
@@ -5872,6 +5919,10 @@ void EditorScene::StopPlayMode() {
     activeGizmoEntity_ = {};
     activeGizmoWorldTransforms_.clear();
     gizmoWasUsing_ = false;
+    boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
+    boxColliderGizmoEntity_ = {};
+    characterControllerGizmoMode_ = CharacterControllerGizmoMode::None;
+    characterControllerGizmoEntity_ = {};
     dirty_ = playModeDirtySnapshot_;
     playModeSelectionSnapshot_ = {};
     playModeState_ = PlayModeState::Edit;
@@ -6699,6 +6750,164 @@ bool EditorScene::DrawBoxColliderGizmo(const ImVec2& imageMin,
         status_ = boxColliderGizmoMode_ == BoxColliderGizmoMode::Center
                       ? "Modified BoxCollider center from Scene View."
                       : "Modified BoxCollider size from Scene View.";
+    }
+    gizmoWasUsing_ = usingNow;
+    return ImGuizmo::IsOver() || usingNow;
+}
+
+bool EditorScene::DrawCharacterControllerGizmo(const ImVec2& imageMin,
+                                               const ImVec2& imageMax) {
+    WorldEntity* entity = world_.Find(selection_);
+    if (entity == nullptr || !entity->characterController ||
+        characterControllerGizmoEntity_ != selection_) {
+        if (gizmoWasUsing_) {
+            CommitHistoryEdit();
+            gizmoWasUsing_ = false;
+        }
+        characterControllerGizmoMode_ = CharacterControllerGizmoMode::None;
+        characterControllerGizmoEntity_ = {};
+        return false;
+    }
+
+    DirectX::XMFLOAT4X4 storedEntityWorld{};
+    CharacterCapsule worldCapsule{};
+    if (!world_.TryGetWorldMatrix(selection_, storedEntityWorld) ||
+        !TryBuildWorldCharacterCapsule(world_, selection_, worldCapsule)) {
+        return false;
+    }
+
+    using namespace DirectX;
+    const XMMATRIX entityWorld = XMLoadFloat4x4(&storedEntityWorld);
+    XMVECTOR entityScale{};
+    XMVECTOR entityRotation{};
+    XMVECTOR entityTranslation{};
+    if (!XMMatrixDecompose(&entityScale, &entityRotation, &entityTranslation, entityWorld)) {
+        return false;
+    }
+    XMFLOAT3 storedEntityScale{};
+    XMStoreFloat3(&storedEntityScale, entityScale);
+
+    const float worldDiameter = worldCapsule.radius * 2.0f;
+    XMFLOAT4X4 gizmoMatrix{};
+    if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Center) {
+        XMStoreFloat4x4(
+            &gizmoMatrix,
+            XMMatrixTranslation(worldCapsule.center.x, worldCapsule.center.y,
+                                worldCapsule.center.z));
+    } else {
+        XMStoreFloat4x4(
+            &gizmoMatrix,
+            XMMatrixScaling(worldDiameter, worldCapsule.height, worldDiameter) *
+                XMMatrixTranslation(worldCapsule.center.x, worldCapsule.center.y,
+                                    worldCapsule.center.z));
+    }
+
+    XMFLOAT4X4 view{};
+    XMFLOAT4X4 projection{};
+    XMStoreFloat4x4(&view, sceneViewCamera_.GetView());
+    XMStoreFloat4x4(&projection, sceneViewCamera_.GetProj());
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x,
+                      imageMax.y - imageMin.y);
+    ImGuizmo::SetOrthographic(false);
+
+    ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
+    if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Radius) {
+        operation = ImGuizmo::SCALE_X | ImGuizmo::SCALE_Z;
+    } else if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Height) {
+        operation = ImGuizmo::SCALE_Y;
+    }
+    float snapValues[3]{};
+    std::ranges::fill(
+        snapValues,
+        characterControllerGizmoMode_ == CharacterControllerGizmoMode::Center
+            ? translationSnap_
+            : scaleSnap_);
+    const bool snapActive = gizmoSnapEnabled_ || ImGui::GetIO().KeyCtrl;
+    const bool manipulated = ImGuizmo::Manipulate(
+        &view._11, &projection._11, operation, ImGuizmo::WORLD, &gizmoMatrix._11, nullptr,
+        snapActive ? snapValues : nullptr);
+    const bool usingNow = ImGuizmo::IsUsing();
+    if (usingNow && !gizmoWasUsing_) {
+        const char* label = "Modify CharacterController Center";
+        if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Radius) {
+            label = "Modify CharacterController Radius";
+        } else if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Height) {
+            label = "Modify CharacterController Height";
+        }
+        BeginHistoryEdit(label);
+    }
+
+    if (manipulated) {
+        CharacterControllerComponent& controller = *entity->characterController;
+        if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Center) {
+            XMVECTOR determinant{};
+            const XMMATRIX inverseEntity = XMMatrixInverse(&determinant, entityWorld);
+            const float determinantValue = XMVectorGetX(determinant);
+            if (std::isfinite(determinantValue) && std::abs(determinantValue) > 1.0e-8f) {
+                XMVECTOR scale{};
+                XMVECTOR rotation{};
+                XMVECTOR translation{};
+                if (XMMatrixDecompose(&scale, &rotation, &translation,
+                                      XMLoadFloat4x4(&gizmoMatrix))) {
+                    XMStoreFloat3(&controller.center,
+                                  XMVector3TransformCoord(translation, inverseEntity));
+                    RefreshDirty();
+                }
+            }
+        } else {
+            XMVECTOR manipulatedScale{};
+            XMVECTOR rotation{};
+            XMVECTOR translation{};
+            if (XMMatrixDecompose(&manipulatedScale, &rotation, &translation,
+                                  XMLoadFloat4x4(&gizmoMatrix))) {
+                XMFLOAT3 storedManipulatedScale{};
+                XMStoreFloat3(&storedManipulatedScale, manipulatedScale);
+                constexpr float minimumScale = 1.0e-6f;
+                if (characterControllerGizmoMode_ ==
+                    CharacterControllerGizmoMode::Radius) {
+                    const float changedX =
+                        std::abs(std::abs(storedManipulatedScale.x) - worldDiameter);
+                    const float changedZ =
+                        std::abs(std::abs(storedManipulatedScale.z) - worldDiameter);
+                    const float newWorldDiameter =
+                        changedX >= changedZ ? std::abs(storedManipulatedScale.x)
+                                             : std::abs(storedManipulatedScale.z);
+                    const float radialScale =
+                        (std::max)(minimumScale,
+                                   (std::max)(std::abs(storedEntityScale.x),
+                                              std::abs(storedEntityScale.z)));
+                    controller.radius =
+                        (std::max)(0.001f, newWorldDiameter * 0.5f / radialScale);
+                    controller.height =
+                        (std::max)(controller.height, controller.radius * 2.0f);
+                    controller.skinWidth =
+                        (std::min)(controller.skinWidth,
+                                   (std::max)(0.0f, controller.radius - 0.001f));
+                } else {
+                    const float verticalScale =
+                        (std::max)(minimumScale, std::abs(storedEntityScale.y));
+                    controller.height =
+                        (std::max)(controller.radius * 2.0f,
+                                   std::abs(storedManipulatedScale.y) / verticalScale);
+                    controller.stepOffset =
+                        (std::min)(controller.stepOffset, controller.height);
+                }
+                RefreshDirty();
+            }
+        }
+    }
+
+    if (!usingNow && gizmoWasUsing_) {
+        CommitHistoryEdit();
+        if (characterControllerGizmoMode_ == CharacterControllerGizmoMode::Center) {
+            status_ = "Modified CharacterController center from Scene View.";
+        } else if (characterControllerGizmoMode_ ==
+                   CharacterControllerGizmoMode::Radius) {
+            status_ = "Modified CharacterController radius from Scene View.";
+        } else {
+            status_ = "Modified CharacterController height from Scene View.";
+        }
     }
     gizmoWasUsing_ = usingNow;
     return ImGuizmo::IsOver() || usingNow;

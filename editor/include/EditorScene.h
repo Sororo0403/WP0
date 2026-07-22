@@ -180,6 +180,7 @@ private:
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
     bool DrawBoxColliderGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
+    bool DrawCharacterControllerGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
@@ -373,6 +374,12 @@ private:
         Center,
         Size,
     };
+    enum class CharacterControllerGizmoMode : uint8_t {
+        None,
+        Center,
+        Radius,
+        Height,
+    };
     GizmoOperation gizmoOperation_ = GizmoOperation::Translate;
     GizmoSpace gizmoSpace_ = GizmoSpace::World;
     bool gizmoSnapEnabled_ = false;
@@ -393,6 +400,9 @@ private:
     bool gizmoWasUsing_ = false;
     BoxColliderGizmoMode boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
     EntityId boxColliderGizmoEntity_{};
+    CharacterControllerGizmoMode characterControllerGizmoMode_ =
+        CharacterControllerGizmoMode::None;
+    EntityId characterControllerGizmoEntity_{};
     bool postProcessInitializationAttempted_ = false;
     bool gamePostProcessInitializationAttempted_ = false;
     bool cameraPreviewPostProcessInitializationAttempted_ = false;
