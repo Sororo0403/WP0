@@ -4023,6 +4023,13 @@ void EditorScene::DrawInspectorPanel() {
             status_ = "Removed AudioSource.";
         } else {
             AudioSourceComponent& source = *entity->audioSource;
+            if (IsInPlayMode()) {
+                ImGui::TextDisabled("Runtime: %s",
+                                    source.runtimePlaying ? "Playing" : "Stopped");
+            } else {
+                ImGui::TextDisabled(
+                    "Script API: world.PlayAudioSource(entity) / StopAudioSource(entity)");
+            }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
             if (ImGui::Checkbox("Enabled##AudioSource", &source.enabled)) {
@@ -6756,9 +6763,15 @@ void EditorScene::UpdateRuntimeAudio() {
     }
 
     for (RuntimeAudioSource& runtime : runtimeAudioSources_) {
-        const WorldEntity* entity = world_.Find(runtime.entity);
-        const AudioSourceComponent* source =
+        WorldEntity* entity = world_.Find(runtime.entity);
+        AudioSourceComponent* source =
             entity != nullptr && entity->audioSource ? &*entity->audioSource : nullptr;
+        const AudioSourceComponent::RuntimeCommand command =
+            source != nullptr ? source->runtimeCommand
+                              : AudioSourceComponent::RuntimeCommand::None;
+        if (source != nullptr) {
+            source->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+        }
         const bool active = source != nullptr && source->enabled &&
                             world_.IsActiveInHierarchy(runtime.entity) &&
                             runtime.soundId != ISoundService::kInvalidSoundId;
@@ -6768,28 +6781,51 @@ void EditorScene::UpdateRuntimeAudio() {
             }
             runtime.voice = ISoundService::kInvalidVoiceHandle;
             runtime.activated = false;
+            if (source != nullptr) {
+                source->runtimePlaying = false;
+            }
             continue;
         }
-        if (!runtime.activated) {
+
+        if (command == AudioSourceComponent::RuntimeCommand::Stop) {
+            if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+                sound->Stop(runtime.voice);
+            }
+            runtime.voice = ISoundService::kInvalidVoiceHandle;
+            runtime.activated = true;
+        }
+        const auto startVoice = [&] {
+            if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+                sound->Stop(runtime.voice);
+            }
+            runtime.voice = ISoundService::kInvalidVoiceHandle;
+            if (source->spatial) {
+                DirectX::XMFLOAT4X4 matrix{};
+                if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
+                    runtime.voice = sound->Play3D(
+                        runtime.soundId, {matrix._41, matrix._42, matrix._43},
+                        source->volume, source->loop);
+                }
+            } else {
+                runtime.voice = sound->Play(runtime.soundId, source->volume, source->loop);
+            }
+        };
+        if (command == AudioSourceComponent::RuntimeCommand::Play) {
+            runtime.activated = true;
+            startVoice();
+        } else if (!runtime.activated) {
             runtime.activated = true;
             if (source->playOnAwake) {
-                if (source->spatial) {
-                    DirectX::XMFLOAT4X4 matrix{};
-                    if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
-                        runtime.voice = sound->Play3D(
-                            runtime.soundId, {matrix._41, matrix._42, matrix._43},
-                            source->volume, source->loop);
-                    }
-                } else {
-                    runtime.voice = sound->Play(runtime.soundId, source->volume, source->loop);
-                }
+                startVoice();
             }
         }
         if (runtime.voice == ISoundService::kInvalidVoiceHandle ||
             !sound->IsPlaying(runtime.voice)) {
             runtime.voice = ISoundService::kInvalidVoiceHandle;
+            source->runtimePlaying = false;
             continue;
         }
+        source->runtimePlaying = true;
         sound->SetVoiceVolume(runtime.voice, source->volume);
         if (source->spatial) {
             DirectX::XMFLOAT4X4 matrix{};
@@ -6827,6 +6863,13 @@ void EditorScene::EndRuntimeAudio() {
             if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
                 sound->Stop(runtime.voice);
             }
+        }
+    }
+    for (RuntimeAudioSource& runtime : runtimeAudioSources_) {
+        if (WorldEntity* entity = world_.Find(runtime.entity);
+            entity != nullptr && entity->audioSource) {
+            entity->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            entity->audioSource->runtimePlaying = false;
         }
     }
     runtimeAudioSources_.clear();

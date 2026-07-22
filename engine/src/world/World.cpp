@@ -66,6 +66,10 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->camera = original.camera;
         duplicate->light = original.light;
         duplicate->audioSource = original.audioSource;
+        if (duplicate->audioSource) {
+            duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            duplicate->audioSource->runtimePlaying = false;
+        }
         duplicate->scripts = original.scripts;
         duplicate->boxCollider = original.boxCollider;
         duplicate->characterController = original.characterController;
@@ -282,6 +286,30 @@ bool World::Contains(EntityId id) const {
     return Find(id) != nullptr;
 }
 
+bool World::PlayAudioSource(EntityId id) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->audioSource || !entity->audioSource->enabled ||
+        entity->audioSource->clipPath.empty() || !IsActiveInHierarchy(id)) {
+        return false;
+    }
+    entity->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::Play;
+    return true;
+}
+
+bool World::StopAudioSource(EntityId id) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->audioSource) {
+        return false;
+    }
+    entity->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::Stop;
+    return true;
+}
+
+bool World::IsAudioSourcePlaying(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->audioSource && entity->audioSource->runtimePlaying;
+}
+
 bool World::IsActiveInHierarchy(EntityId id) const {
     EntityId current = id;
     for (size_t depth = 0; depth <= entities_.size(); ++depth) {
@@ -376,6 +404,10 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
     std::unordered_set<EntityId, EntityIdHash> ids;
     ids.reserve(entities.size());
     for (WorldEntity& entity : entities) {
+        if (entity.audioSource) {
+            entity.audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            entity.audioSource->runtimePlaying = false;
+        }
         if (!entity.id.IsValid() || !ids.insert(entity.id).second) {
             SetError(error, "Scene contains an invalid or duplicate entity id.");
             return false;

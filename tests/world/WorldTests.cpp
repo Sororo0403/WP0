@@ -590,6 +590,16 @@ int main() {
     childEntity->audioSource->spatial = true;
     childEntity->audioSource->minDistance = 2.0f;
     childEntity->audioSource->maxDistance = 30.0f;
+    if (!Check(source.PlayAudioSource(child) &&
+                   childEntity->audioSource->runtimeCommand ==
+                       AudioSourceComponent::RuntimeCommand::Play &&
+                   !source.IsAudioSourcePlaying(child) && source.StopAudioSource(child) &&
+                   childEntity->audioSource->runtimeCommand ==
+                       AudioSourceComponent::RuntimeCommand::Stop &&
+                   !source.PlayAudioSource(root),
+               "World AudioSource playback commands are invalid.")) {
+        return 159;
+    }
     childEntity->scripts.push_back(
         {true, "Rotator", "asset://Scripts/Rotator.cpp"});
     childEntity->scripts[0].properties = {

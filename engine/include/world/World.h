@@ -102,6 +102,12 @@ struct LightComponent {
 };
 
 struct AudioSourceComponent {
+    enum class RuntimeCommand : uint8_t {
+        None,
+        Play,
+        Stop,
+    };
+
     bool enabled = true;
     std::string clipPath;
     bool playOnAwake = true;
@@ -110,6 +116,8 @@ struct AudioSourceComponent {
     bool spatial = false;
     float minDistance = 1.0f;
     float maxDistance = 50.0f;
+    RuntimeCommand runtimeCommand = RuntimeCommand::None;
+    bool runtimePlaying = false;
 };
 
 struct ScriptPropertyValue {
@@ -176,6 +184,9 @@ public:
     bool MoveEntityBefore(EntityId entity, EntityId sibling);
     bool MoveEntityAfter(EntityId entity, EntityId sibling);
     bool SetPrimaryCamera(EntityId entity);
+    bool PlayAudioSource(EntityId entity);
+    bool StopAudioSource(EntityId entity);
+    [[nodiscard]] bool IsAudioSourcePlaying(EntityId entity) const;
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;
