@@ -175,7 +175,8 @@ float4 main(MeshVSOutput input) : SV_TARGET
     float3 ambientLighting =
         PbrEvaluateAmbientDiffuse(albedo, ambientColor.rgb, materialAo);
     float ambientSpecularScale =
-        saturate(reflectionStrength + reflectionFresnelStrength * 0.55f);
+        saturate(reflectionStrength + reflectionFresnelStrength * 0.55f) *
+        saturate(ambientColor.a);
     float3 ambientSpecular = float3(0.0f, 0.0f, 0.0f);
     if (ambientSpecularScale > 0.0001f)
     {

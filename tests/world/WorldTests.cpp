@@ -7,6 +7,7 @@
 #include "collision/CollisionUtil.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
+#include "graphics/Lighting.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
 #include "world/World.h"
@@ -130,6 +131,23 @@ bool RotationRoundTrips(const DirectX::XMFLOAT3& degrees) {
 } // namespace
 
 int main() {
+    const SceneLighting unlitScene{};
+    if (!Check(unlitScene.keyLightColor.x == 0.0f &&
+                   unlitScene.keyLightColor.y == 0.0f &&
+                   unlitScene.keyLightColor.z == 0.0f &&
+                   unlitScene.fillLightColor.x == 0.0f &&
+                   unlitScene.fillLightColor.y == 0.0f &&
+                   unlitScene.fillLightColor.z == 0.0f &&
+                   unlitScene.ambientColor.x == 0.0f &&
+                   unlitScene.ambientColor.y == 0.0f &&
+                   unlitScene.ambientColor.z == 0.0f &&
+                   unlitScene.ambientColor.w == 0.0f &&
+                   unlitScene.pointLights[0].colorIntensity.w == 0.0f &&
+                   unlitScene.pointLights[1].colorIntensity.w == 0.0f &&
+                   unlitScene.spotLight.colorIntensity.w == 0.0f,
+               "Default SceneLighting is not unlit.")) {
+        return 141;
+    }
     if (!Check(ScriptAssets::IsScriptFile("Player.cpp") &&
                    ScriptAssets::IsScriptSourceFile("Player.cpp") &&
                    ScriptAssets::IsScriptSourceFile("Player.h") &&

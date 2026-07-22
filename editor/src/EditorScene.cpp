@@ -523,23 +523,6 @@ void EditorScene::Update() {
 
 void EditorScene::SubmitLighting(LightingScene& lightingScene) {
     SceneLighting lighting{};
-    const bool hasWorldLights = std::ranges::any_of(world_.Entities(), [](const WorldEntity& entity) {
-        return entity.light && entity.light->enabled && entity.light->intensity > 0.0f;
-    });
-    if (!hasWorldLights) {
-        lightingScene.SetSceneLighting(lighting);
-        return;
-    }
-
-    lighting.keyLightColor = {0.0f, 0.0f, 0.0f, 0.0f};
-    for (PointLight& pointLight : lighting.pointLights) {
-        pointLight.positionRange.w = 0.0f;
-        pointLight.colorIntensity.w = 0.0f;
-    }
-    lighting.spotLight.positionRange.w = 0.0f;
-    lighting.spotLight.colorIntensity.w = 0.0f;
-    lighting.spotLight.angleParams.w = 0.0f;
-
     bool directionalAssigned = false;
     size_t pointLightIndex = 0u;
     bool spotAssigned = false;

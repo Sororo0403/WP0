@@ -102,7 +102,7 @@
         }
       },
       "id": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497",
-      "name": "Cube",
+      "name": "Player",
       "parent": null
     },
     {
@@ -167,45 +167,8 @@
         }
       },
       "id": "49f2cf35-b61b-944d-caff-52d73e96bc8d",
-      "name": "Box",
+      "name": "Wall",
       "parent": null
-    },
-    {
-      "components": {
-        "Light": {
-          "color": [
-            1.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "innerAngle": 8.399999618530273,
-          "intensity": 16.479999542236328,
-          "outerAngle": 16.200000762939453,
-          "range": 10.449999809265137,
-          "type": "Spot"
-        },
-        "Transform": {
-          "position": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "id": "43e2fb8b-be91-0671-239b-1296e85b9db0",
-      "name": "Light",
-      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     },
     {
       "components": {
@@ -269,7 +232,7 @@
         }
       },
       "id": "4c0e3cef-cc1a-66a6-c7f6-6bf590a6d8bd",
-      "name": "Box Copy",
+      "name": "Field",
       "parent": null
     }
   ],
