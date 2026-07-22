@@ -10,6 +10,7 @@
 #include "graphics/RenderScene.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
+#include "runtime/TriggerSystem.h"
 #include "scene/BaseScene.h"
 #include "world/World.h"
 
@@ -252,6 +253,7 @@ private:
     ProjectScriptLibrary projectScripts_;
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
+    TriggerSystem runtimeTriggers_;
     std::future<ScriptBuildCompletion> scriptBuildFuture_;
     uint64_t scriptSourceFingerprint_ = 0u;
     bool scriptFingerprintInitialized_ = false;

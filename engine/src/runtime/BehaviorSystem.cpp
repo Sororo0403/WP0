@@ -42,6 +42,32 @@ void BehaviorSystem::Update(float deltaTime) {
     }
 }
 
+void BehaviorSystem::DispatchTriggerEvent(TriggerEvent event, EntityId entity,
+                                          EntityId other) {
+    if (world_ == nullptr || !world_->Contains(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        switch (event) {
+        case TriggerEvent::Enter:
+            entry.behavior->OnTriggerEnter(*world_, entity, other);
+            break;
+        case TriggerEvent::Stay:
+            entry.behavior->OnTriggerStay(*world_, entity, other);
+            break;
+        case TriggerEvent::Exit:
+            entry.behavior->OnTriggerExit(*world_, entity, other);
+            break;
+        }
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;

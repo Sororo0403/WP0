@@ -10,6 +10,7 @@
 #include "graphics/Lighting.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
+#include "runtime/TriggerSystem.h"
 #include "world/World.h"
 #include "world/WorldCollision.h"
 #include "world/WorldSerializer.h"
@@ -57,6 +58,36 @@ private:
     int& updateCount_;
     int& stopCount_;
     float& lastDeltaTime_;
+};
+
+struct TriggerEventCounts {
+    int enter = 0;
+    int stay = 0;
+    int exit = 0;
+    EntityId lastOther{};
+};
+
+class TriggerBehavior final : public Behavior {
+public:
+    explicit TriggerBehavior(TriggerEventCounts& counts) : counts_(counts) {}
+
+    void OnTriggerEnter(World&, EntityId, EntityId other) override {
+        ++counts_.enter;
+        counts_.lastOther = other;
+    }
+
+    void OnTriggerStay(World&, EntityId, EntityId other) override {
+        ++counts_.stay;
+        counts_.lastOther = other;
+    }
+
+    void OnTriggerExit(World&, EntityId, EntityId other) override {
+        ++counts_.exit;
+        counts_.lastOther = other;
+    }
+
+private:
+    TriggerEventCounts& counts_;
 };
 
 bool Check(bool condition, const char* message) {
@@ -267,6 +298,47 @@ int main() {
                "Runtime Behavior lifecycle did not run in order.")) {
         return 126;
     }
+
+    World triggerWorld;
+    const EntityId triggerActor = triggerWorld.CreateEntity("Trigger Actor");
+    const EntityId triggerZone = triggerWorld.CreateEntity("Trigger Zone");
+    triggerWorld.Find(triggerActor)->characterController =
+        CharacterControllerComponent{};
+    triggerWorld.Find(triggerActor)->boxCollider = BoxColliderComponent{};
+    triggerWorld.Find(triggerZone)->boxCollider = BoxColliderComponent{};
+    triggerWorld.Find(triggerZone)->boxCollider->isTrigger = true;
+    TriggerEventCounts actorTriggerEvents{};
+    TriggerEventCounts zoneTriggerEvents{};
+    BehaviorSystem triggerBehaviors;
+    TriggerSystem triggers;
+    if (!Check(triggerBehaviors.Attach(
+                   triggerActor, std::make_unique<TriggerBehavior>(actorTriggerEvents)) &&
+                   triggerBehaviors.Attach(
+                       triggerZone, std::make_unique<TriggerBehavior>(zoneTriggerEvents)),
+               "Trigger test Behaviors could not be attached.")) {
+        return 144;
+    }
+    triggerBehaviors.Start(triggerWorld);
+    triggers.Update(triggerWorld, triggerBehaviors);
+    triggers.Update(triggerWorld, triggerBehaviors);
+    triggerWorld.Find(triggerActor)->transform.position.x = 3.0f;
+    triggers.Update(triggerWorld, triggerBehaviors);
+    triggerWorld.Find(triggerActor)->transform.position.x = 0.0f;
+    triggers.Update(triggerWorld, triggerBehaviors);
+    triggerWorld.DestroyEntity(triggerZone);
+    triggers.Update(triggerWorld, triggerBehaviors);
+    if (!Check(triggers.ActivePairCount() == 0u &&
+                   actorTriggerEvents.enter == 2 && actorTriggerEvents.stay == 1 &&
+                   actorTriggerEvents.exit == 2 &&
+                   actorTriggerEvents.lastOther == triggerZone &&
+                   zoneTriggerEvents.enter == 2 && zoneTriggerEvents.stay == 1 &&
+                   zoneTriggerEvents.exit == 1 &&
+                   zoneTriggerEvents.lastOther == triggerActor,
+               "Trigger Enter, Stay, Exit, or destroyed-entity handling is invalid.")) {
+        return 145;
+    }
+    triggers.Clear();
+    triggerBehaviors.Clear();
 
     if (!Check(RotationRoundTrips({25.0f, -40.0f, 70.0f}) &&
                    RotationRoundTrips({120.0f, 215.0f, -150.0f}) &&

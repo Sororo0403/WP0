@@ -195,6 +195,15 @@ bool TryBuildWorldCharacterCapsule(const World& world, EntityId entityId,
            result.radius > 0.0f && result.height >= result.radius * 2.0f;
 }
 
+bool CheckCharacterControllerBoxOverlap(const World& world, EntityId characterEntity,
+                                        EntityId boxEntity) {
+    CharacterCapsule capsule{};
+    OBB box{};
+    return TryBuildWorldCharacterCapsule(world, characterEntity, capsule) &&
+           TryBuildWorldBoxCollider(world, boxEntity, box) &&
+           CapsuleOverlapsBox(capsule, box);
+}
+
 CharacterMoveResult MoveCharacterController(
     World& world, EntityId entityId, const DirectX::XMFLOAT3& motion) {
     CharacterMoveResult result{};

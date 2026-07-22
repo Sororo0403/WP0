@@ -211,6 +211,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\EntityId.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\runtime\BehaviorRegistry.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\runtime\BehaviorSystem.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\runtime\TriggerSystem.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\World.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldCollision.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializer.cpp" />
@@ -239,6 +240,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\Behavior.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\BehaviorRegistry.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\BehaviorSystem.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\TriggerSystem.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\ScriptModuleApi.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\World.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldCollision.h" />

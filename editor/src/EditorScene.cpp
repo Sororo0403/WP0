@@ -5548,6 +5548,7 @@ void EditorScene::StepRuntimeWorld() {
 bool EditorScene::BeginRuntimeWorld(std::string* error) {
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
+    runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
     bool valid = true;
     for (const WorldEntity& entity : world_.Entities()) {
@@ -5635,11 +5636,13 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
     runtimeBehaviors_.Update(safeDeltaTime);
+    runtimeTriggers_.Update(world_, runtimeBehaviors_);
     ++runtimeFrameCount_;
     runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
 }
 
 void EditorScene::EndRuntimeWorld() {
+    runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;

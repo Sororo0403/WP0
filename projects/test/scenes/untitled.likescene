@@ -234,6 +234,43 @@
       "id": "4c0e3cef-cc1a-66a6-c7f6-6bf590a6d8bd",
       "name": "Field",
       "parent": null
+    },
+    {
+      "components": {
+        "Light": {
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 1.0,
+          "outerAngle": 45.0,
+          "range": 10.0,
+          "type": "Directional"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            2.2854487895965576,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "48274ae7-51b3-0e1a-c294-a2bf25c0f899",
+      "name": "Entity",
+      "parent": null
     }
   ],
   "version": 1

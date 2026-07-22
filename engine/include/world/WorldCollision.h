@@ -32,6 +32,9 @@ struct CharacterMoveResult {
 [[nodiscard]] bool TryBuildWorldCharacterCapsule(const World& world, EntityId entity,
                                                   CharacterCapsule& result);
 
+[[nodiscard]] bool CheckCharacterControllerBoxOverlap(
+    const World& world, EntityId characterEntity, EntityId boxEntity);
+
 // Moves an entity through its CharacterController. The requested motion is in world space.
 [[nodiscard]] CharacterMoveResult MoveCharacterController(
     World& world, EntityId entity, const DirectX::XMFLOAT3& motion);
