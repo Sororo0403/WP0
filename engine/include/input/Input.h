@@ -222,6 +222,11 @@ public:
     bool SetActionBinding(std::string name, const InputActionBinding& binding);
 
     /// <summary>
+    /// 名前付きActionの名前をBindingと登録順を保ったまま変更する
+    /// </summary>
+    bool RenameActionBinding(std::string_view oldName, std::string newName);
+
+    /// <summary>
     /// 名前付きActionのBindingを削除する
     /// </summary>
     bool RemoveActionBinding(std::string_view name);

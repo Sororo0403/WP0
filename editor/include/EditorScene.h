@@ -284,6 +284,13 @@ private:
     bool physicsSettingsDirty_ = false;
     InputSettingsStore inputSettingsStore_;
     bool inputSettingsDirty_ = false;
+    std::array<char, 65> inputActionNameBuffer_{};
+    std::string pendingInputActionName_;
+    InputActionType newInputActionType_ = InputActionType::Button;
+    bool showCreateInputActionDialog_ = false;
+    bool showRenameInputActionDialog_ = false;
+    bool showDeleteInputActionDialog_ = false;
+    bool focusInputActionNameInput_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     ProjectScriptLibrary projectScripts_;

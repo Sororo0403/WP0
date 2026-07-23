@@ -277,9 +277,18 @@ int main() {
     customAction.positiveKeys[0] = DIK_E;
     if (!Check(actionInput.SetActionBinding("Interact", customAction) &&
                    actionInput.GetActionBinding("Interact") != nullptr &&
-                   actionInput.RemoveActionBinding("Interact") &&
+                   actionInput.RenameActionBinding("Interact", "Use") &&
                    actionInput.GetActionBinding("Interact") == nullptr &&
-                   !actionInput.RemoveActionBinding("Interact") &&
+                   actionInput.GetActionBinding("Use") != nullptr &&
+                   actionInput.GetActionBinding("Use")->positiveKeys[0] == DIK_E &&
+                   actionInput.GetActionNames().back() == "Use" &&
+                   !actionInput.RenameActionBinding("Use", "Jump") &&
+                   !actionInput.RenameActionBinding("Missing", "Other") &&
+                   !actionInput.RenameActionBinding("Use", "") &&
+                   actionInput.RemoveActionBinding("Use") &&
+                   actionInput.GetActionBinding("Interact") == nullptr &&
+                   actionInput.GetActionBinding("Use") == nullptr &&
+                   !actionInput.RemoveActionBinding("Use") &&
                    !actionInput.SetActionBinding("", customAction) &&
                    !actionInput.SetActionBinding(
                        std::string(65u, 'A'), customAction),

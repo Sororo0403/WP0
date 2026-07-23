@@ -93,6 +93,30 @@ bool Input::SetActionBinding(std::string name,
     return true;
 }
 
+bool Input::RenameActionBinding(std::string_view oldName, std::string newName) {
+    if (newName.empty() || newName.size() > 64u ||
+        newName.find('\0') != std::string::npos) {
+        return false;
+    }
+    const auto source = std::ranges::find_if(
+        state_->actionBindings,
+        [oldName](const auto& action) { return action.first == oldName; });
+    if (source == state_->actionBindings.end()) {
+        return false;
+    }
+    if (source->first == newName) {
+        return true;
+    }
+    const auto duplicate = std::ranges::find_if(
+        state_->actionBindings,
+        [&newName](const auto& action) { return action.first == newName; });
+    if (duplicate != state_->actionBindings.end()) {
+        return false;
+    }
+    source->first = std::move(newName);
+    return true;
+}
+
 bool Input::RemoveActionBinding(std::string_view name) {
     const auto found = std::ranges::find_if(
         state_->actionBindings,

@@ -1440,6 +1440,13 @@ void EditorScene::DrawProjectSettingsWindow() {
         inputSettingsDirty_ = true;
         status_ = "Reset Input Actions to defaults.";
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Add Action")) {
+        inputActionNameBuffer_.fill('\0');
+        newInputActionType_ = InputActionType::Button;
+        showCreateInputActionDialog_ = true;
+        focusInputActionNameInput_ = true;
+    }
     if (inputSettingsDirty_) {
         ImGui::SameLine();
         ImGui::TextColored({1.0f, 0.75f, 0.25f, 1.0f}, "Unsaved changes");
@@ -1512,6 +1519,21 @@ void EditorScene::DrawProjectSettingsWindow() {
             ImGui::PushID(name.c_str());
             ImGui::SeparatorText(name.c_str());
             bool changed = false;
+            const char* typePreview =
+                binding.type == InputActionType::Axis ? "Axis" : "Button";
+            if (ImGui::BeginCombo("Type", typePreview)) {
+                if (ImGui::Selectable("Button",
+                                      binding.type == InputActionType::Button)) {
+                    binding.type = InputActionType::Button;
+                    changed = true;
+                }
+                if (ImGui::Selectable("Axis",
+                                      binding.type == InputActionType::Axis)) {
+                    binding.type = InputActionType::Axis;
+                    changed = true;
+                }
+                ImGui::EndCombo();
+            }
             const bool axisAction = binding.type == InputActionType::Axis;
             if (axisAction) {
                 changed |= drawKeyCombo("Negative Key", binding.negativeKey);
@@ -1527,10 +1549,135 @@ void EditorScene::DrawProjectSettingsWindow() {
                 inputSettingsDirty_ = true;
                 status_ = "Modified Input Action: " + name;
             }
+            if (ImGui::SmallButton("Rename")) {
+                pendingInputActionName_ = name;
+                inputActionNameBuffer_.fill('\0');
+                strncpy_s(inputActionNameBuffer_.data(),
+                          inputActionNameBuffer_.size(), name.c_str(), _TRUNCATE);
+                showRenameInputActionDialog_ = true;
+                focusInputActionNameInput_ = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove")) {
+                pendingInputActionName_ = name;
+                showDeleteInputActionDialog_ = true;
+            }
             ImGui::PopID();
         }
     }
     ImGui::EndChild();
+
+    if (showCreateInputActionDialog_) {
+        ImGui::OpenPopup("Create Input Action");
+        showCreateInputActionDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Create Input Action", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (focusInputActionNameInput_) {
+            ImGui::SetKeyboardFocusHere();
+            focusInputActionNameInput_ = false;
+        }
+        ImGui::SetNextItemWidth(300.0f);
+        const bool submitted = ImGui::InputText(
+            "Name", inputActionNameBuffer_.data(), inputActionNameBuffer_.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue);
+        const char* newTypePreview =
+            newInputActionType_ == InputActionType::Axis ? "Axis" : "Button";
+        ImGui::SetNextItemWidth(300.0f);
+        if (ImGui::BeginCombo("Type", newTypePreview)) {
+            if (ImGui::Selectable(
+                    "Button", newInputActionType_ == InputActionType::Button)) {
+                newInputActionType_ = InputActionType::Button;
+            }
+            if (ImGui::Selectable(
+                    "Axis", newInputActionType_ == InputActionType::Axis)) {
+                newInputActionType_ = InputActionType::Axis;
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("Names must be unique and at most 64 characters.");
+        if (submitted || ImGui::Button("Create", {100.0f, 0.0f})) {
+            InputActionBinding binding{};
+            binding.type = newInputActionType_;
+            const std::string name(inputActionNameBuffer_.data());
+            if (input->GetActionBinding(name) != nullptr) {
+                status_ = "Error: Input Action already exists: " + name;
+            } else if (input->SetActionBinding(name, binding)) {
+                inputSettingsDirty_ = true;
+                status_ = "Created Input Action: " + name;
+                ImGui::CloseCurrentPopup();
+            } else {
+                status_ = "Error: Invalid Input Action name.";
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {100.0f, 0.0f})) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showRenameInputActionDialog_) {
+        ImGui::OpenPopup("Rename Input Action");
+        showRenameInputActionDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Rename Input Action", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextDisabled("Current name: %s",
+                            pendingInputActionName_.c_str());
+        if (focusInputActionNameInput_) {
+            ImGui::SetKeyboardFocusHere();
+            focusInputActionNameInput_ = false;
+        }
+        ImGui::SetNextItemWidth(300.0f);
+        const bool submitted = ImGui::InputText(
+            "New Name", inputActionNameBuffer_.data(),
+            inputActionNameBuffer_.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (submitted || ImGui::Button("Rename", {100.0f, 0.0f})) {
+            const std::string newName(inputActionNameBuffer_.data());
+            if (input->RenameActionBinding(pendingInputActionName_, newName)) {
+                status_ = "Renamed Input Action: " + pendingInputActionName_ +
+                          " -> " + newName;
+                pendingInputActionName_.clear();
+                inputSettingsDirty_ = true;
+                ImGui::CloseCurrentPopup();
+            } else {
+                status_ =
+                    "Error: Input Action name is invalid or already exists.";
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {100.0f, 0.0f})) {
+            pendingInputActionName_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (showDeleteInputActionDialog_) {
+        ImGui::OpenPopup("Remove Input Action");
+        showDeleteInputActionDialog_ = false;
+    }
+    if (ImGui::BeginPopupModal("Remove Input Action", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Remove '%s'?", pendingInputActionName_.c_str());
+        ImGui::TextDisabled("The change is not permanent until Save is pressed.");
+        if (ImGui::Button("Remove", {100.0f, 0.0f})) {
+            const std::string removedName = pendingInputActionName_;
+            if (input->RemoveActionBinding(removedName)) {
+                inputSettingsDirty_ = true;
+                status_ = "Removed Input Action: " + removedName;
+            }
+            pendingInputActionName_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {100.0f, 0.0f})) {
+            pendingInputActionName_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
     ImGui::EndDisabled();
     ImGui::End();
 }
