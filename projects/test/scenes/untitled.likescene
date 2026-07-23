@@ -87,7 +87,7 @@
           "enabled": true,
           "model": "asset://BrainStem.glb",
           "primitive": 0,
-          "source": "Primitive"
+          "source": "Model"
         },
         "Scripts": [
           {

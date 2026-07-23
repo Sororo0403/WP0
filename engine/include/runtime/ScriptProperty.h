@@ -13,6 +13,7 @@ enum class ScriptPropertyType : uint32_t {
     Boolean = 2,
     Integer = 3,
     Vector3 = 4,
+    String = 5,
 };
 
 struct ScriptVector3 {
@@ -32,6 +33,7 @@ struct ScriptPropertyDescriptor {
     int32_t minimumInteger = (std::numeric_limits<int32_t>::min)();
     int32_t maximumInteger = (std::numeric_limits<int32_t>::max)();
     ScriptVector3 defaultVector3{};
+    const char* defaultString = nullptr;
 };
 
 struct ScriptPropertyValueView {
@@ -42,6 +44,7 @@ struct ScriptPropertyValueView {
     bool booleanValue = false;
     int32_t integerValue = 0;
     ScriptVector3 vector3Value{};
+    const char* stringValue = nullptr;
 };
 
 [[nodiscard]] inline const ScriptPropertyValueView* FindScriptProperty(

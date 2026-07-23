@@ -95,9 +95,9 @@ private:
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
-                         ScriptVector3& offset)
+                         ScriptVector3& offset, std::string& state)
         : speed_(speed), target_(target), enabled_(enabled), count_(count),
-          offset_(offset) {}
+          offset_(offset), state_(state) {}
 
     void OnConfigure(const ScriptPropertyValueView* properties, size_t count) override {
         if (const ScriptPropertyValueView* speed = FindScriptProperty(
@@ -120,6 +120,10 @@ public:
                 properties, count, "Offset", ScriptPropertyType::Vector3)) {
             offset_ = offset->vector3Value;
         }
+        if (const ScriptPropertyValueView* state = FindScriptProperty(
+                properties, count, "State", ScriptPropertyType::String)) {
+            state_ = state->stringValue != nullptr ? state->stringValue : "";
+        }
     }
 
 private:
@@ -128,6 +132,7 @@ private:
     bool& enabled_;
     int32_t& count_;
     ScriptVector3& offset_;
+    std::string& state_;
 };
 
 bool Check(bool condition, const char* message) {
@@ -379,6 +384,7 @@ int main() {
     bool configuredBoolean = false;
     int32_t configuredInteger = 0;
     ScriptVector3 configuredVector{};
+    std::string configuredString;
     const EntityId expectedConfiguredTarget = EntityId::New();
     std::vector<ScriptPropertyDefinition> configurableDefinitions = {
         {"Speed", ScriptPropertyType::Float, 2.5f, 0.0f, 20.0f},
@@ -401,12 +407,17 @@ int main() {
     vectorDefinition.type = ScriptPropertyType::Vector3;
     vectorDefinition.defaultVector3 = {1.0f, 2.0f, 3.0f};
     configurableDefinitions.push_back(vectorDefinition);
+    ScriptPropertyDefinition stringDefinition{};
+    stringDefinition.name = "State";
+    stringDefinition.type = ScriptPropertyType::String;
+    stringDefinition.defaultString = "Idle";
+    configurableDefinitions.push_back(stringDefinition);
     if (!Check(behaviorRegistry.Register(
                    "Configurable",
                    [&] {
                        return std::make_unique<ConfigurableBehavior>(configuredSpeed,
                             configuredTarget, configuredBoolean, configuredInteger,
-                            configuredVector);
+                            configuredVector, configuredString);
                    },
                    {}, "", std::move(configurableDefinitions)),
                "Script property metadata could not be registered.")) {
@@ -432,18 +443,24 @@ int main() {
     vectorValue.type = ScriptPropertyType::Vector3;
     vectorValue.vector3Value = {4.0f, 5.0f, 6.0f};
     configurableComponent.properties.push_back(vectorValue);
+    ScriptPropertyValue stringValue{};
+    stringValue.name = "State";
+    stringValue.type = ScriptPropertyType::String;
+    stringValue.stringValue = "Run";
+    configurableComponent.properties.push_back(stringValue);
     std::unique_ptr<Behavior> configurableBehavior =
         behaviorRegistry.Create("Configurable");
     const std::vector<ScriptPropertyDefinition>* configurableProperties =
         behaviorRegistry.Properties("Configurable");
     if (!Check(configurableBehavior && configurableProperties != nullptr &&
-                   configurableProperties->size() == 5u &&
+                   configurableProperties->size() == 6u &&
                    behaviorRegistry.Configure("Configurable", configurableComponent,
                                               *configurableBehavior) &&
                    configuredSpeed == 7.5f &&
                    configuredTarget == expectedConfiguredTarget && configuredBoolean &&
                    configuredInteger == 7 && configuredVector.x == 4.0f &&
-                   configuredVector.y == 5.0f && configuredVector.z == 6.0f,
+                   configuredVector.y == 5.0f && configuredVector.z == 6.0f &&
+                   configuredString == "Run",
                "Script property values were not configured on the Behavior.")) {
         return 147;
     }
@@ -695,6 +712,11 @@ int main() {
     serializedVector.type = ScriptPropertyType::Vector3;
     serializedVector.vector3Value = {4.0f, 5.0f, 6.0f};
     childEntity->scripts[0].properties.push_back(serializedVector);
+    ScriptPropertyValue serializedString{};
+    serializedString.name = "Animation";
+    serializedString.type = ScriptPropertyType::String;
+    serializedString.stringValue = "Run";
+    childEntity->scripts[0].properties.push_back(serializedString);
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -854,6 +876,8 @@ int main() {
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Lives") : nullptr;
     const ScriptPropertyValue* restoredVector = hasRestoredScript
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Offset") : nullptr;
+    const ScriptPropertyValue* restoredString = hasRestoredScript
+        ? FindStoredScriptProperty(restoredChild->scripts[0], "Animation") : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restored.Find(root) != nullptr && !restored.Find(root)->active &&
                    restoredChild->active && !restored.IsActiveInHierarchy(child) &&
@@ -916,7 +940,7 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   restoredChild->scripts[0].properties.size() == 5u &&
+                   restoredChild->scripts[0].properties.size() == 6u &&
                    restoredSpeed != nullptr && restoredSpeed->type == ScriptPropertyType::Float &&
                    restoredSpeed->floatValue == 3.5f && restoredTarget != nullptr &&
                    restoredTarget->type == ScriptPropertyType::Entity &&
@@ -928,7 +952,9 @@ int main() {
                    restoredVector->type == ScriptPropertyType::Vector3 &&
                    restoredVector->vector3Value.x == 4.0f &&
                    restoredVector->vector3Value.y == 5.0f &&
-                   restoredVector->vector3Value.z == 6.0f &&
+                   restoredVector->vector3Value.z == 6.0f && restoredString != nullptr &&
+                   restoredString->type == ScriptPropertyType::String &&
+                   restoredString->stringValue == "Run" &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -1049,12 +1075,13 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   duplicateChild->scripts[0].properties.size() == 5u &&
+                   duplicateChild->scripts[0].properties.size() == 6u &&
                    duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
                    duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
                    duplicateChild->scripts[0].properties[2].booleanValue &&
                    duplicateChild->scripts[0].properties[3].integerValue == 7 &&
                    duplicateChild->scripts[0].properties[4].vector3Value.z == 6.0f &&
+                   duplicateChild->scripts[0].properties[5].stringValue == "Run" &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&

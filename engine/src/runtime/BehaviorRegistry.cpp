@@ -33,11 +33,15 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
                 (!std::isfinite(property.defaultVector3.x) ||
                  !std::isfinite(property.defaultVector3.y) ||
                  !std::isfinite(property.defaultVector3.z));
+            const bool invalidString =
+                property.type == ScriptPropertyType::String &&
+                (property.defaultString.size() > 1024u ||
+                 property.defaultString.find('\0') != std::string::npos);
             return property.name.empty() || property.name.size() > 128u ||
                    property.name.find('\0') != std::string::npos || duplicate ||
                    property.type < ScriptPropertyType::Float ||
-                   property.type > ScriptPropertyType::Vector3 || invalidFloat ||
-                   invalidInteger || invalidVector3;
+                   property.type > ScriptPropertyType::String || invalidFloat ||
+                   invalidInteger || invalidVector3 || invalidString;
         });
     if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
         !factory || sourceAsset.size() > 1024u ||
@@ -111,6 +115,7 @@ bool BehaviorRegistry::Configure(std::string_view type,
         value.booleanValue = definition.defaultBoolean;
         value.integerValue = definition.defaultInteger;
         value.vector3Value = definition.defaultVector3;
+        value.stringValue = definition.defaultString.c_str();
         const auto stored = std::ranges::find(component.properties, definition.name,
                                               &ScriptPropertyValue::name);
         if (stored != component.properties.end() && stored->type == definition.type) {
@@ -119,6 +124,7 @@ bool BehaviorRegistry::Configure(std::string_view type,
             value.booleanValue = stored->booleanValue;
             value.integerValue = stored->integerValue;
             value.vector3Value = stored->vector3Value;
+            value.stringValue = stored->stringValue.c_str();
         }
         values.push_back(value);
     }

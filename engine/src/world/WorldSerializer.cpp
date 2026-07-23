@@ -237,6 +237,10 @@ std::string WorldSerializer::Serialize(const World& world) {
                                 property.vector3Value.z,
                             };
                             break;
+                        case ScriptPropertyType::String:
+                            encodedProperty["type"] = "String";
+                            encodedProperty["value"] = property.stringValue;
+                            break;
                         }
                         properties[property.name] = std::move(encodedProperty);
                     }
@@ -744,6 +748,18 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                         }
                         property.type = ScriptPropertyType::Vector3;
                         property.vector3Value = {value.x, value.y, value.z};
+                    } else if (propertyType == "String") {
+                        if (!encodedProperty["value"].is_string()) {
+                            SetError(error, "Scene Script String property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::String;
+                        property.stringValue = encodedProperty["value"].get<std::string>();
+                        if (property.stringValue.size() > 1024u ||
+                            property.stringValue.find('\0') != std::string::npos) {
+                            SetError(error, "Scene Script String property is invalid.");
+                            return false;
+                        }
                     } else {
                         SetError(error, "Scene Script property type is invalid.");
                         return false;

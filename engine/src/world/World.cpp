@@ -611,13 +611,16 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                     property.name.find('\0') != std::string::npos ||
                     !propertyNames.insert(property.name).second ||
                     property.type < ScriptPropertyType::Float ||
-                    property.type > ScriptPropertyType::Vector3 ||
+                    property.type > ScriptPropertyType::String ||
                     (property.type == ScriptPropertyType::Float &&
                      !std::isfinite(property.floatValue)) ||
                     (property.type == ScriptPropertyType::Vector3 &&
                      (!std::isfinite(property.vector3Value.x) ||
                       !std::isfinite(property.vector3Value.y) ||
-                      !std::isfinite(property.vector3Value.z)))) {
+                      !std::isfinite(property.vector3Value.z))) ||
+                    (property.type == ScriptPropertyType::String &&
+                     (property.stringValue.size() > 1024u ||
+                      property.stringValue.find('\0') != std::string::npos))) {
                     SetError(error, "Scene contains an invalid Script property.");
                     return false;
                 }

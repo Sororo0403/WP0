@@ -172,6 +172,10 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                 (!std::isfinite(property.defaultVector3.x) ||
                  !std::isfinite(property.defaultVector3.y) ||
                  !std::isfinite(property.defaultVector3.z));
+            const bool invalidString =
+                property.type == ScriptPropertyType::String &&
+                property.defaultString != nullptr &&
+                std::char_traits<char>::length(property.defaultString) > 1024u;
             bool duplicate = false;
             for (size_t previous = 0u; previous < propertyIndex; ++previous) {
                 duplicate = duplicate ||
@@ -179,8 +183,8 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
             }
             if (propertyName.empty() || propertyName.size() > 128u || duplicate ||
                 property.type < ScriptPropertyType::Float ||
-                property.type > ScriptPropertyType::Vector3 || invalidFloat ||
-                invalidInteger || invalidVector3) {
+                property.type > ScriptPropertyType::String || invalidFloat ||
+                invalidInteger || invalidVector3 || invalidString) {
                 FreeLibrary(module);
                 error = "Project Script module contains an invalid property.";
                 return false;
@@ -203,7 +207,9 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                                   property.minimumFloat, property.maximumFloat,
                                   property.defaultBoolean, property.defaultInteger,
                                   property.minimumInteger, property.maximumInteger,
-                                  property.defaultVector3});
+                                  property.defaultVector3,
+                                  property.defaultString != nullptr ? property.defaultString
+                                                                    : ""});
         }
         if (!registry.Register(
                 type,

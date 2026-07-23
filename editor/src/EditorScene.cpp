@@ -3750,6 +3750,36 @@ void EditorScene::DrawInspectorPanel() {
                         if (ImGui::IsItemDeactivatedAfterEdit()) {
                             CommitHistoryEdit();
                         }
+                    } else if (definition.type == ScriptPropertyType::String) {
+                        const std::string value =
+                            stored != behavior.properties.end() &&
+                                    stored->type == definition.type
+                                ? stored->stringValue
+                                : definition.defaultString;
+                        std::array<char, 1025> buffer{};
+                        std::memcpy(buffer.data(), value.data(),
+                                    (std::min)(value.size(), buffer.size() - 1u));
+                        if (ImGui::InputText(definition.name.c_str(), buffer.data(),
+                                             buffer.size())) {
+                            if (stored == behavior.properties.end()) {
+                                behavior.properties.push_back({});
+                                stored = std::prev(behavior.properties.end());
+                            }
+                            if (stored->type != definition.type) {
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                            }
+                            stored->stringValue = buffer.data();
+                            RefreshDirty();
+                            status_ = "Modified Script property.";
+                        }
+                        if (ImGui::IsItemActivated()) {
+                            BeginHistoryEdit("Modify Script Property");
+                        }
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            CommitHistoryEdit();
+                        }
                     } else if (definition.type == ScriptPropertyType::Entity) {
                         const EntityId referenced =
                             stored != behavior.properties.end() &&

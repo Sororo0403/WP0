@@ -165,6 +165,7 @@ struct ScriptPropertyValue {
     bool booleanValue = false;
     int32_t integerValue = 0;
     ScriptVector3 vector3Value{};
+    std::string stringValue;
 };
 
 struct BehaviorComponent {
