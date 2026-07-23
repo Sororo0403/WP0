@@ -10,6 +10,7 @@
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
 #include "graphics/Lighting.h"
+#include "input/Input.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
 #include "runtime/TriggerSystem.h"
@@ -249,6 +250,38 @@ int main() {
                    unlitScene.spotLight.colorIntensity.w == 0.0f,
                "Default SceneLighting is not unlit.")) {
         return 141;
+    }
+    Input actionInput;
+    const InputActionBinding* moveHorizontal =
+        actionInput.GetActionBinding("MoveHorizontal");
+    const InputActionBinding* jump = actionInput.GetActionBinding("Jump");
+    if (!Check(actionInput.GetActionNames() ==
+                       std::vector<std::string>(
+                           {"MoveHorizontal", "MoveVertical", "Sprint", "Jump"}) &&
+                   moveHorizontal != nullptr &&
+                   moveHorizontal->negativeKey == DIK_A &&
+                   moveHorizontal->positiveKeys[0] == DIK_D &&
+                   moveHorizontal->gamepadAxis ==
+                       InputActionAxisSource::GamepadLeftX &&
+                   jump != nullptr && jump->positiveKeys[0] == DIK_SPACE &&
+                   jump->gamepadButton == XINPUT_GAMEPAD_A &&
+                   actionInput.GetActionAxis("Missing") == 0.0f &&
+                   !actionInput.IsActionPressed("Missing"),
+               "Default Input Action bindings are invalid.")) {
+        return 183;
+    }
+    InputActionBinding customAction{};
+    customAction.positiveKeys[0] = DIK_E;
+    if (!Check(actionInput.SetActionBinding("Interact", customAction) &&
+                   actionInput.GetActionBinding("Interact") != nullptr &&
+                   actionInput.RemoveActionBinding("Interact") &&
+                   actionInput.GetActionBinding("Interact") == nullptr &&
+                   !actionInput.RemoveActionBinding("Interact") &&
+                   !actionInput.SetActionBinding("", customAction) &&
+                   !actionInput.SetActionBinding(
+                       std::string(65u, 'A'), customAction),
+               "Input Action binding registration is invalid.")) {
+        return 184;
     }
     if (!Check(ScriptAssets::IsScriptFile("Player.cpp") &&
                    ScriptAssets::IsScriptSourceFile("Player.cpp") &&

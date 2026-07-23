@@ -4,10 +4,31 @@
 
 #include <Windows.h>
 #include <Xinput.h>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <dinput.h>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
+
+enum class InputActionAxisSource : uint8_t {
+    None = 0,
+    GamepadLeftX = 1,
+    GamepadLeftY = 2,
+    GamepadRightX = 3,
+    GamepadRightY = 4,
+    GamepadLeftTrigger = 5,
+    GamepadRightTrigger = 6,
+};
+
+struct InputActionBinding {
+    int negativeKey = -1;
+    std::array<int, 2> positiveKeys{-1, -1};
+    WORD gamepadButton = 0;
+    InputActionAxisSource gamepadAxis = InputActionAxisSource::None;
+};
 
 /// <summary>
 /// キーボードとマウスの入力状態を管理する
@@ -189,6 +210,52 @@ public:
     /// </summary>
     float GetGamepadRightTrigger() const;
 
+    /// <summary>
+    /// 名前付きActionのBindingを登録または置換する
+    /// </summary>
+    bool SetActionBinding(std::string name, const InputActionBinding& binding);
+
+    /// <summary>
+    /// 名前付きActionのBindingを削除する
+    /// </summary>
+    bool RemoveActionBinding(std::string_view name);
+
+    /// <summary>
+    /// LikeEngine標準のゲーム操作Bindingへ戻す
+    /// </summary>
+    void ResetDefaultActionBindings();
+
+    /// <summary>
+    /// 登録済みAction名を取得する
+    /// </summary>
+    [[nodiscard]] std::vector<std::string> GetActionNames() const;
+
+    /// <summary>
+    /// ActionのBindingを取得する
+    /// </summary>
+    [[nodiscard]] const InputActionBinding* GetActionBinding(
+        std::string_view name) const;
+
+    /// <summary>
+    /// Axis Actionを-1から1の範囲で取得する
+    /// </summary>
+    [[nodiscard]] float GetActionAxis(std::string_view name) const;
+
+    /// <summary>
+    /// Button Actionが押されているか取得する
+    /// </summary>
+    [[nodiscard]] bool IsActionPressed(std::string_view name) const;
+
+    /// <summary>
+    /// Button Actionがこのフレームで押されたか取得する
+    /// </summary>
+    [[nodiscard]] bool IsActionTriggered(std::string_view name) const;
+
+    /// <summary>
+    /// Button Actionがこのフレームで離されたか取得する
+    /// </summary>
+    [[nodiscard]] bool IsActionReleased(std::string_view name) const;
+
 private:
     /// <summary>
     /// DirectInputからキーボードの現在状態を読み込む
@@ -205,6 +272,10 @@ private:
     /// </summary>
     void UpdateGamepad();
     void ClearInputState(bool clearPrevious);
+    [[nodiscard]] float GetActionGamepadAxis(
+        InputActionAxisSource source) const;
+    [[nodiscard]] bool EvaluateActionButton(
+        const InputActionBinding& binding, bool previous) const;
 
     struct InputFrame;
     struct State;

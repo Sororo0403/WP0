@@ -12,6 +12,8 @@
 #include <string>
 #include <utility>
 
+#pragma comment(lib, "dinput8.lib")
+#pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "xinput.lib")
 
 namespace {
@@ -56,10 +58,163 @@ std::wstring GetDefaultReplayDirectory() {
 
 } // namespace
 
-Input::Input() : state_(std::make_unique<State>()) {}
+Input::Input() : state_(std::make_unique<State>()) {
+    ResetDefaultActionBindings();
+}
 
 Input::~Input() {
     FinishRecording();
+}
+
+bool Input::SetActionBinding(std::string name,
+                             const InputActionBinding& binding) {
+    const auto validKey = [](int key) { return key == -1 || (key >= 0 && key < 256); };
+    if (name.empty() || name.size() > 64u ||
+        name.find('\0') != std::string::npos || !validKey(binding.negativeKey) ||
+        !std::ranges::all_of(binding.positiveKeys, validKey) ||
+        binding.gamepadAxis < InputActionAxisSource::None ||
+        binding.gamepadAxis > InputActionAxisSource::GamepadRightTrigger) {
+        return false;
+    }
+    const auto found = std::ranges::find_if(
+        state_->actionBindings,
+        [&name](const auto& action) { return action.first == name; });
+    if (found != state_->actionBindings.end()) {
+        found->second = binding;
+    } else {
+        try {
+            state_->actionBindings.emplace_back(std::move(name), binding);
+        } catch (const std::exception&) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Input::RemoveActionBinding(std::string_view name) {
+    const auto found = std::ranges::find_if(
+        state_->actionBindings,
+        [name](const auto& action) { return action.first == name; });
+    if (found == state_->actionBindings.end()) {
+        return false;
+    }
+    state_->actionBindings.erase(found);
+    return true;
+}
+
+void Input::ResetDefaultActionBindings() {
+    state_->actionBindings.clear();
+    (void)SetActionBinding(
+        "MoveHorizontal",
+        {DIK_A, {DIK_D, -1}, 0, InputActionAxisSource::GamepadLeftX});
+    (void)SetActionBinding(
+        "MoveVertical",
+        {DIK_S, {DIK_W, -1}, 0, InputActionAxisSource::GamepadLeftY});
+    (void)SetActionBinding(
+        "Sprint",
+        {-1, {DIK_LSHIFT, DIK_RSHIFT}, XINPUT_GAMEPAD_LEFT_THUMB,
+         InputActionAxisSource::None});
+    (void)SetActionBinding(
+        "Jump",
+        {-1, {DIK_SPACE, -1}, XINPUT_GAMEPAD_A,
+         InputActionAxisSource::None});
+}
+
+std::vector<std::string> Input::GetActionNames() const {
+    std::vector<std::string> names;
+    try {
+        names.reserve(state_->actionBindings.size());
+        for (const auto& [name, binding] : state_->actionBindings) {
+            (void)binding;
+            names.push_back(name);
+        }
+    } catch (const std::exception&) {
+        names.clear();
+    }
+    return names;
+}
+
+const InputActionBinding* Input::GetActionBinding(std::string_view name) const {
+    const auto found = std::ranges::find_if(
+        state_->actionBindings,
+        [name](const auto& action) { return action.first == name; });
+    return found == state_->actionBindings.end() ? nullptr : &found->second;
+}
+
+float Input::GetActionGamepadAxis(InputActionAxisSource source) const {
+    switch (source) {
+    case InputActionAxisSource::None:
+        return 0.0f;
+    case InputActionAxisSource::GamepadLeftX:
+        return GetGamepadLeftStickX();
+    case InputActionAxisSource::GamepadLeftY:
+        return GetGamepadLeftStickY();
+    case InputActionAxisSource::GamepadRightX:
+        return GetGamepadRightStickX();
+    case InputActionAxisSource::GamepadRightY:
+        return GetGamepadRightStickY();
+    case InputActionAxisSource::GamepadLeftTrigger:
+        return GetGamepadLeftTrigger();
+    case InputActionAxisSource::GamepadRightTrigger:
+        return GetGamepadRightTrigger();
+    }
+    return 0.0f;
+}
+
+float Input::GetActionAxis(std::string_view name) const {
+    const InputActionBinding* binding = GetActionBinding(name);
+    if (binding == nullptr) {
+        return 0.0f;
+    }
+    float value = GetActionGamepadAxis(binding->gamepadAxis);
+    if (binding->negativeKey >= 0 && IsKeyPress(binding->negativeKey)) {
+        value -= 1.0f;
+    }
+    for (int key : binding->positiveKeys) {
+        if (key >= 0 && IsKeyPress(key)) {
+            value += 1.0f;
+        }
+    }
+    return std::clamp(value, -1.0f, 1.0f);
+}
+
+bool Input::EvaluateActionButton(const InputActionBinding& binding,
+                                 bool previous) const {
+    if (state_->keyboardQueryEnabled) {
+        const auto& keys = previous ? state_->keyPrev : state_->keyNow;
+        for (int key : binding.positiveKeys) {
+            if (key >= 0 && std::cmp_less(key, keys.size()) &&
+                (keys[static_cast<size_t>(key)] & kPressMask) != 0) {
+                return true;
+            }
+        }
+    }
+    const bool connected = previous ? state_->gamepadPrevConnected
+                                    : state_->gamepadConnected;
+    if (state_->gamepadQueryEnabled && connected &&
+        binding.gamepadButton != 0) {
+        const XINPUT_STATE& gamepad =
+            previous ? state_->gamepadPrevState : state_->gamepadState;
+        return (gamepad.Gamepad.wButtons & binding.gamepadButton) != 0;
+    }
+    return false;
+}
+
+bool Input::IsActionPressed(std::string_view name) const {
+    const InputActionBinding* binding = GetActionBinding(name);
+    return binding != nullptr && EvaluateActionButton(*binding, false);
+}
+
+bool Input::IsActionTriggered(std::string_view name) const {
+    const InputActionBinding* binding = GetActionBinding(name);
+    return binding != nullptr && EvaluateActionButton(*binding, false) &&
+           !EvaluateActionButton(*binding, true);
+}
+
+bool Input::IsActionReleased(std::string_view name) const {
+    const InputActionBinding* binding = GetActionBinding(name);
+    return binding != nullptr && !EvaluateActionButton(*binding, false) &&
+           EvaluateActionButton(*binding, true);
 }
 
 Input::ReplayMode Input::GetReplayMode() const {

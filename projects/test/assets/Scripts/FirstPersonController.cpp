@@ -162,20 +162,8 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
             input_->GetGamepadRightStickX() * gamepadLookSpeed_ * deltaTime,
         360.0f);
 
-    float forwardInput = input_->GetGamepadLeftStickY();
-    float rightInput = input_->GetGamepadLeftStickX();
-    if (input_->IsKeyPress(DIK_W)) {
-        forwardInput += 1.0f;
-    }
-    if (input_->IsKeyPress(DIK_S)) {
-        forwardInput -= 1.0f;
-    }
-    if (input_->IsKeyPress(DIK_D)) {
-        rightInput += 1.0f;
-    }
-    if (input_->IsKeyPress(DIK_A)) {
-        rightInput -= 1.0f;
-    }
+    float forwardInput = input_->GetActionAxis("MoveVertical");
+    float rightInput = input_->GetActionAxis("MoveHorizontal");
     const float inputLength =
         std::sqrt(forwardInput * forwardInput + rightInput * rightInput);
     forwardInput /= (std::max)(1.0f, inputLength);
@@ -184,12 +172,10 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     const float yaw = DirectX::XMConvertToRadians(transform.rotationDegrees.y);
     const float sinYaw = std::sin(yaw);
     const float cosYaw = std::cos(yaw);
-    const bool sprinting =
-        input_->IsKeyPress(DIK_LSHIFT) || input_->IsKeyPress(DIK_RSHIFT);
+    const bool sprinting = input_->IsActionPressed("Sprint");
     const float speed = sprinting ? sprintSpeed_ : moveSpeed_;
     const float distance = speed * deltaTime;
-    const bool jumpRequested = input_->IsKeyTrigger(DIK_SPACE) ||
-                               input_->IsGamepadButtonTrigger(XINPUT_GAMEPAD_A);
+    const bool jumpRequested = input_->IsActionTriggered("Jump");
     if (grounded_ && jumpRequested && gravity_ < 0.0f && jumpHeight_ > 0.0f) {
         verticalVelocity_ = std::sqrt(jumpHeight_ * -2.0f * gravity_);
         grounded_ = false;

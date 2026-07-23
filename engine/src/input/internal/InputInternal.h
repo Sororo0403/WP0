@@ -3,6 +3,8 @@
 #include "input/Input.h"
 
 #include <array>
+#include <string>
+#include <utility>
 #include <vector>
 #include <wrl.h>
 
@@ -43,6 +45,7 @@ struct Input::State {
     bool keyboardQueryEnabled = true;
     bool mouseQueryEnabled = true;
     bool gamepadQueryEnabled = true;
+    std::vector<std::pair<std::string, InputActionBinding>> actionBindings;
 
     Input::ReplayMode replayMode = Input::ReplayMode::Live;
     std::wstring replayPath;
