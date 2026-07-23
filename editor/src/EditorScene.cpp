@@ -925,6 +925,9 @@ bool EditorScene::BuildPlayerPackage() {
     }
     status_ = "Built Player package: " +
               request.destination.generic_string();
+    if (!error.empty()) {
+        status_ += " Warning: " + error;
+    }
     return true;
 }
 

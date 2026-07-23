@@ -1840,9 +1840,12 @@ int main() {
     const bool packageBuilt =
         !projectFilesystemError &&
         PlayerPackageBuilder::Build(packageRequest, packageError);
+    const std::filesystem::path packageMarker =
+        packageDestination / L".likeplayerpackage";
     if (!Check(packageBuilt &&
                    std::filesystem::is_regular_file(packageDestination /
                                                     L"Game.exe") &&
+                   std::filesystem::is_regular_file(packageMarker) &&
                    std::filesystem::is_regular_file(packageDestination /
                                                     L"runtime.dll") &&
                    std::filesystem::is_regular_file(
@@ -1857,13 +1860,55 @@ int main() {
                    std::filesystem::is_regular_file(
                        packageDestination / L"project" / L"library" /
                        L"ScriptAssemblies" / L"x64" / L"Debug" /
-                       L"ProjectScripts.dll") &&
-                   !PlayerPackageBuilder::Build(packageRequest, packageError),
+                       L"ProjectScripts.dll"),
                packageError.empty()
                    ? "Player package was not built safely."
                    : packageError.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 188;
+    }
+    {
+        std::ofstream(packageRuntime / L"runtime.dll", std::ios::binary |
+                                                      std::ios::trunc)
+            << "updated-runtime";
+    }
+    std::filesystem::remove(packageMarker, projectFilesystemError);
+    projectFilesystemError.clear();
+    packageError.clear();
+    const bool packageRebuilt =
+        PlayerPackageBuilder::Build(packageRequest, packageError);
+    std::ifstream rebuiltRuntime(packageDestination / L"runtime.dll",
+                                 std::ios::binary);
+    const std::string rebuiltRuntimeContents{
+        std::istreambuf_iterator<char>(rebuiltRuntime),
+        std::istreambuf_iterator<char>()};
+    rebuiltRuntime.close();
+    if (!Check(packageRebuilt && rebuiltRuntimeContents == "updated-runtime" &&
+                   std::filesystem::is_regular_file(packageMarker) &&
+                   !std::filesystem::exists(packageDestination.wstring() +
+                                            L".building") &&
+                   !std::filesystem::exists(packageDestination.wstring() +
+                                            L".previous"),
+               packageError.empty()
+                   ? "Player package was not rebuilt safely."
+                   : packageError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 194;
+    }
+    const std::filesystem::path unrelatedDestination =
+        projectDirectory / L"build" / L"unrelated";
+    std::filesystem::create_directories(unrelatedDestination,
+                                        projectFilesystemError);
+    std::ofstream(unrelatedDestination / L"user-data.txt") << "keep";
+    PlayerPackageRequest unrelatedRequest = packageRequest;
+    unrelatedRequest.destination = unrelatedDestination;
+    packageError.clear();
+    if (!Check(!PlayerPackageBuilder::Build(unrelatedRequest, packageError) &&
+                   std::filesystem::is_regular_file(unrelatedDestination /
+                                                    L"user-data.txt"),
+               "An unrelated existing build directory was replaced.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 195;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {
