@@ -1,5 +1,7 @@
 #include "PlayerPackageBuilder.h"
 
+#include <algorithm>
+#include <cwctype>
 #include <fstream>
 #include <system_error>
 
@@ -17,6 +19,51 @@ bool CopyDirectory(const std::filesystem::path& source,
         std::filesystem::copy_options::recursive |
             std::filesystem::copy_options::overwrite_existing,
         error);
+    return !error;
+}
+
+bool IsCppSourceFile(const std::filesystem::path& path) {
+    std::wstring extension = path.extension().wstring();
+    std::ranges::transform(extension, extension.begin(), ::towlower);
+    return extension == L".cpp" || extension == L".h" ||
+           extension == L".hpp";
+}
+
+bool CopyProjectAssets(const std::filesystem::path& source,
+                       const std::filesystem::path& destination,
+                       std::error_code& error) {
+    if (!std::filesystem::is_directory(source, error) || error) {
+        return false;
+    }
+    std::filesystem::create_directories(destination, error);
+    if (error) {
+        return false;
+    }
+    for (std::filesystem::recursive_directory_iterator iterator(source, error),
+         end;
+         iterator != end && !error; iterator.increment(error)) {
+        const std::filesystem::directory_entry& entry = *iterator;
+        const std::filesystem::path relative =
+            std::filesystem::relative(entry.path(), source, error);
+        if (error) {
+            return false;
+        }
+        const std::filesystem::path target = destination / relative;
+        if (entry.is_directory(error)) {
+            std::filesystem::create_directories(target, error);
+        } else if (entry.is_regular_file(error) &&
+                   !IsCppSourceFile(entry.path())) {
+            std::filesystem::create_directories(target.parent_path(), error);
+            if (!error) {
+                std::filesystem::copy_file(
+                    entry.path(), target,
+                    std::filesystem::copy_options::overwrite_existing, error);
+            }
+        }
+        if (error) {
+            return false;
+        }
+    }
     return !error;
 }
 
@@ -137,8 +184,8 @@ bool PlayerPackageBuilder::Build(const PlayerPackageRequest& request,
         request.manifest, packagedProject / request.manifest.filename(),
         std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (filesystemError ||
-        !CopyDirectory(request.assetRoot, packagedProject / L"assets",
-                       filesystemError) ||
+        !CopyProjectAssets(request.assetRoot, packagedProject / L"assets",
+                           filesystemError) ||
         !CopyDirectory(request.sceneRoot, packagedProject / L"scenes",
                        filesystemError)) {
         return fail("Could not copy the project content.");

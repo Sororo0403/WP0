@@ -61,7 +61,9 @@ private:
 
     void DrawMainMenu();
     bool LaunchPlayerPreview();
-    bool BuildPlayerPackage();
+    bool BuildPlayerPackage(std::filesystem::path* destination = nullptr);
+    bool BuildAndRunPlayerPackage();
+    bool LaunchPackagedPlayer(const std::filesystem::path& package);
     void EnterPlayMode();
     void StopPlayMode();
     void TogglePlayPause();

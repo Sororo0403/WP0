@@ -886,7 +886,7 @@ bool EditorScene::LaunchPlayerPreview() {
     return true;
 }
 
-bool EditorScene::BuildPlayerPackage() {
+bool EditorScene::BuildPlayerPackage(std::filesystem::path* destination) {
     if (IsInPlayMode() || dirty_ || playerSettingsDirty_ || physicsSettingsDirty_ ||
         inputSettingsDirty_) {
         status_ = "Save the scene and Project Settings before building.";
@@ -932,12 +932,48 @@ bool EditorScene::BuildPlayerPackage() {
         status_ = "Could not build Player: " + error;
         return false;
     }
+    if (destination != nullptr) {
+        *destination = request.destination;
+    }
     status_ = "Built Player package: " +
               request.destination.generic_string();
     if (!error.empty()) {
         status_ += " Warning: " + error;
     }
     return true;
+}
+
+bool EditorScene::LaunchPackagedPlayer(
+    const std::filesystem::path& package) {
+    const std::filesystem::path executable = package / L"Game.exe";
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(executable, filesystemError) ||
+        filesystemError) {
+        status_ = "Could not run Player: Game.exe was not found in the package.";
+        return false;
+    }
+    std::wstring command = L"\"" + executable.wstring() + L"\"";
+    std::vector<wchar_t> mutableCommand(command.begin(), command.end());
+    mutableCommand.push_back(L'\0');
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(executable.c_str(), mutableCommand.data(), nullptr,
+                        nullptr, FALSE, 0u, nullptr, package.c_str(), &startup,
+                        &process)) {
+        status_ = "Could not run the packaged Player.";
+        return false;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    status_ = "Built and launched Player package: " +
+              package.generic_string();
+    return true;
+}
+
+bool EditorScene::BuildAndRunPlayerPackage() {
+    std::filesystem::path package;
+    return BuildPlayerPackage(&package) && LaunchPackagedPlayer(package);
 }
 
 void EditorScene::DrawMainMenu() {
@@ -987,6 +1023,11 @@ void EditorScene::DrawMainMenu() {
                             !IsInPlayMode())) {
             BuildPlayerPackage();
         }
+        if (ImGui::MenuItem("Build And Run", "F9", false,
+                            !IsInPlayMode())) {
+            BuildAndRunPlayerPackage();
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Run Project", "F8", false,
                             !IsInPlayMode())) {
             LaunchPlayerPreview();
@@ -5814,6 +5855,10 @@ void EditorScene::HandleEditorShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F8, false)) {
         LaunchPlayerPreview();
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F9, false)) {
+        BuildAndRunPlayerPackage();
         return;
     }
     if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_) {

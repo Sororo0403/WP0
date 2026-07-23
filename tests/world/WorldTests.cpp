@@ -1628,6 +1628,9 @@ int main() {
         std::ofstream scriptHeader(scriptDirectory / L"FingerprintTest.h",
                                    std::ios::trunc);
         scriptHeader << "// first version\n";
+        std::ofstream scriptSource(scriptDirectory / L"FingerprintTest.cpp",
+                                   std::ios::trunc);
+        scriptSource << "// project source must not be packaged\n";
     }
     uint64_t firstScriptFingerprint = 0u;
     uint64_t repeatedScriptFingerprint = 0u;
@@ -1903,6 +1906,12 @@ int main() {
                    std::filesystem::is_regular_file(
                        packageDestination / L"project" / L"settings" /
                        L"player.json") &&
+                   !std::filesystem::exists(
+                       packageDestination / L"project" / L"assets" /
+                       L"Scripts" / L"FingerprintTest.cpp") &&
+                   !std::filesystem::exists(
+                       packageDestination / L"project" / L"assets" /
+                       L"Scripts" / L"FingerprintTest.h") &&
                    std::filesystem::is_regular_file(
                        packageDestination / L"project" / L"scenes" /
                        L"untitled.likescene") &&
