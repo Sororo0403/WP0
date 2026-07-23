@@ -587,6 +587,7 @@ int main() {
     childEntity->audioSource->clipPath = "asset://Audio/test.wav";
     childEntity->audioSource->loop = true;
     childEntity->audioSource->volume = 0.6f;
+    childEntity->audioSource->pitch = 1.25f;
     childEntity->audioSource->spatial = true;
     childEntity->audioSource->minDistance = 2.0f;
     childEntity->audioSource->maxDistance = 30.0f;
@@ -817,6 +818,7 @@ int main() {
                    restoredChild->audioSource->playOnAwake &&
                    restoredChild->audioSource->loop &&
                    restoredChild->audioSource->volume == 0.6f &&
+                   restoredChild->audioSource->pitch == 1.25f &&
                    restoredChild->audioSource->spatial &&
                    restoredChild->audioSource->minDistance == 2.0f &&
                    restoredChild->audioSource->maxDistance == 30.0f &&
@@ -1057,10 +1059,25 @@ int main() {
         return 115;
     }
     const std::string invalidAudioListener =
-        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Audio Listener","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"AudioListener":{"enabled":1}}}]})";
+        R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Bad Audio Listener","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"AudioListener":{"enabled":1}}}]})";
     if (!Check(!WorldSerializer::Deserialize(invalidAudioListener, rejected, &error),
                "Invalid AudioListener data was accepted.")) {
         return 160;
+    }
+    const std::string legacyAudioSource =
+        R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Legacy Audio Source","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"AudioSource":{"enabled":true,"clip":"","playOnAwake":true,"loop":false,"volume":1,"spatial":false,"minDistance":1,"maxDistance":50}}}]})";
+    World legacyAudioSourceWorld;
+    if (!Check(WorldSerializer::Deserialize(legacyAudioSource, legacyAudioSourceWorld, &error) &&
+                   legacyAudioSourceWorld.Entities().front().audioSource &&
+                   legacyAudioSourceWorld.Entities().front().audioSource->pitch == 1.0f,
+               "Legacy AudioSource data did not receive the default Pitch.")) {
+        return 161;
+    }
+    const std::string invalidAudioSourcePitch =
+        R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Bad Audio Source","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"AudioSource":{"enabled":true,"clip":"","playOnAwake":true,"loop":false,"volume":1,"pitch":0,"spatial":false,"minDistance":1,"maxDistance":50}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidAudioSourcePitch, rejected, &error),
+               "Invalid AudioSource Pitch was accepted.")) {
+        return 162;
     }
     const std::string legacyBehavior =
         R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Legacy Behavior","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Behavior":{"enabled":true,"type":"Rotator"}}}]})";

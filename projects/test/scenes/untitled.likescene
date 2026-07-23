@@ -1,7 +1,11 @@
 {
   "entities": [
     {
+      "active": true,
       "components": {
+        "AudioListener": {
+          "enabled": true
+        },
         "Camera": {
           "enabled": true,
           "farClip": 1000.0,
@@ -35,6 +39,7 @@
       "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     },
     {
+      "active": true,
       "components": {
         "CharacterController": {
           "center": [
@@ -114,6 +119,7 @@
       "parent": null
     },
     {
+      "active": true,
       "components": {
         "CharacterController": {
           "center": [
@@ -197,6 +203,7 @@
       "parent": null
     },
     {
+      "active": true,
       "components": {
         "BoxCollider": {
           "center": [
@@ -263,6 +270,7 @@
       "parent": null
     },
     {
+      "active": true,
       "components": {
         "BoxCollider": {
           "center": [
@@ -329,6 +337,7 @@
       "parent": null
     },
     {
+      "active": true,
       "components": {
         "Light": {
           "color": [
@@ -367,6 +376,7 @@
       "parent": null
     },
     {
+      "active": true,
       "components": {
         "Light": {
           "color": [
@@ -403,6 +413,43 @@
       "layer": 0,
       "name": "Light",
       "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
+    },
+    {
+      "active": true,
+      "components": {
+        "AudioSource": {
+          "clip": "asset://決定ボタンを押す1.mp3",
+          "enabled": true,
+          "loop": false,
+          "maxDistance": 50.0,
+          "minDistance": 1.0,
+          "pitch": 0.75,
+          "playOnAwake": true,
+          "spatial": false,
+          "volume": 1.0
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4127623e-3380-ec6b-ccf3-adf406ecb2ac",
+      "layer": 0,
+      "name": "Audio",
+      "parent": null
     }
   ],
   "version": 1

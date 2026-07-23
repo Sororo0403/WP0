@@ -4104,6 +4104,8 @@ void EditorScene::DrawInspectorPanel() {
                 }
             };
             drawAudioFloat("Volume##AudioSource", source.volume, 0.01f, 0.0f, 1.0f);
+            drawAudioFloat("Pitch##AudioSource", source.pitch, 0.01f,
+                           AudioSourceComponent::kMinPitch, AudioSourceComponent::kMaxPitch);
             if (source.spatial) {
                 drawAudioFloat("Min Distance##AudioSource", source.minDistance, 0.05f,
                                0.0f, (std::max)(0.0f, source.maxDistance - 0.01f));
@@ -6875,6 +6877,7 @@ void EditorScene::UpdateRuntimeAudio() {
         }
         source->runtimePlaying = true;
         sound->SetVoiceVolume(runtime.voice, source->volume);
+        sound->SetVoiceFrequencyRatio(runtime.voice, source->pitch);
         if (source->spatial) {
             DirectX::XMFLOAT4X4 matrix{};
             if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {

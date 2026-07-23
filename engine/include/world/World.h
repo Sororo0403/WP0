@@ -102,6 +102,9 @@ struct LightComponent {
 };
 
 struct AudioSourceComponent {
+    static constexpr float kMinPitch = 0.1f;
+    static constexpr float kMaxPitch = 3.0f;
+
     enum class RuntimeCommand : uint8_t {
         None,
         Play,
@@ -113,6 +116,7 @@ struct AudioSourceComponent {
     bool playOnAwake = true;
     bool loop = false;
     float volume = 1.0f;
+    float pitch = 1.0f;
     bool spatial = false;
     float minDistance = 1.0f;
     float maxDistance = 50.0f;

@@ -176,6 +176,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedSource["playOnAwake"] = source.playOnAwake;
             encodedSource["loop"] = source.loop;
             encodedSource["volume"] = source.volume;
+            encodedSource["pitch"] = source.pitch;
             encodedSource["spatial"] = source.spatial;
             encodedSource["minDistance"] = source.minDistance;
             encodedSource["maxDistance"] = source.maxDistance;
@@ -574,7 +575,9 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 !source["clip"].is_string() || !source.contains("playOnAwake") ||
                 !source["playOnAwake"].is_boolean() || !source.contains("loop") ||
                 !source["loop"].is_boolean() || !source.contains("volume") ||
-                !source["volume"].is_number() || !source.contains("spatial") ||
+                !source["volume"].is_number() ||
+                (source.contains("pitch") && !source["pitch"].is_number()) ||
+                !source.contains("spatial") ||
                 !source["spatial"].is_boolean() || !source.contains("minDistance") ||
                 !source["minDistance"].is_number() || !source.contains("maxDistance") ||
                 !source["maxDistance"].is_number()) {
@@ -587,13 +590,17 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             component.playOnAwake = source["playOnAwake"].get<bool>();
             component.loop = source["loop"].get<bool>();
             component.volume = source["volume"].get<float>();
+            component.pitch = source.value("pitch", 1.0f);
             component.spatial = source["spatial"].get<bool>();
             component.minDistance = source["minDistance"].get<float>();
             component.maxDistance = source["maxDistance"].get<float>();
             if (component.clipPath.size() > 1024u ||
                 component.clipPath.find('\0') != std::string::npos ||
                 !std::isfinite(component.volume) || component.volume < 0.0f ||
-                component.volume > 1.0f || !std::isfinite(component.minDistance) ||
+                component.volume > 1.0f || !std::isfinite(component.pitch) ||
+                component.pitch < AudioSourceComponent::kMinPitch ||
+                component.pitch > AudioSourceComponent::kMaxPitch ||
+                !std::isfinite(component.minDistance) ||
                 !std::isfinite(component.maxDistance) || component.minDistance < 0.0f ||
                 component.maxDistance <= component.minDistance) {
                 SetError(error, "Scene AudioSource settings are invalid.");

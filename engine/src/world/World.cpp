@@ -467,7 +467,10 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             if (source.clipPath.size() > 1024u ||
                 source.clipPath.find('\0') != std::string::npos ||
                 !std::isfinite(source.volume) || source.volume < 0.0f ||
-                source.volume > 1.0f || !std::isfinite(source.minDistance) ||
+                source.volume > 1.0f || !std::isfinite(source.pitch) ||
+                source.pitch < AudioSourceComponent::kMinPitch ||
+                source.pitch > AudioSourceComponent::kMaxPitch ||
+                !std::isfinite(source.minDistance) ||
                 !std::isfinite(source.maxDistance) || source.minDistance < 0.0f ||
                 source.maxDistance <= source.minDistance) {
                 SetError(error, "Scene contains an invalid AudioSource component.");
