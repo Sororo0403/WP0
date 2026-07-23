@@ -359,12 +359,20 @@ int main() {
                    (*controllerProperties)[7].name == "Move Horizontal Action" &&
                    (*controllerProperties)[7].type == ScriptPropertyType::InputAction &&
                    (*controllerProperties)[7].defaultString == "MoveHorizontal" &&
+                   (*controllerProperties)[7].inputActionKind ==
+                       ScriptInputActionKind::Axis &&
                    (*controllerProperties)[8].name == "Move Vertical Action" &&
                    (*controllerProperties)[8].defaultString == "MoveVertical" &&
+                   (*controllerProperties)[8].inputActionKind ==
+                       ScriptInputActionKind::Axis &&
                    (*controllerProperties)[9].name == "Sprint Action" &&
                    (*controllerProperties)[9].defaultString == "Sprint" &&
+                   (*controllerProperties)[9].inputActionKind ==
+                       ScriptInputActionKind::Button &&
                    (*controllerProperties)[10].name == "Jump Action" &&
                    (*controllerProperties)[10].defaultString == "Jump" &&
+                   (*controllerProperties)[10].inputActionKind ==
+                       ScriptInputActionKind::Button &&
                    (*controllerProperties)[11].name == "Idle Animation" &&
                    (*controllerProperties)[11].type == ScriptPropertyType::AnimationClip &&
                    (*controllerProperties)[11].defaultString == "Idle" &&

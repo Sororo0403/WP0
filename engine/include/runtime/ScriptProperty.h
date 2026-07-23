@@ -18,6 +18,12 @@ enum class ScriptPropertyType : uint32_t {
     InputAction = 7,
 };
 
+enum class ScriptInputActionKind : uint32_t {
+    Any = 0,
+    Button = 1,
+    Axis = 2,
+};
+
 struct ScriptVector3 {
     float x = 0.0f;
     float y = 0.0f;
@@ -36,6 +42,7 @@ struct ScriptPropertyDescriptor {
     int32_t maximumInteger = (std::numeric_limits<int32_t>::max)();
     ScriptVector3 defaultVector3{};
     const char* defaultString = nullptr;
+    ScriptInputActionKind inputActionKind = ScriptInputActionKind::Any;
 };
 
 struct ScriptPropertyValueView {

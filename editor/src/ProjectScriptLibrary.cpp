@@ -181,6 +181,11 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                 property.type == ScriptPropertyType::InputAction &&
                 property.defaultString != nullptr &&
                 std::char_traits<char>::length(property.defaultString) > 64u;
+            const bool invalidInputActionKind =
+                property.inputActionKind < ScriptInputActionKind::Any ||
+                property.inputActionKind > ScriptInputActionKind::Axis ||
+                (property.type != ScriptPropertyType::InputAction &&
+                 property.inputActionKind != ScriptInputActionKind::Any);
             bool duplicate = false;
             for (size_t previous = 0u; previous < propertyIndex; ++previous) {
                 duplicate = duplicate ||
@@ -190,7 +195,7 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                 property.type < ScriptPropertyType::Float ||
                 property.type > ScriptPropertyType::InputAction || invalidFloat ||
                 invalidInteger || invalidVector3 || invalidString ||
-                invalidInputAction) {
+                invalidInputAction || invalidInputActionKind) {
                 FreeLibrary(module);
                 error = "Project Script module contains an invalid property.";
                 return false;
@@ -215,7 +220,8 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                                   property.minimumInteger, property.maximumInteger,
                                   property.defaultVector3,
                                   property.defaultString != nullptr ? property.defaultString
-                                                                    : ""});
+                                                                    : "",
+                                  property.inputActionKind});
         }
         if (!registry.Register(
                 type,

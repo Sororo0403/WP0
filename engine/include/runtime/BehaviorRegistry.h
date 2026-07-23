@@ -27,6 +27,7 @@ struct ScriptPropertyDefinition {
     int32_t maximumInteger = (std::numeric_limits<int32_t>::max)();
     ScriptVector3 defaultVector3{};
     std::string defaultString;
+    ScriptInputActionKind inputActionKind = ScriptInputActionKind::Any;
 };
 
 class BehaviorRegistry {

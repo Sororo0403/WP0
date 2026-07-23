@@ -4227,6 +4227,18 @@ void EditorScene::DrawInspectorPanel() {
                                 : definition.defaultString;
                         Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
                         const std::string preview = value.empty() ? "None" : value;
+                        const auto acceptsAction =
+                            [&definition](const InputActionBinding& binding) {
+                                switch (definition.inputActionKind) {
+                                case ScriptInputActionKind::Any:
+                                    return true;
+                                case ScriptInputActionKind::Button:
+                                    return binding.type == InputActionType::Button;
+                                case ScriptInputActionKind::Axis:
+                                    return binding.type == InputActionType::Axis;
+                                }
+                                return false;
+                            };
                         ImGui::BeginDisabled(input == nullptr);
                         if (ImGui::BeginCombo(definition.name.c_str(), preview.c_str())) {
                             const auto assignAction = [&](const std::string& action) {
@@ -4248,6 +4260,11 @@ void EditorScene::DrawInspectorPanel() {
                                 assignAction({});
                             }
                             for (const std::string& action : input->GetActionNames()) {
+                                const InputActionBinding* binding =
+                                    input->GetActionBinding(action);
+                                if (binding == nullptr || !acceptsAction(*binding)) {
+                                    continue;
+                                }
                                 if (ImGui::Selectable(action.c_str(), value == action)) {
                                     assignAction(action);
                                 }
@@ -4257,10 +4274,16 @@ void EditorScene::DrawInspectorPanel() {
                         ImGui::EndDisabled();
                         if (input == nullptr) {
                             ImGui::TextDisabled("Input service is unavailable.");
-                        } else if (!value.empty() &&
-                                   input->GetActionBinding(value) == nullptr) {
-                            ImGui::TextDisabled(
-                                "The selected Input Action was not found.");
+                        } else if (!value.empty()) {
+                            const InputActionBinding* selected =
+                                input->GetActionBinding(value);
+                            if (selected == nullptr) {
+                                ImGui::TextDisabled(
+                                    "The selected Input Action was not found.");
+                            } else if (!acceptsAction(*selected)) {
+                                ImGui::TextDisabled(
+                                    "The selected Input Action has the wrong type.");
+                            }
                         }
                     } else if (definition.type == ScriptPropertyType::String) {
                         const std::string value =
