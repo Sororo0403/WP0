@@ -3750,6 +3750,62 @@ void EditorScene::DrawInspectorPanel() {
                         if (ImGui::IsItemDeactivatedAfterEdit()) {
                             CommitHistoryEdit();
                         }
+                    } else if (definition.type == ScriptPropertyType::AnimationClip) {
+                        const std::string value =
+                            stored != behavior.properties.end() &&
+                                    stored->type == definition.type
+                                ? stored->stringValue
+                                : definition.defaultString;
+                        const ModelHandle modelHandle = entity->meshRenderer
+                                                            ? ResolveModel(*entity->meshRenderer)
+                                                            : ModelHandle{};
+                        const Model* animationModel =
+                            modelHandle.IsValid() && ctx_ != nullptr && ctx_->rendering.model
+                                ? ctx_->rendering.model->GetModel(modelHandle)
+                                : nullptr;
+                        const std::string preview = value.empty() ? "None" : value;
+                        if (ImGui::BeginCombo(definition.name.c_str(), preview.c_str())) {
+                            const auto assignClip = [&](const std::string& clip) {
+                                const std::string propertyBefore =
+                                    WorldSerializer::Serialize(world_);
+                                if (stored == behavior.properties.end()) {
+                                    behavior.properties.push_back({});
+                                    stored = std::prev(behavior.properties.end());
+                                }
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                                stored->stringValue = clip;
+                                RecordImmediateEdit("Modify Script Property", propertyBefore,
+                                                    selectionBefore);
+                                status_ = "Modified Script Animation Clip property.";
+                            };
+                            if (ImGui::Selectable("None", value.empty())) {
+                                assignClip({});
+                            }
+                            if (animationModel != nullptr) {
+                                std::vector<std::string> clips;
+                                clips.reserve(animationModel->animations.size());
+                                for (const auto& [name, clip] : animationModel->animations) {
+                                    (void)clip;
+                                    clips.push_back(name);
+                                }
+                                std::ranges::sort(clips);
+                                for (const std::string& clip : clips) {
+                                    if (ImGui::Selectable(clip.c_str(), value == clip)) {
+                                        assignClip(clip);
+                                    }
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        if (animationModel == nullptr || animationModel->animations.empty()) {
+                            ImGui::TextDisabled(
+                                "Assign an animated Model to choose an Animation Clip.");
+                        } else if (!value.empty() &&
+                                   !animationModel->animations.contains(value)) {
+                            ImGui::TextDisabled("The selected Animation Clip was not found.");
+                        }
                     } else if (definition.type == ScriptPropertyType::String) {
                         const std::string value =
                             stored != behavior.properties.end() &&

@@ -293,7 +293,7 @@ int main() {
                    (*controllerProperties)[6].name == "Invert Y" &&
                    (*controllerProperties)[6].type == ScriptPropertyType::Boolean &&
                    (*controllerProperties)[7].name == "Idle Animation" &&
-                   (*controllerProperties)[7].type == ScriptPropertyType::String &&
+                   (*controllerProperties)[7].type == ScriptPropertyType::AnimationClip &&
                    (*controllerProperties)[7].defaultString == "Idle" &&
                    (*controllerProperties)[8].name == "Move Animation" &&
                    (*controllerProperties)[8].defaultString == "Walk" &&
@@ -312,10 +312,10 @@ int main() {
                    (*chaseProperties)[1].name == "Move Speed" &&
                    (*chaseProperties)[1].defaultFloat == 2.5f &&
                    (*chaseProperties)[4].name == "Idle Animation" &&
-                   (*chaseProperties)[4].type == ScriptPropertyType::String &&
+                   (*chaseProperties)[4].type == ScriptPropertyType::AnimationClip &&
                    (*chaseProperties)[4].defaultString == "Idle" &&
                    (*chaseProperties)[5].name == "Move Animation" &&
-                   (*chaseProperties)[5].type == ScriptPropertyType::String &&
+                   (*chaseProperties)[5].type == ScriptPropertyType::AnimationClip &&
                    (*chaseProperties)[5].defaultString == "Run" &&
                    (*chaseProperties)[6].name == "Animation Fade" &&
                    (*chaseProperties)[6].defaultFloat == 0.2f &&
@@ -339,7 +339,7 @@ int main() {
     controllerConfiguration.type = "FirstPersonController";
     ScriptPropertyValue controllerIdleProperty{};
     controllerIdleProperty.name = "Idle Animation";
-    controllerIdleProperty.type = ScriptPropertyType::String;
+    controllerIdleProperty.type = ScriptPropertyType::AnimationClip;
     controllerIdleProperty.stringValue = "Stand";
     controllerConfiguration.properties.push_back(controllerIdleProperty);
     BehaviorSystem controllerAnimationBehaviors;
@@ -374,11 +374,11 @@ int main() {
     chaseTargetProperty.entityValue = chaseTarget;
     ScriptPropertyValue idleAnimationProperty{};
     idleAnimationProperty.name = "Idle Animation";
-    idleAnimationProperty.type = ScriptPropertyType::String;
+    idleAnimationProperty.type = ScriptPropertyType::AnimationClip;
     idleAnimationProperty.stringValue = "Wait";
     ScriptPropertyValue moveAnimationProperty{};
     moveAnimationProperty.name = "Move Animation";
-    moveAnimationProperty.type = ScriptPropertyType::String;
+    moveAnimationProperty.type = ScriptPropertyType::AnimationClip;
     moveAnimationProperty.stringValue = "Sprint";
     chaseConfiguration.properties = {chaseTargetProperty, idleAnimationProperty,
                                      moveAnimationProperty};
@@ -811,6 +811,11 @@ int main() {
     serializedString.type = ScriptPropertyType::String;
     serializedString.stringValue = "Run";
     childEntity->scripts[0].properties.push_back(serializedString);
+    ScriptPropertyValue serializedClip{};
+    serializedClip.name = "Clip";
+    serializedClip.type = ScriptPropertyType::AnimationClip;
+    serializedClip.stringValue = "Attack";
+    childEntity->scripts[0].properties.push_back(serializedClip);
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -972,6 +977,8 @@ int main() {
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Offset") : nullptr;
     const ScriptPropertyValue* restoredString = hasRestoredScript
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Animation") : nullptr;
+    const ScriptPropertyValue* restoredClip = hasRestoredScript
+        ? FindStoredScriptProperty(restoredChild->scripts[0], "Clip") : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restored.Find(root) != nullptr && !restored.Find(root)->active &&
                    restoredChild->active && !restored.IsActiveInHierarchy(child) &&
@@ -1034,7 +1041,7 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   restoredChild->scripts[0].properties.size() == 6u &&
+                   restoredChild->scripts[0].properties.size() == 7u &&
                    restoredSpeed != nullptr && restoredSpeed->type == ScriptPropertyType::Float &&
                    restoredSpeed->floatValue == 3.5f && restoredTarget != nullptr &&
                    restoredTarget->type == ScriptPropertyType::Entity &&
@@ -1048,7 +1055,9 @@ int main() {
                    restoredVector->vector3Value.y == 5.0f &&
                    restoredVector->vector3Value.z == 6.0f && restoredString != nullptr &&
                    restoredString->type == ScriptPropertyType::String &&
-                   restoredString->stringValue == "Run" &&
+                   restoredString->stringValue == "Run" && restoredClip != nullptr &&
+                   restoredClip->type == ScriptPropertyType::AnimationClip &&
+                   restoredClip->stringValue == "Attack" &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -1169,13 +1178,16 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   duplicateChild->scripts[0].properties.size() == 6u &&
+                   duplicateChild->scripts[0].properties.size() == 7u &&
                    duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
                    duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
                    duplicateChild->scripts[0].properties[2].booleanValue &&
                    duplicateChild->scripts[0].properties[3].integerValue == 7 &&
                    duplicateChild->scripts[0].properties[4].vector3Value.z == 6.0f &&
                    duplicateChild->scripts[0].properties[5].stringValue == "Run" &&
+                   duplicateChild->scripts[0].properties[6].type ==
+                       ScriptPropertyType::AnimationClip &&
+                   duplicateChild->scripts[0].properties[6].stringValue == "Attack" &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&

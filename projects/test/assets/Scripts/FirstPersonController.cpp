@@ -85,7 +85,7 @@ void FirstPersonController::OnConfigure(const ScriptPropertyValueView* propertie
     }
     const auto readAnimation = [&](const char* name, std::string& destination) {
         if (const ScriptPropertyValueView* value = FindScriptProperty(
-                properties, count, name, ScriptPropertyType::String)) {
+                properties, count, name, ScriptPropertyType::AnimationClip)) {
             destination = value->stringValue != nullptr ? value->stringValue : "";
         }
     };
@@ -264,16 +264,16 @@ ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
                                  .type = ScriptPropertyType::Boolean,
                                  .defaultBoolean = false},
         ScriptPropertyDescriptor{.name = "Idle Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Idle"},
         ScriptPropertyDescriptor{.name = "Move Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Walk"},
         ScriptPropertyDescriptor{.name = "Sprint Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Run"},
         ScriptPropertyDescriptor{.name = "Jump Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Jump"},
         ScriptPropertyDescriptor{.name = "Animation Fade",
                                  .type = ScriptPropertyType::Float,

@@ -56,11 +56,11 @@ void ChasePlayer::OnConfigure(const ScriptPropertyValueView* properties, size_t 
         gravity_ = gravity->floatValue;
     }
     if (const ScriptPropertyValueView* animation = FindScriptProperty(
-            properties, count, "Idle Animation", ScriptPropertyType::String)) {
+            properties, count, "Idle Animation", ScriptPropertyType::AnimationClip)) {
         idleAnimation_ = animation->stringValue != nullptr ? animation->stringValue : "";
     }
     if (const ScriptPropertyValueView* animation = FindScriptProperty(
-            properties, count, "Move Animation", ScriptPropertyType::String)) {
+            properties, count, "Move Animation", ScriptPropertyType::AnimationClip)) {
         moveAnimation_ = animation->stringValue != nullptr ? animation->stringValue : "";
     }
     if (const ScriptPropertyValueView* duration = FindScriptProperty(
@@ -178,10 +178,10 @@ ScriptTypeRegistration GetChasePlayerScriptRegistration() {
         ScriptPropertyDescriptor{"Gravity", ScriptPropertyType::Float, -24.0f, -100.0f,
                                  0.0f},
         ScriptPropertyDescriptor{.name = "Idle Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Idle"},
         ScriptPropertyDescriptor{.name = "Move Animation",
-                                 .type = ScriptPropertyType::String,
+                                 .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Run"},
         ScriptPropertyDescriptor{.name = "Animation Fade",
                                  .type = ScriptPropertyType::Float,
