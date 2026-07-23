@@ -39,6 +39,23 @@ std::optional<std::filesystem::path> ParseProjectArgument() {
     return result;
 }
 
+bool HasCommandLineFlag(std::wstring_view flag) {
+    int count = 0;
+    LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+    if (arguments == nullptr) {
+        return false;
+    }
+    bool found = false;
+    for (int index = 1; index < count; ++index) {
+        if (std::wstring_view(arguments[index]) == flag) {
+            found = true;
+            break;
+        }
+    }
+    LocalFree(arguments);
+    return found;
+}
+
 void ShowError(const std::string& message) {
     MessageBoxA(nullptr, message.c_str(), "LikeEngine Editor", MB_OK | MB_ICONERROR);
 }
@@ -64,6 +81,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     (void)previousInstance;
     (void)commandLine;
 
+    const bool playerMode = HasCommandLineFlag(L"--player");
     const ApplicationPaths paths = ApplicationPaths::Discover();
     const RecentProjectsStore recentProjects(paths.userData / L"settings" /
                                               L"recent_projects.json");
@@ -88,11 +106,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     AssetManager::SetUserDataRoot(paths.userData);
 
     EngineRuntimeConfig config{};
-    config.width = 1600;
-    config.height = 900;
-    config.title = L"LikeEngine Editor - " + Utf8ToWide(project.name);
+    config.width = playerMode ? 1280 : 1600;
+    config.height = playerMode ? 720 : 900;
+    config.title = playerMode ? Utf8ToWide(project.name)
+                              : L"LikeEngine Editor - " + Utf8ToWide(project.name);
     config.cursorVisible = true;
-    config.logPath = (paths.userData / L"logs" / L"editor.log").wstring();
+    config.logPath =
+        (paths.userData / L"logs" /
+         (playerMode ? L"player.log" : L"editor.log"))
+            .wstring();
 
     EngineRuntime runtime;
     if (!runtime.Initialize(instance, showCommand, config)) {
@@ -103,7 +125,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
             paths.userData / L"settings" / L"recent_scenes" /
                 (Utf8ToWide(project.projectId) + L".json"),
             paths.userData / L"settings" / L"imgui_layout.ini",
-            [&runtime]() { runtime.RequestClose(); }))) {
+            [&runtime]() { runtime.RequestClose(); }, playerMode))) {
         return -1;
     }
 

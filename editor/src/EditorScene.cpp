@@ -513,14 +513,22 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
                          std::filesystem::path startupScene,
                          std::filesystem::path recentScenesPath,
                          std::filesystem::path imguiSettingsPath,
-                         std::function<void()> requestClose)
-    : requestClose_(std::move(requestClose)), projectRoot_(std::move(projectRoot)),
+                         std::function<void()> requestClose, bool playerMode)
+    : requestClose_(std::move(requestClose)), playerMode_(playerMode),
+      projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
       imguiSettingsPath_(std::move(imguiSettingsPath)),
       physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
       inputSettingsStore_(projectRoot_ / L"settings" / L"input.json"),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
+    if (playerMode_) {
+        showHierarchyPanel_ = false;
+        showProjectPanel_ = false;
+        showScenePanel_ = false;
+        showConsolePanel_ = false;
+        showInspectorPanel_ = false;
+    }
     std::string physicsSettingsError;
     const bool physicsSettingsLoaded =
         physicsSettingsStore_.Load(physicsSettings_, physicsSettingsError);
@@ -613,10 +621,15 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     RefreshAssetBrowser();
     ResolveMeshResources();
     InitializeScriptMonitoring();
+    if (playerMode_) {
+        EnterPlayMode();
+    }
 }
 
 void EditorScene::Update() {
-    UpdateScriptCompilation();
+    if (!playerMode_) {
+        UpdateScriptCompilation();
+    }
     if (playModeState_ == PlayModeState::Playing && ctx_ != nullptr) {
         UpdateRuntimeWorld(ctx_->frame.deltaTime);
     } else if (playModeState_ == PlayModeState::Edit && ctx_ != nullptr) {
@@ -756,6 +769,14 @@ void EditorScene::Draw() {}
 void EditorScene::DrawPostProcessOverlay() {
     ImGuizmo::BeginFrame();
     CaptureConsoleStatus();
+    if (playerMode_) {
+        if (gameInputCaptured_ &&
+            ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            ReleaseGameInputCapture();
+        }
+        DrawPanels();
+        return;
+    }
     HandleEditorShortcuts();
     DrawMainMenu();
     DrawDockSpace();
@@ -786,6 +807,9 @@ bool EditorScene::OnCloseRequested() {
 
 void EditorScene::OnFilesDropped(std::span<const std::filesystem::path> files, int screenX,
                                  int screenY) {
+    if (playerMode_) {
+        return;
+    }
     if (IsInPlayMode()) {
         status_ = "Stop Play Mode before importing assets.";
         return;
@@ -799,6 +823,54 @@ void EditorScene::OnFilesDropped(std::span<const std::filesystem::path> files, i
         return;
     }
     ImportAssetFiles(std::vector<std::filesystem::path>(files.begin(), files.end()));
+}
+
+bool EditorScene::LaunchPlayerPreview() {
+    if (IsInPlayMode()) {
+        status_ = "Stop Play Mode before running the Player Preview.";
+        return false;
+    }
+    if (dirty_) {
+        status_ = "Save the scene before running the Player Preview.";
+        return false;
+    }
+    if (physicsSettingsDirty_ || inputSettingsDirty_) {
+        status_ = "Save Project Settings before running the Player Preview.";
+        return false;
+    }
+    if (scriptBuildInProgress_ || scriptBuildPending_) {
+        status_ = "Wait for Project Script compilation before running the Player Preview.";
+        return false;
+    }
+    std::array<wchar_t, 32768> executableBuffer{};
+    const DWORD executableLength = GetModuleFileNameW(
+        nullptr, executableBuffer.data(),
+        static_cast<DWORD>(executableBuffer.size()));
+    if (executableLength == 0u ||
+        executableLength >= executableBuffer.size()) {
+        status_ = "Could not locate the Editor executable.";
+        return false;
+    }
+    const std::filesystem::path executable(
+        std::wstring(executableBuffer.data(), executableLength));
+    std::wstring command = L"\"" + executable.wstring() +
+                           L"\" --player --project \"" +
+                           projectRoot_.wstring() + L"\"";
+    std::vector<wchar_t> mutableCommand(command.begin(), command.end());
+    mutableCommand.push_back(L'\0');
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(executable.c_str(), mutableCommand.data(), nullptr,
+                        nullptr, FALSE, 0u, nullptr, projectRoot_.c_str(),
+                        &startup, &process)) {
+        status_ = "Could not launch the Player Preview.";
+        return false;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    status_ = "Launched Player Preview.";
+    return true;
 }
 
 void EditorScene::DrawMainMenu() {
@@ -840,6 +912,13 @@ void EditorScene::DrawMainMenu() {
         ImGui::Separator();
         if (ImGui::MenuItem("Exit")) {
             RequestSceneAction(PendingSceneAction::Exit);
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Build")) {
+        if (ImGui::MenuItem("Run Project", "F8", false,
+                            !IsInPlayMode())) {
+            LaunchPlayerPreview();
         }
         ImGui::EndMenu();
     }
@@ -1239,7 +1318,26 @@ void EditorScene::DrawPanels() {
             ImGui::SetNextWindowFocus();
             focusGamePanelRequested_ = false;
         }
-        if (ImGui::Begin("Game", &showGamePanel_, kPanelFlags)) {
+        ImGuiWindowFlags gameWindowFlags = kPanelFlags;
+        bool* gameWindowOpen = &showGamePanel_;
+        if (playerMode_) {
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(viewport->WorkPos);
+            ImGui::SetNextWindowSize(viewport->WorkSize);
+            gameWindowFlags |= ImGuiWindowFlags_NoDecoration |
+                               ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoResize |
+                               ImGuiWindowFlags_NoSavedSettings |
+                               ImGuiWindowFlags_NoBringToFrontOnFocus;
+            gameWindowOpen = nullptr;
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+        }
+        const bool gameWindowVisible =
+            ImGui::Begin("Game", gameWindowOpen, gameWindowFlags);
+        if (playerMode_) {
+            ImGui::PopStyleVar();
+        }
+        if (gameWindowVisible) {
             const bool gameViewFocused =
                 ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
             if (gameInputCaptured_ && !gameViewFocused) {
@@ -5546,6 +5644,10 @@ void EditorScene::HandleEditorShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F7, false)) {
         StepRuntimeWorld();
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F8, false)) {
+        LaunchPlayerPreview();
         return;
     }
     if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_) {

@@ -35,7 +35,7 @@ public:
     EditorScene(std::filesystem::path projectRoot, std::filesystem::path assetRoot,
                 std::filesystem::path sceneRoot, std::filesystem::path startupScene,
                 std::filesystem::path recentScenesPath, std::filesystem::path imguiSettingsPath,
-                std::function<void()> requestClose);
+                std::function<void()> requestClose, bool playerMode = false);
 
     void Initialize(const SceneContext& ctx) override;
     void Update() override;
@@ -59,6 +59,7 @@ private:
     };
 
     void DrawMainMenu();
+    bool LaunchPlayerPreview();
     void EnterPlayMode();
     void StopPlayMode();
     void TogglePlayPause();
@@ -253,6 +254,7 @@ private:
     bool RestoreHistoryState(const HistoryState& state);
 
     std::function<void()> requestClose_;
+    bool playerMode_ = false;
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
     std::filesystem::path sceneRoot_;
