@@ -65,6 +65,9 @@ private:
     void ReleaseGameInputCapture();
     bool BeginRuntimeWorld(std::string* error = nullptr);
     bool BeginRuntimeAnimators(std::string* error = nullptr);
+    bool BeginEditAnimatorPreview(EntityId entity);
+    void UpdateEditAnimatorPreview(float deltaTime);
+    void EndEditAnimatorPreview();
     [[nodiscard]] bool ValidateWorldBehaviorRequirements(
         std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
@@ -297,6 +300,9 @@ private:
     };
     std::vector<RuntimeAnimator> runtimeAnimators_;
     std::unordered_map<std::string, ModelHandle> animatorModels_;
+    EntityId editAnimatorPreviewEntity_{};
+    ModelHandle editAnimatorPreviewModel_{};
+    std::string editAnimatorPreviewModelPath_;
     std::future<ScriptBuildCompletion> scriptBuildFuture_;
     uint64_t scriptSourceFingerprint_ = 0u;
     bool scriptFingerprintInitialized_ = false;

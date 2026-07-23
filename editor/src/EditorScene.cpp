@@ -477,6 +477,8 @@ void EditorScene::Update() {
     UpdateScriptCompilation();
     if (playModeState_ == PlayModeState::Playing && ctx_ != nullptr) {
         UpdateRuntimeWorld(ctx_->frame.deltaTime);
+    } else if (playModeState_ == PlayModeState::Edit && ctx_ != nullptr) {
+        UpdateEditAnimatorPreview(ctx_->frame.deltaTime);
     }
     ResolveMeshResources();
     if (sceneViewSurface_.IsReady() && sceneViewPostProcess_.IsReady() && ctx_ != nullptr &&
@@ -4357,6 +4359,9 @@ void EditorScene::DrawInspectorPanel() {
         if (ImGui::Button("Remove Animator")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
+            if (editAnimatorPreviewEntity_ == entity->id) {
+                EndEditAnimatorPreview();
+            }
             entity->animator.reset();
             RecordImmediateEdit("Remove Animator", before, selectionBefore);
             status_ = "Removed Animator.";
@@ -4401,6 +4406,9 @@ void EditorScene::DrawInspectorPanel() {
                     animator.clip.clear();
                     RecordImmediateEdit("Change Animator Clip", std::move(before),
                                         selectionBefore);
+                    if (editAnimatorPreviewEntity_ == entity->id) {
+                        BeginEditAnimatorPreview(entity->id);
+                    }
                 }
                 if (model != nullptr) {
                     std::vector<std::string> clips;
@@ -4416,6 +4424,9 @@ void EditorScene::DrawInspectorPanel() {
                             animator.clip = clip;
                             RecordImmediateEdit("Change Animator Clip", std::move(before),
                                                 selectionBefore);
+                            if (editAnimatorPreviewEntity_ == entity->id) {
+                                BeginEditAnimatorPreview(entity->id);
+                            }
                         }
                     }
                 }
@@ -4423,6 +4434,64 @@ void EditorScene::DrawInspectorPanel() {
             }
             if (model == nullptr || model->animations.empty()) {
                 ImGui::TextDisabled("Assign an animated Model to Mesh Renderer.");
+            }
+            if (!IsInPlayMode() && model != nullptr && !model->animations.empty()) {
+                const bool previewing = editAnimatorPreviewEntity_ == entity->id &&
+                                        editAnimatorPreviewModel_.IsValid();
+                Model* previewModel =
+                    previewing && ctx_ != nullptr && ctx_->rendering.model != nullptr
+                        ? ctx_->rendering.model->GetModel(editAnimatorPreviewModel_)
+                        : nullptr;
+                const bool previewPlaying = previewModel != nullptr && previewModel->isPlaying;
+                if (ImGui::Button(previewPlaying ? "Pause##AnimatorPreview"
+                                                 : "Play##AnimatorPreview")) {
+                    if (previewModel != nullptr && !previewPlaying &&
+                        previewModel->animationFinished) {
+                        status_ = BeginEditAnimatorPreview(entity->id)
+                                      ? "Restarted Animator preview."
+                                      : "Animator preview could not be started.";
+                    } else if (previewModel != nullptr && !previewPlaying) {
+                        previewModel->isPlaying = true;
+                        previewModel->animationFinished = false;
+                        status_ = "Resumed Animator preview.";
+                    } else if (previewPlaying) {
+                        previewModel->isPlaying = false;
+                        status_ = "Paused Animator preview.";
+                    } else if (BeginEditAnimatorPreview(entity->id)) {
+                        status_ = "Started Animator preview.";
+                    } else {
+                        status_ = "Animator preview could not be started.";
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Restart##AnimatorPreview")) {
+                    status_ = BeginEditAnimatorPreview(entity->id)
+                                  ? "Restarted Animator preview."
+                                  : "Animator preview could not be started.";
+                }
+                if (previewModel != nullptr) {
+                    ImGui::SameLine();
+                    if (ImGui::Button("Stop##AnimatorPreview")) {
+                        EndEditAnimatorPreview();
+                        status_ = "Stopped Animator preview.";
+                    }
+                    const auto clip = previewModel->animations.find(
+                        previewModel->currentAnimation);
+                    const float duration =
+                        clip != previewModel->animations.end()
+                            ? (std::max)(0.0f, clip->second.duration)
+                            : 0.0f;
+                    float time = std::clamp(previewModel->animationTime, 0.0f, duration);
+                    if (ImGui::SliderFloat("Time##AnimatorPreview", &time, 0.0f, duration,
+                                           "%.2f s")) {
+                        previewModel->animationTime = time;
+                        previewModel->isPlaying = false;
+                        previewModel->animationFinished =
+                            duration > 0.0f && time >= duration;
+                        ctx_->rendering.model->UpdateAnimation(editAnimatorPreviewModel_, 0.0f);
+                        status_ = "Scrubbed Animator preview.";
+                    }
+                }
             }
             auto drawAnimatorCheckbox = [&](const char* label, bool& value,
                                             const char* historyLabel) {
@@ -4434,6 +4503,15 @@ void EditorScene::DrawInspectorPanel() {
             drawAnimatorCheckbox("Play On Awake##Animator", animator.playOnAwake,
                                  "Toggle Animator Play On Awake");
             drawAnimatorCheckbox("Loop##Animator", animator.loop, "Toggle Animator Loop");
+            if (editAnimatorPreviewEntity_ == entity->id &&
+                editAnimatorPreviewModel_.IsValid() && ctx_ != nullptr &&
+                ctx_->rendering.model != nullptr) {
+                if (Model* previewModel =
+                        ctx_->rendering.model->GetModel(editAnimatorPreviewModel_);
+                    previewModel != nullptr) {
+                    previewModel->isLoop = animator.loop;
+                }
+            }
             if (ImGui::DragFloat("Speed##Animator", &animator.speed, 0.01f, 0.0f, 100.0f,
                                  "%.2fx", ImGuiSliderFlags_AlwaysClamp)) {
                 RefreshDirty();
@@ -6684,9 +6762,15 @@ void EditorScene::BuildRenderScene() {
             runtimeAnimators_, [&entity](const RuntimeAnimator& runtime) {
                 return runtime.entity == entity.id;
             });
-        const bool animated = runtimeAnimator != runtimeAnimators_.end();
+        const bool runtimeAnimated = runtimeAnimator != runtimeAnimators_.end();
+        const bool editPreviewAnimated =
+            !runtimeAnimated && editAnimatorPreviewEntity_ == entity.id &&
+            editAnimatorPreviewModel_.IsValid();
+        const bool animated = runtimeAnimated || editPreviewAnimated;
         const ModelHandle handle =
-            animated ? runtimeAnimator->model : ResolveModel(*entity.meshRenderer);
+            runtimeAnimated       ? runtimeAnimator->model
+            : editPreviewAnimated ? editAnimatorPreviewModel_
+                                  : ResolveModel(*entity.meshRenderer);
         const Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
         DirectX::XMFLOAT4X4 worldMatrix{};
         if (model == nullptr || !world_.TryGetWorldMatrix(entity.id, worldMatrix)) {
@@ -6818,6 +6902,7 @@ void EditorScene::EnterPlayMode() {
     }
     CommitHistoryEdit();
     StopAudioAssetPreview();
+    EndEditAnimatorPreview();
     gizmoWasUsing_ = false;
     boxColliderGizmoMode_ = BoxColliderGizmoMode::None;
     boxColliderGizmoEntity_ = {};
@@ -6969,6 +7054,91 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
         error->clear();
     }
     return valid;
+}
+
+bool EditorScene::BeginEditAnimatorPreview(EntityId entityId) {
+    if (IsInPlayMode()) {
+        return false;
+    }
+    WorldEntity* entity = world_.Find(entityId);
+    ModelManager* models = ctx_ != nullptr ? ctx_->rendering.model : nullptr;
+    if (entity == nullptr || !entity->animator || !entity->animator->enabled ||
+        !entity->meshRenderer || entity->meshRenderer->sourceType != MeshSourceType::Model ||
+        entity->meshRenderer->modelPath.empty() || models == nullptr) {
+        return false;
+    }
+    const std::optional<std::filesystem::path> path =
+        ResolveProjectAssetPath(entity->meshRenderer->modelPath);
+    if (!path) {
+        return false;
+    }
+    const std::string cacheKey =
+        "edit-preview|" + entity->id.ToString() + "|" + entity->meshRenderer->modelPath;
+    const auto cached = animatorModels_.find(cacheKey);
+    const ModelHandle handle =
+        cached != animatorModels_.end() ? cached->second
+                                       : models->LoadUniqueHandle(path->wstring());
+    Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
+    if (model == nullptr || model->animations.empty()) {
+        return false;
+    }
+    animatorModels_.insert_or_assign(cacheKey, handle);
+    std::string clip = entity->animator->clip;
+    if (clip.empty()) {
+        const auto first = std::ranges::min_element(
+            model->animations, {}, [](const auto& entry) { return entry.first; });
+        clip = first != model->animations.end() ? first->first : std::string{};
+    }
+    if (clip.empty() || !model->animations.contains(clip)) {
+        return false;
+    }
+    EndEditAnimatorPreview();
+    models->PlayAnimation(handle, clip, entity->animator->loop);
+    models->UpdateAnimation(handle, 0.0f);
+    editAnimatorPreviewEntity_ = entityId;
+    editAnimatorPreviewModel_ = handle;
+    editAnimatorPreviewModelPath_ = entity->meshRenderer->modelPath;
+    return true;
+}
+
+void EditorScene::UpdateEditAnimatorPreview(float deltaTime) {
+    if (!editAnimatorPreviewEntity_.IsValid()) {
+        return;
+    }
+    WorldEntity* entity = world_.Find(editAnimatorPreviewEntity_);
+    ModelManager* models = ctx_ != nullptr ? ctx_->rendering.model : nullptr;
+    if (entity == nullptr || selection_ != editAnimatorPreviewEntity_ || !entity->animator ||
+        !entity->animator->enabled || !entity->meshRenderer ||
+        entity->meshRenderer->sourceType != MeshSourceType::Model ||
+        entity->meshRenderer->modelPath != editAnimatorPreviewModelPath_ || models == nullptr) {
+        EndEditAnimatorPreview();
+        return;
+    }
+    Model* model = editAnimatorPreviewModel_.IsValid()
+                       ? models->GetModel(editAnimatorPreviewModel_)
+                       : nullptr;
+    if (model == nullptr) {
+        EndEditAnimatorPreview();
+        return;
+    }
+    if (model->isPlaying) {
+        const float safeDeltaTime =
+            std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+        models->UpdateAnimation(editAnimatorPreviewModel_,
+                                safeDeltaTime * entity->animator->speed);
+    }
+}
+
+void EditorScene::EndEditAnimatorPreview() {
+    ModelManager* models = ctx_ != nullptr ? ctx_->rendering.model : nullptr;
+    if (models != nullptr && editAnimatorPreviewModel_.IsValid()) {
+        if (Model* model = models->GetModel(editAnimatorPreviewModel_); model != nullptr) {
+            model->isPlaying = false;
+        }
+    }
+    editAnimatorPreviewEntity_ = {};
+    editAnimatorPreviewModel_ = {};
+    editAnimatorPreviewModelPath_.clear();
 }
 
 bool EditorScene::BeginRuntimeAnimators(std::string* error) {
