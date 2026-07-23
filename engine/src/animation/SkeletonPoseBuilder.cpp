@@ -28,7 +28,24 @@ bool ResolveReadyParentIndex(int parentIndex, size_t childIndex, size_t boneCoun
     return true;
 }
 
-XMMATRIX MakeAnimatedLocalMatrix(const BoneInfo& bone, const AnimationClip& clip, float time) {
+XMMATRIX LockTranslationToBindPose(FXMMATRIX animated, CXMMATRIX bindPose) {
+    XMVECTOR animatedScale{};
+    XMVECTOR animatedRotation{};
+    XMVECTOR animatedTranslation{};
+    XMVECTOR bindScale{};
+    XMVECTOR bindRotation{};
+    XMVECTOR bindTranslation{};
+    if (!XMMatrixDecompose(&animatedScale, &animatedRotation, &animatedTranslation, animated) ||
+        !XMMatrixDecompose(&bindScale, &bindRotation, &bindTranslation, bindPose)) {
+        return animated;
+    }
+    return XMMatrixScalingFromVector(animatedScale) *
+           XMMatrixRotationQuaternion(XMQuaternionNormalize(animatedRotation)) *
+           XMMatrixTranslationFromVector(bindTranslation);
+}
+
+XMMATRIX MakeAnimatedLocalMatrix(const Model& model, const BoneInfo& bone,
+                                 const AnimationClip& clip, float time) {
     auto it = clip.nodeAnimations.find(bone.name);
     if (it == clip.nodeAnimations.end()) {
         return XMLoadFloat4x4(&bone.localBindMatrix);
@@ -51,7 +68,14 @@ XMMATRIX MakeAnimatedLocalMatrix(const BoneInfo& bone, const AnimationClip& clip
                              XMMatrixTranslation(pos.x, pos.y, pos.z);
 
     XMMATRIX adjustment = XMLoadFloat4x4(&bone.parentAdjustmentMatrix);
-    return animatedLocal * adjustment;
+    XMMATRIX result = animatedLocal * adjustment;
+    const bool isAnimatedSkeletonRoot =
+        bone.name == clip.rootNodeName ||
+        (bone.parentIndex < 0 && clip.nodeAnimations.contains(bone.name));
+    if (model.lockRootAnimationPosition && isAnimatedSkeletonRoot) {
+        result = LockTranslationToBindPose(result, XMLoadFloat4x4(&bone.localBindMatrix));
+    }
+    return result;
 }
 
 XMMATRIX BlendLocalMatrices(FXMMATRIX source, CXMMATRIX target, float blend) {
@@ -99,7 +123,7 @@ void SkeletonPoseBuilder::BuildAnimatedLocals(const Model& model, const Animatio
         return;
     }
     for (size_t i = 0; i < boneCount; i++) {
-        localMatrices[i] = MakeAnimatedLocalMatrix(model.bones[i], clip, time);
+        localMatrices[i] = MakeAnimatedLocalMatrix(model, model.bones[i], clip, time);
     }
 }
 
@@ -116,9 +140,9 @@ void SkeletonPoseBuilder::BuildBlendedLocals(
     }
     for (size_t i = 0; i < boneCount; ++i) {
         const XMMATRIX sourceLocal =
-            MakeAnimatedLocalMatrix(model.bones[i], source, sourceTime);
+            MakeAnimatedLocalMatrix(model, model.bones[i], source, sourceTime);
         const XMMATRIX targetLocal =
-            MakeAnimatedLocalMatrix(model.bones[i], target, targetTime);
+            MakeAnimatedLocalMatrix(model, model.bones[i], target, targetTime);
         localMatrices[i] = BlendLocalMatrices(sourceLocal, targetLocal, blend);
     }
 }

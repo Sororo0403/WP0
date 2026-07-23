@@ -659,6 +659,32 @@ int main() {
                "Animator CrossFade did not blend or finish the skeleton pose.")) {
         return 167;
     }
+    blendedModel.animations["Run"].rootNodeName = "Root";
+    blendedModel.lockRootAnimationPosition = true;
+    Animator::Play(blendedModel, "Run", true);
+    Animator::Update(blendedModel, 0.0f);
+    if (!Check(blendedModel.skeletonSpaceMatrices.size() == 1u &&
+                   std::abs(blendedModel.skeletonSpaceMatrices[0]._41) < 0.001f,
+               "Animator root position lock did not preserve the bind position.")) {
+        return 179;
+    }
+    Model rootAnimatedModel{};
+    AnimationClip rootAnimatedClip{};
+    rootAnimatedClip.duration = 1.0f;
+    rootAnimatedClip.rootNodeName = "Root";
+    rootAnimatedClip.nodeAnimations["Root"].translate.keyframes = {
+        {0.0f, {2.0f, 0.0f, 0.0f}},
+        {1.0f, {8.0f, 0.0f, 0.0f}},
+    };
+    rootAnimatedModel.animations.emplace("Move", std::move(rootAnimatedClip));
+    rootAnimatedModel.lockRootAnimationPosition = true;
+    Animator::Play(rootAnimatedModel, "Move", false);
+    Animator::Update(rootAnimatedModel, 0.5f);
+    if (!Check(rootAnimatedModel.hasRootAnimation &&
+                   std::abs(rootAnimatedModel.rootAnimationMatrix._41) < 0.001f,
+               "Animator root position lock did not align a non-skinned root to its Entity.")) {
+        return 180;
+    }
     const auto boxPrimitive =
         ModelPrimitiveFactory::BuildBox(0u, Material{}, 1.0f, 2.0f, 1.0f);
     const auto cylinderPrimitive =
@@ -739,6 +765,7 @@ int main() {
     childEntity->animator->clip = "Run";
     childEntity->animator->loop = false;
     childEntity->animator->speed = 1.5f;
+    childEntity->animator->lockRootPosition = false;
     if (!Check(source.PlayAnimation(child, "Run", false) &&
                    childEntity->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::Play &&
@@ -1024,6 +1051,7 @@ int main() {
                    restoredChild->animator->clip == "Run" &&
                    restoredChild->animator->playOnAwake && !restoredChild->animator->loop &&
                    restoredChild->animator->speed == 1.5f &&
+                   !restoredChild->animator->lockRootPosition &&
                    restoredChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
                    restoredChild->animator->runtimeRequestedClip.empty() &&
@@ -1114,6 +1142,7 @@ int main() {
                    instanceChild->meshRenderer && instanceChild->materialOverride &&
                    instanceChild->light && instanceChild->audioSource && instanceChild->animator &&
                    instanceChild->animator->clip == "Run" &&
+                   !instanceChild->animator->lockRootPosition &&
                    instanceChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
                    instanceChild->boxCollider &&
@@ -1164,6 +1193,7 @@ int main() {
                        MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
                    duplicateChild->animator && duplicateChild->animator->clip == "Run" &&
+                   !duplicateChild->animator->lockRootPosition &&
                    duplicateChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
                    duplicateChild->animator->runtimeRequestedClip.empty() &&

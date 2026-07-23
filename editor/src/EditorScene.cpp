@@ -4503,6 +4503,29 @@ void EditorScene::DrawInspectorPanel() {
             drawAnimatorCheckbox("Play On Awake##Animator", animator.playOnAwake,
                                  "Toggle Animator Play On Awake");
             drawAnimatorCheckbox("Loop##Animator", animator.loop, "Toggle Animator Loop");
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Lock Root Position##Animator",
+                                &animator.lockRootPosition)) {
+                RecordImmediateEdit("Toggle Animator Root Position Lock",
+                                    std::move(before), selectionBefore);
+                status_ = animator.lockRootPosition
+                              ? "Locked Animator root position."
+                              : "Unlocked Animator root position.";
+                if (editAnimatorPreviewEntity_ == entity->id &&
+                    editAnimatorPreviewModel_.IsValid() && ctx_ != nullptr &&
+                    ctx_->rendering.model != nullptr) {
+                    if (Model* previewModel =
+                            ctx_->rendering.model->GetModel(editAnimatorPreviewModel_);
+                        previewModel != nullptr) {
+                        previewModel->lockRootAnimationPosition =
+                            animator.lockRootPosition;
+                        ctx_->rendering.model->UpdateAnimation(
+                            editAnimatorPreviewModel_, 0.0f);
+                    }
+                }
+            }
+            ImGui::TextDisabled(
+                "Keeps animation root translation aligned with the Entity.");
             if (editAnimatorPreviewEntity_ == entity->id &&
                 editAnimatorPreviewModel_.IsValid() && ctx_ != nullptr &&
                 ctx_->rendering.model != nullptr) {
@@ -7093,6 +7116,7 @@ bool EditorScene::BeginEditAnimatorPreview(EntityId entityId) {
         return false;
     }
     EndEditAnimatorPreview();
+    model->lockRootAnimationPosition = entity->animator->lockRootPosition;
     models->PlayAnimation(handle, clip, entity->animator->loop);
     models->UpdateAnimation(handle, 0.0f);
     editAnimatorPreviewEntity_ = entityId;
@@ -7121,6 +7145,7 @@ void EditorScene::UpdateEditAnimatorPreview(float deltaTime) {
         EndEditAnimatorPreview();
         return;
     }
+    model->lockRootAnimationPosition = entity->animator->lockRootPosition;
     if (model->isPlaying) {
         const float safeDeltaTime =
             std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
@@ -7198,6 +7223,7 @@ bool EditorScene::BeginRuntimeAnimators(std::string* error) {
             }
             continue;
         }
+        model->lockRootAnimationPosition = animator.lockRootPosition;
         models->PlayAnimation(handle, clip, animator.loop);
         if (!animator.playOnAwake) {
             model->isPlaying = false;

@@ -195,6 +195,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedAnimator["playOnAwake"] = animator.playOnAwake;
             encodedAnimator["loop"] = animator.loop;
             encodedAnimator["speed"] = animator.speed;
+            encodedAnimator["lockRootPosition"] = animator.lockRootPosition;
             encoded["components"]["Animator"] = std::move(encodedAnimator);
         }
         if (!entity.scripts.empty()) {
@@ -652,6 +653,14 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             component.playOnAwake = animator["playOnAwake"].get<bool>();
             component.loop = animator["loop"].get<bool>();
             component.speed = animator["speed"].get<float>();
+            if (animator.contains("lockRootPosition")) {
+                if (!animator["lockRootPosition"].is_boolean()) {
+                    SetError(error, "Scene Animator settings are invalid.");
+                    return false;
+                }
+                component.lockRootPosition =
+                    animator["lockRootPosition"].get<bool>();
+            }
             if (component.clip.size() > 256u || component.clip.find('\0') != std::string::npos ||
                 !std::isfinite(component.speed) || component.speed < 0.0f ||
                 component.speed > 100.0f) {

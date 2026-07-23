@@ -131,6 +131,17 @@ XMMATRIX BlendRootMatrices(FXMMATRIX source, CXMMATRIX target, float blend) {
            XMMatrixTranslationFromVector(XMVectorLerp(sourceTranslation, targetTranslation, t));
 }
 
+XMMATRIX RemoveRootTranslation(FXMMATRIX root) {
+    XMVECTOR rootScale{};
+    XMVECTOR rootRotation{};
+    XMVECTOR rootTranslation{};
+    if (!XMMatrixDecompose(&rootScale, &rootRotation, &rootTranslation, root)) {
+        return root;
+    }
+    return XMMatrixScalingFromVector(rootScale) *
+           XMMatrixRotationQuaternion(XMQuaternionNormalize(rootRotation));
+}
+
 } // namespace
 
 void Animator::Play(Model& model, const std::string& animationName, bool loop) {
@@ -241,6 +252,9 @@ void Animator::Update(Model& model, float deltaTime) {
             if (blending && TrySampleRootMatrix(blendSource->second, model.blendSourceTime,
                                                 sourceRoot)) {
                 root = BlendRootMatrices(sourceRoot, targetRoot, blend);
+            }
+            if (model.lockRootAnimationPosition) {
+                root = RemoveRootTranslation(root);
             }
             XMStoreFloat4x4(&model.rootAnimationMatrix, root);
             model.hasRootAnimation = true;

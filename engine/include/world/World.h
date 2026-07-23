@@ -143,6 +143,7 @@ struct AnimatorComponent {
     bool playOnAwake = true;
     bool loop = true;
     float speed = 1.0f;
+    bool lockRootPosition = true;
     RuntimeCommand runtimeCommand = RuntimeCommand::None;
     std::string runtimeRequestedClip;
     std::string runtimeClip;
