@@ -66,6 +66,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->camera = original.camera;
         duplicate->light = original.light;
         duplicate->audioSource = original.audioSource;
+        duplicate->audioListener = original.audioListener;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->runtimePlaying = false;

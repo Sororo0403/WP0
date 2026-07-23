@@ -3408,6 +3408,13 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add AudioSource", before, selectionBefore);
             status_ = "Added AudioSource.";
         }
+        if (!entity->audioListener && ImGui::MenuItem("Audio Listener")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->audioListener = AudioListenerComponent{};
+            RecordImmediateEdit("Add AudioListener", before, selectionBefore);
+            status_ = "Added AudioListener.";
+        }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
@@ -4102,6 +4109,27 @@ void EditorScene::DrawInspectorPanel() {
                                0.0f, (std::max)(0.0f, source.maxDistance - 0.01f));
                 drawAudioFloat("Max Distance##AudioSource", source.maxDistance, 0.1f,
                                source.minDistance + 0.01f, 1000000.0f);
+            }
+        }
+    }
+
+    if (entity->audioListener) {
+        ImGui::SeparatorText("Audio Listener");
+        if (ImGui::Button("Remove Audio Listener")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->audioListener.reset();
+            RecordImmediateEdit("Remove AudioListener", before, selectionBefore);
+            status_ = "Removed AudioListener.";
+        } else {
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##AudioListener", &entity->audioListener->enabled)) {
+                RecordImmediateEdit("Toggle AudioListener", std::move(before), selectionBefore);
+            }
+            ImGui::TextDisabled("Receives 3D audio at this Entity's Transform.");
+            if (!entity->camera) {
+                ImGui::TextDisabled("A Camera component is not required.");
             }
         }
     }
@@ -6703,6 +6731,15 @@ bool EditorScene::BeginRuntimeAudio(std::string* error) {
         return false;
     }
     bool valid = true;
+    const size_t activeListenerCount = static_cast<size_t>(std::ranges::count_if(
+        world_.Entities(), [this](const WorldEntity& entity) {
+            return world_.IsActiveInHierarchy(entity.id) && entity.audioListener &&
+                   entity.audioListener->enabled;
+        }));
+    if (activeListenerCount > 1u) {
+        AddConsoleEntry("Multiple enabled Audio Listeners found. The first one will be used.",
+                        ConsoleSeverity::Warning);
+    }
     for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.audioSource) {
             continue;
@@ -6735,31 +6772,42 @@ void EditorScene::UpdateRuntimeAudio() {
         return;
     }
 
+    const WorldEntity* listener = nullptr;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!world_.IsActiveInHierarchy(entity.id) || !entity.camera ||
-            !entity.camera->enabled || !entity.camera->primary) {
-            continue;
-        }
-        DirectX::XMFLOAT4X4 matrix{};
-        if (!world_.TryGetWorldMatrix(entity.id, matrix)) {
+        if (world_.IsActiveInHierarchy(entity.id) && entity.audioListener &&
+            entity.audioListener->enabled) {
+            listener = &entity;
             break;
         }
-        using namespace DirectX;
-        const XMMATRIX world = XMLoadFloat4x4(&matrix);
-        XMVECTOR forward = XMVector3TransformNormal(g_XMIdentityR2, world);
-        XMVECTOR up = XMVector3TransformNormal(g_XMIdentityR1, world);
-        forward = XMVectorGetX(XMVector3LengthSq(forward)) > 1.0e-8f
-                      ? XMVector3Normalize(forward)
-                      : g_XMIdentityR2;
-        up = XMVectorGetX(XMVector3LengthSq(up)) > 1.0e-8f
-                 ? XMVector3Normalize(up)
-                 : g_XMIdentityR1;
-        XMFLOAT3 storedForward{};
-        XMFLOAT3 storedUp{};
-        XMStoreFloat3(&storedForward, forward);
-        XMStoreFloat3(&storedUp, up);
-        sound->SetListener({matrix._41, matrix._42, matrix._43}, storedForward, storedUp);
-        break;
+    }
+    if (listener == nullptr) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (world_.IsActiveInHierarchy(entity.id) && entity.camera &&
+                entity.camera->enabled && entity.camera->primary) {
+                listener = &entity;
+                break;
+            }
+        }
+    }
+    if (listener != nullptr) {
+        DirectX::XMFLOAT4X4 matrix{};
+        if (world_.TryGetWorldMatrix(listener->id, matrix)) {
+            using namespace DirectX;
+            const XMMATRIX world = XMLoadFloat4x4(&matrix);
+            XMVECTOR forward = XMVector3TransformNormal(g_XMIdentityR2, world);
+            XMVECTOR up = XMVector3TransformNormal(g_XMIdentityR1, world);
+            forward = XMVectorGetX(XMVector3LengthSq(forward)) > 1.0e-8f
+                          ? XMVector3Normalize(forward)
+                          : g_XMIdentityR2;
+            up = XMVectorGetX(XMVector3LengthSq(up)) > 1.0e-8f
+                     ? XMVector3Normalize(up)
+                     : g_XMIdentityR1;
+            XMFLOAT3 storedForward{};
+            XMFLOAT3 storedUp{};
+            XMStoreFloat3(&storedForward, forward);
+            XMStoreFloat3(&storedUp, up);
+            sound->SetListener({matrix._41, matrix._42, matrix._43}, storedForward, storedUp);
+        }
     }
 
     for (RuntimeAudioSource& runtime : runtimeAudioSources_) {
@@ -6915,7 +6963,7 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
     EntityId closestComponent{};
     float closestComponentDistanceSquared = 14.0f * 14.0f;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light && !entity.audioSource &&
+        if (!entity.camera && !entity.light && !entity.audioSource && !entity.audioListener &&
             !entity.boxCollider && !entity.characterController) {
             continue;
         }
@@ -7015,8 +7063,8 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
     };
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light && !entity.boxCollider &&
-            !entity.characterController) {
+        if (!entity.camera && !entity.light && !entity.audioSource && !entity.audioListener &&
+            !entity.boxCollider && !entity.characterController) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -7033,8 +7081,11 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                           ? IM_COL32(90, 185, 255, 230)
                           : (entity.light
                                  ? IM_COL32(255, 215, 80, 230)
-                                 : (entity.audioSource ? IM_COL32(190, 120, 255, 230)
-                                                       : IM_COL32(80, 230, 130, 230)));
+                                 : (entity.audioSource
+                                        ? IM_COL32(190, 120, 255, 230)
+                                        : (entity.audioListener
+                                               ? IM_COL32(80, 215, 230, 230)
+                                               : IM_COL32(80, 230, 130, 230))));
         const bool physicsLayerVisible =
             (physicsDebugLayerMask_ & (uint32_t{1} << entity.layer)) != 0u;
         const bool entityActive = world_.IsActiveInHierarchy(entity.id);
@@ -7050,9 +7101,10 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                              ((entity.camera && entity.camera->enabled) ||
                                (entity.light && entity.light->enabled) ||
                                (entity.audioSource && entity.audioSource->enabled) ||
+                               (entity.audioListener && entity.audioListener->enabled) ||
                                (entity.boxCollider && entity.boxCollider->enabled) ||
-                              (entity.characterController &&
-                               entity.characterController->enabled));
+                               (entity.characterController &&
+                                entity.characterController->enabled));
         if (!enabled) {
             color = (color & 0x00FFFFFFu) | (100u << 24u);
         }
@@ -7096,6 +7148,10 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                     previous = point;
                 }
             }
+        } else if (entity.audioListener) {
+            drawList->AddCircle(center, 3.0f, color, 16, 1.8f);
+            drawList->AddCircle(center, 7.0f, color, 24, 1.5f);
+            drawList->AddCircle(center, 11.0f, color, 32, 1.25f);
         } else {
             drawList->AddRect({center.x - 6.0f, center.y - 6.0f},
                               {center.x + 6.0f, center.y + 6.0f}, color, 1.0f, 0,
@@ -8041,6 +8097,7 @@ void EditorScene::NewScene(bool clearPath) {
         cameraEntity->transform.position = {0.0f, 2.0f, -5.0f};
         cameraEntity->camera = CameraComponent{};
         cameraEntity->camera->primary = true;
+        cameraEntity->audioListener = AudioListenerComponent{};
     }
     const EntityId light = world_.CreateEntity("Directional Light");
     if (WorldEntity* lightEntity = world_.Find(light)) {

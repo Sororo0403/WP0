@@ -181,6 +181,11 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedSource["maxDistance"] = source.maxDistance;
             encoded["components"]["AudioSource"] = std::move(encodedSource);
         }
+        if (entity.audioListener) {
+            Json encodedListener;
+            encodedListener["enabled"] = entity.audioListener->enabled;
+            encoded["components"]["AudioListener"] = std::move(encodedListener);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -595,6 +600,15 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.audioSource = std::move(component);
+        }
+        if (encoded["components"].contains("AudioListener")) {
+            const Json& listener = encoded["components"]["AudioListener"];
+            if (!listener.is_object() || !listener.contains("enabled") ||
+                !listener["enabled"].is_boolean()) {
+                SetError(error, "Scene AudioListener component is invalid.");
+                return false;
+            }
+            entity.audioListener = AudioListenerComponent{listener["enabled"].get<bool>()};
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

@@ -637,6 +637,7 @@ int main() {
         rootEntity->camera = CameraComponent{};
         rootEntity->camera->primary = true;
         rootEntity->camera->fieldOfViewDegrees = 60.0f;
+        rootEntity->audioListener = AudioListenerComponent{};
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -849,6 +850,8 @@ int main() {
                    restoredChild->characterController->radius == 0.4f &&
                    restoredChild->characterController->height == 1.8f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
+                   restored.Find(root)->audioListener &&
+                   restored.Find(root)->audioListener->enabled &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
@@ -885,7 +888,8 @@ int main() {
             : nullptr;
     if (!Check(instanceRoot != nullptr && instanceRoot->id != root &&
                    instanceRoot->parent == instanceParent && instanceRoot->camera &&
-                   !instanceRoot->camera->primary && instanceChild != nullptr &&
+                   !instanceRoot->camera->primary && instanceRoot->audioListener &&
+                   instanceChild != nullptr &&
                    instanceChild->id != child && instanceChild->parent == instanceRoot->id &&
                    instanceChild->meshRenderer && instanceChild->materialOverride &&
                    instanceChild->light && instanceChild->audioSource &&
@@ -954,7 +958,8 @@ int main() {
                    duplicateChild->characterController &&
                    duplicateChild->characterController->radius == 0.4f &&
                    duplicateChild->characterController->height == 1.8f &&
-                   duplicateRootEntity->camera && !duplicateRootEntity->camera->primary,
+                   duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
+                   duplicateRootEntity->audioListener,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }
@@ -1050,6 +1055,12 @@ int main() {
     if (!Check(!WorldSerializer::Deserialize(invalidLight, rejected, &error),
                "Invalid Light data was accepted.")) {
         return 115;
+    }
+    const std::string invalidAudioListener =
+        R"({"version":1,"entities":[{"id":"0000000000000001-0000000000000001","parent":null,"name":"Bad Audio Listener","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"AudioListener":{"enabled":1}}}]})";
+    if (!Check(!WorldSerializer::Deserialize(invalidAudioListener, rejected, &error),
+               "Invalid AudioListener data was accepted.")) {
+        return 160;
     }
     const std::string legacyBehavior =
         R"({"version":1,"entities":[{"id":"00000000-0000-0001-0000-000000000001","parent":null,"name":"Legacy Behavior","components":{"Transform":{"position":[0,0,0],"rotation":[0,0,0],"scale":[1,1,1]},"Behavior":{"enabled":true,"type":"Rotator"}}}]})";
