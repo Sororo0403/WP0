@@ -6915,8 +6915,8 @@ void EditorScene::PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax
     EntityId closestComponent{};
     float closestComponentDistanceSquared = 14.0f * 14.0f;
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.camera && !entity.light && !entity.boxCollider &&
-            !entity.characterController) {
+        if (!entity.camera && !entity.light && !entity.audioSource &&
+            !entity.boxCollider && !entity.characterController) {
             continue;
         }
         DirectX::XMFLOAT4X4 worldMatrix{};
@@ -7031,8 +7031,10 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         const bool selected = hierarchySelection_.contains(entity.id);
         ImU32 color = entity.camera
                           ? IM_COL32(90, 185, 255, 230)
-                          : (entity.light ? IM_COL32(255, 215, 80, 230)
-                                          : IM_COL32(80, 230, 130, 230));
+                          : (entity.light
+                                 ? IM_COL32(255, 215, 80, 230)
+                                 : (entity.audioSource ? IM_COL32(190, 120, 255, 230)
+                                                       : IM_COL32(80, 230, 130, 230)));
         const bool physicsLayerVisible =
             (physicsDebugLayerMask_ & (uint32_t{1} << entity.layer)) != 0u;
         const bool entityActive = world_.IsActiveInHierarchy(entity.id);
@@ -7046,8 +7048,9 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
         }
         const bool enabled = entityActive &&
                              ((entity.camera && entity.camera->enabled) ||
-                              (entity.light && entity.light->enabled) ||
-                              (entity.boxCollider && entity.boxCollider->enabled) ||
+                               (entity.light && entity.light->enabled) ||
+                               (entity.audioSource && entity.audioSource->enabled) ||
+                               (entity.boxCollider && entity.boxCollider->enabled) ||
                               (entity.characterController &&
                                entity.characterController->enabled));
         if (!enabled) {
@@ -7070,6 +7073,28 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                                   {center.x + direction.x * 11.0f,
                                    center.y + direction.y * 11.0f},
                                   color, 1.5f);
+            }
+        } else if (entity.audioSource) {
+            drawList->AddRect({center.x - 9.0f, center.y - 4.0f},
+                              {center.x - 5.0f, center.y + 4.0f}, color, 1.0f, 0, 1.8f);
+            drawList->AddTriangle({center.x - 5.0f, center.y - 4.0f},
+                                  {center.x + 1.0f, center.y - 8.0f},
+                                  {center.x + 1.0f, center.y + 8.0f}, color, 1.8f);
+            constexpr int arcSegments = 6;
+            for (int arc = 0; arc < 2; ++arc) {
+                const float radius = 5.0f + static_cast<float>(arc) * 4.0f;
+                ImVec2 previous{};
+                for (int index = 0; index <= arcSegments; ++index) {
+                    const float angle = -DirectX::XM_PIDIV4 + DirectX::XM_PIDIV2 *
+                                                               static_cast<float>(index) /
+                                                               static_cast<float>(arcSegments);
+                    const ImVec2 point{center.x + 1.0f + std::cos(angle) * radius,
+                                       center.y + std::sin(angle) * radius};
+                    if (index > 0) {
+                        drawList->AddLine(previous, point, color, 1.5f);
+                    }
+                    previous = point;
+                }
             }
         } else {
             drawList->AddRect({center.x - 6.0f, center.y - 6.0f},
@@ -7182,6 +7207,37 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin,
                         drawWorldLine(worldOrigin, rim, guideColor);
                     }
                 }
+            }
+
+            if (active && entity.audioSource && entity.audioSource->spatial) {
+                const AudioSourceComponent& source = *entity.audioSource;
+                const bool sourceEnabled = entityActive && source.enabled;
+                const ImU32 minColor = sourceEnabled ? IM_COL32(220, 155, 255, 220)
+                                                     : IM_COL32(220, 155, 255, 80);
+                const ImU32 maxColor = sourceEnabled ? IM_COL32(155, 95, 255, 150)
+                                                     : IM_COL32(155, 95, 255, 60);
+                auto drawRangeCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB,
+                                           ImU32 guideColor, float thickness) {
+                    constexpr int segments = 48;
+                    XMFLOAT3 previous{};
+                    for (int index = 0; index <= segments; ++index) {
+                        const float angle = XM_2PI * static_cast<float>(index) /
+                                            static_cast<float>(segments);
+                        XMFLOAT3 point{};
+                        XMStoreFloat3(&point, origin + axisA * (std::cos(angle) * radius) +
+                                                 axisB * (std::sin(angle) * radius));
+                        if (index > 0) {
+                            drawWorldLine(previous, point, guideColor, thickness);
+                        }
+                        previous = point;
+                    }
+                };
+                drawRangeCircle(source.minDistance, right, up, minColor, 1.75f);
+                drawRangeCircle(source.minDistance, right, forward, minColor, 1.75f);
+                drawRangeCircle(source.minDistance, up, forward, minColor, 1.75f);
+                drawRangeCircle(source.maxDistance, right, up, maxColor, 1.25f);
+                drawRangeCircle(source.maxDistance, right, forward, maxColor, 1.25f);
+                drawRangeCircle(source.maxDistance, up, forward, maxColor, 1.25f);
             }
 
             if (entity.boxCollider && (active || drawPhysicsShapes)) {
