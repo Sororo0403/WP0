@@ -4,6 +4,7 @@
 #include "core/MathUtils.h"
 
 #include <DirectXMath.h>
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <new>
@@ -53,6 +54,25 @@ XMMATRIX MakeAnimatedLocalMatrix(const BoneInfo& bone, const AnimationClip& clip
     return animatedLocal * adjustment;
 }
 
+XMMATRIX BlendLocalMatrices(FXMMATRIX source, CXMMATRIX target, float blend) {
+    XMVECTOR sourceScale{};
+    XMVECTOR sourceRotation{};
+    XMVECTOR sourceTranslation{};
+    XMVECTOR targetScale{};
+    XMVECTOR targetRotation{};
+    XMVECTOR targetTranslation{};
+    const float t = std::clamp(std::isfinite(blend) ? blend : 1.0f, 0.0f, 1.0f);
+    if (!XMMatrixDecompose(&sourceScale, &sourceRotation, &sourceTranslation, source) ||
+        !XMMatrixDecompose(&targetScale, &targetRotation, &targetTranslation, target)) {
+        return t < 0.5f ? source : target;
+    }
+    sourceRotation = XMQuaternionNormalize(sourceRotation);
+    targetRotation = XMQuaternionNormalize(targetRotation);
+    return XMMatrixScalingFromVector(XMVectorLerp(sourceScale, targetScale, t)) *
+           XMMatrixRotationQuaternion(XMQuaternionSlerp(sourceRotation, targetRotation, t)) *
+           XMMatrixTranslationFromVector(XMVectorLerp(sourceTranslation, targetTranslation, t));
+}
+
 } // namespace
 
 void SkeletonPoseBuilder::BuildBindPoseLocals(const Model& model,
@@ -80,6 +100,26 @@ void SkeletonPoseBuilder::BuildAnimatedLocals(const Model& model, const Animatio
     }
     for (size_t i = 0; i < boneCount; i++) {
         localMatrices[i] = MakeAnimatedLocalMatrix(model.bones[i], clip, time);
+    }
+}
+
+void SkeletonPoseBuilder::BuildBlendedLocals(
+    const Model& model, const AnimationClip& source, float sourceTime,
+    const AnimationClip& target, float targetTime, float blend,
+    std::vector<XMMATRIX>& localMatrices) {
+    const size_t boneCount = model.bones.size();
+    try {
+        localMatrices.resize(boneCount);
+    } catch (const std::exception&) {
+        localMatrices.clear();
+        return;
+    }
+    for (size_t i = 0; i < boneCount; ++i) {
+        const XMMATRIX sourceLocal =
+            MakeAnimatedLocalMatrix(model.bones[i], source, sourceTime);
+        const XMMATRIX targetLocal =
+            MakeAnimatedLocalMatrix(model.bones[i], target, targetTime);
+        localMatrices[i] = BlendLocalMatrices(sourceLocal, targetLocal, blend);
     }
 }
 

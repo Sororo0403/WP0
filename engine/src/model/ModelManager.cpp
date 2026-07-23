@@ -72,6 +72,11 @@ std::string MakeAssimpModelPath(const std::filesystem::path& resolvedPath) {
 }
 
 void ResetModelPlayback(Model& model) {
+    model.blendSourceAnimation.clear();
+    model.blendSourceTime = 0.0f;
+    model.blendSourceLoop = true;
+    model.blendDuration = 0.0f;
+    model.blendTime = 0.0f;
     if (!model.animations.empty()) {
         model.currentAnimation = model.animations.begin()->first;
         model.animationTime = 0.0f;

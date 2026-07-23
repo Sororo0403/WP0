@@ -4284,7 +4284,8 @@ void EditorScene::DrawInspectorPanel() {
                     ImGui::TextDisabled("Runtime Clip: %s", animator.runtimeClip.c_str());
                 }
             } else {
-                ImGui::TextDisabled("Script API: PlayAnimation / StopAnimation");
+                ImGui::TextDisabled(
+                    "Script API: PlayAnimation / CrossFadeAnimation / StopAnimation");
             }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
@@ -6942,6 +6943,7 @@ bool EditorScene::BeginRuntimeAnimators(std::string* error) {
             runtimeEntity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
             runtimeEntity->animator->runtimeClip = clip;
             runtimeEntity->animator->runtimeLoop = animator.loop;
+            runtimeEntity->animator->runtimeFadeDuration = 0.0f;
             runtimeEntity->animator->runtimePlaying = model->isPlaying;
             runtimeEntity->animator->runtimeFinished = model->animationFinished;
         }
@@ -7057,6 +7059,10 @@ void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
             } else {
                 model->isLoop = animator.runtimeLoop;
             }
+        } else if (command == AnimatorComponent::RuntimeCommand::CrossFade &&
+                   model->animations.contains(animator.runtimeClip)) {
+            models->CrossFadeAnimation(runtime.model, animator.runtimeClip,
+                                       animator.runtimeFadeDuration, animator.runtimeLoop);
         }
         if (animator.enabled && world_.IsActiveInHierarchy(runtime.entity) && model->isPlaying) {
             models->UpdateAnimation(runtime.model, deltaTime * animator.speed);
@@ -7074,6 +7080,7 @@ void EditorScene::EndRuntimeAnimators() {
             entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
             entity->animator->runtimeClip.clear();
             entity->animator->runtimeLoop = true;
+            entity->animator->runtimeFadeDuration = 0.0f;
             entity->animator->runtimePlaying = false;
             entity->animator->runtimeFinished = false;
         }

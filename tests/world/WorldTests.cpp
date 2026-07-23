@@ -6,6 +6,7 @@
 #include "RecentScenesStore.h"
 #include "ScriptAsset.h"
 #include "collision/CollisionUtil.h"
+#include "animation/Animator.h"
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
 #include "graphics/Lighting.h"
@@ -515,6 +516,38 @@ int main() {
                "Editor Euler rotation conversion changed the rotation matrix.")) {
         return 124;
     }
+    Model blendedModel{};
+    BoneInfo blendedBone{};
+    blendedBone.name = "Root";
+    DirectX::XMStoreFloat4x4(&blendedBone.offsetMatrix, DirectX::XMMatrixIdentity());
+    DirectX::XMStoreFloat4x4(&blendedBone.localBindMatrix, DirectX::XMMatrixIdentity());
+    DirectX::XMStoreFloat4x4(&blendedBone.parentAdjustmentMatrix,
+                             DirectX::XMMatrixIdentity());
+    blendedModel.bones.push_back(blendedBone);
+    AnimationClip idleClip{};
+    idleClip.duration = 1.0f;
+    idleClip.nodeAnimations["Root"].translate.keyframes.push_back(
+        {0.0f, {0.0f, 0.0f, 0.0f}});
+    AnimationClip runClip{};
+    runClip.duration = 1.0f;
+    runClip.nodeAnimations["Root"].translate.keyframes.push_back(
+        {0.0f, {10.0f, 0.0f, 0.0f}});
+    blendedModel.animations.emplace("Idle", std::move(idleClip));
+    blendedModel.animations.emplace("Run", std::move(runClip));
+    Animator::Play(blendedModel, "Idle", true);
+    Animator::Update(blendedModel, 0.0f);
+    Animator::CrossFade(blendedModel, "Run", 1.0f, true);
+    Animator::Update(blendedModel, 0.5f);
+    const bool halfwayBlended = blendedModel.skeletonSpaceMatrices.size() == 1u &&
+                                std::abs(blendedModel.skeletonSpaceMatrices[0]._41 - 5.0f) <
+                                    0.001f;
+    Animator::Update(blendedModel, 0.5f);
+    if (!Check(halfwayBlended && blendedModel.blendSourceAnimation.empty() &&
+                   blendedModel.skeletonSpaceMatrices.size() == 1u &&
+                   std::abs(blendedModel.skeletonSpaceMatrices[0]._41 - 10.0f) < 0.001f,
+               "Animator CrossFade did not blend or finish the skeleton pose.")) {
+        return 167;
+    }
     const auto boxPrimitive =
         ModelPrimitiveFactory::BuildBox(0u, Material{}, 1.0f, 2.0f, 1.0f);
     const auto cylinderPrimitive =
@@ -601,6 +634,13 @@ int main() {
                    childEntity->animator->runtimeClip == "Run" &&
                    !childEntity->animator->runtimeLoop &&
                    !source.IsAnimationPlaying(child) && !source.IsAnimationFinished(child) &&
+                   source.CrossFadeAnimation(child, "Idle", 0.25f) &&
+                   childEntity->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::CrossFade &&
+                   childEntity->animator->runtimeClip == "Idle" &&
+                   childEntity->animator->runtimeLoop &&
+                   childEntity->animator->runtimeFadeDuration == 0.25f &&
+                   !source.CrossFadeAnimation(child, "Idle", -1.0f) &&
                    source.StopAnimation(child) &&
                    childEntity->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::Stop &&
@@ -850,6 +890,7 @@ int main() {
                    restoredChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
                    restoredChild->animator->runtimeClip.empty() &&
+                   restoredChild->animator->runtimeFadeDuration == 0.0f &&
                    !restoredChild->animator->runtimePlaying &&
                    !restoredChild->animator->runtimeFinished &&
                    restoredChild->scripts.size() == 3u &&
@@ -979,6 +1020,7 @@ int main() {
                    duplicateChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
                    duplicateChild->animator->runtimeClip.empty() &&
+                   duplicateChild->animator->runtimeFadeDuration == 0.0f &&
                    duplicateChild->scripts.size() == 3u &&
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==

@@ -17,32 +17,32 @@
         },
         "Transform": {
           "position": [
-            0.0,
-            -2.9802322387695313e-08,
-            0.0
+            0.2964467406272888,
+            7.150000095367432,
+            4.561216354370117
           ],
           "rotation": [
-            0.0,
+            79.75,
             0.0,
             0.0
           ],
           "scale": [
-            1.0,
-            1.0000001192092896,
-            1.0000001192092896
+            1.0000077486038208,
+            0.999993622303009,
+            1.000010371208191
           ]
         }
       },
       "id": "423e7470-bb1c-6a5f-c411-2b5ab0d64190",
       "layer": 0,
       "name": "Camera",
-      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
+      "parent": null
     },
     {
       "active": true,
       "components": {
         "Animator": {
-          "clip": "",
+          "clip": "Anim_0",
           "enabled": true,
           "loop": true,
           "playOnAwake": true,

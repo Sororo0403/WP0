@@ -98,6 +98,19 @@ void ModelManager::PlayAnimation(ModelHandle modelId, const std::string& animati
     PlayAnimation(modelId.Get(), animationName, loop);
 }
 
+void ModelManager::CrossFadeAnimation(uint32_t modelId, const std::string& animationName,
+                                      float duration, bool loop) {
+    if (modelId >= models_.size()) {
+        return;
+    }
+    animator_.CrossFade(models_[modelId], animationName, duration, loop);
+}
+
+void ModelManager::CrossFadeAnimation(ModelHandle modelId, const std::string& animationName,
+                                      float duration, bool loop) {
+    CrossFadeAnimation(modelId.Get(), animationName, duration, loop);
+}
+
 bool ModelManager::IsAnimationFinished(uint32_t modelId) const {
     if (modelId >= models_.size()) {
         return false;

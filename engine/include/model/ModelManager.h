@@ -159,6 +159,10 @@ public:
     /// <param name="loop">ループ再生するか</param>
     void PlayAnimation(uint32_t modelId, const std::string& animationName, bool loop = true);
     void PlayAnimation(ModelHandle modelId, const std::string& animationName, bool loop = true);
+    void CrossFadeAnimation(uint32_t modelId, const std::string& animationName,
+                            float duration, bool loop = true);
+    void CrossFadeAnimation(ModelHandle modelId, const std::string& animationName,
+                            float duration, bool loop = true);
 
     /// <summary>
     /// アニメーションが終了したか判定する

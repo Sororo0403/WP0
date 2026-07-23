@@ -19,6 +19,10 @@ public:
     /// </summary>
     static void BuildAnimatedLocals(const Model& model, const AnimationClip& clip, float time,
                                     std::vector<DirectX::XMMATRIX>& localMatrices);
+    static void BuildBlendedLocals(const Model& model, const AnimationClip& source,
+                                   float sourceTime, const AnimationClip& target,
+                                   float targetTime, float blend,
+                                   std::vector<DirectX::XMMATRIX>& localMatrices);
 
     /// <summary>
     /// ローカル行列配列からスケルトン空間行列を更新する

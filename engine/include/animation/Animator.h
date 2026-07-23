@@ -12,6 +12,12 @@ public:
     static void Play(Model& model, const std::string& animationName, bool loop = true);
 
     /// <summary>
+    /// 現在姿勢から指定Animationへ滑らかに遷移する
+    /// </summary>
+    static void CrossFade(Model& model, const std::string& animationName,
+                          float duration, bool loop = true);
+
+    /// <summary>
     /// 再生中アニメーションの時間を進めてモデル姿勢を更新する
     /// </summary>
     static void Update(Model& model, float deltaTime);

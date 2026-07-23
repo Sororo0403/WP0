@@ -124,6 +124,11 @@ struct Model {
     bool isLoop = true;
     bool isPlaying = true;
     bool animationFinished = false;
+    std::string blendSourceAnimation;
+    float blendSourceTime = 0.0f;
+    bool blendSourceLoop = true;
+    float blendDuration = 0.0f;
+    float blendTime = 0.0f;
 
     bool hasRootAnimation = false;
     DirectX::XMFLOAT4X4 rootAnimationMatrix = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,

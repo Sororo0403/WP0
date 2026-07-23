@@ -77,6 +77,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
             duplicate->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
             duplicate->animator->runtimeClip.clear();
             duplicate->animator->runtimeLoop = true;
+            duplicate->animator->runtimeFadeDuration = 0.0f;
             duplicate->animator->runtimePlaying = false;
             duplicate->animator->runtimeFinished = false;
         }
@@ -345,6 +346,21 @@ bool World::PlayAnimation(EntityId id, std::string clip, bool loop) {
     return true;
 }
 
+bool World::CrossFadeAnimation(EntityId id, std::string clip, float duration, bool loop) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->animator || !entity->animator->enabled || clip.empty() ||
+        clip.size() > 256u || clip.find('\0') != std::string::npos ||
+        !std::isfinite(duration) || duration < 0.0f || duration > 10.0f ||
+        !IsActiveInHierarchy(id)) {
+        return false;
+    }
+    entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::CrossFade;
+    entity->animator->runtimeClip = std::move(clip);
+    entity->animator->runtimeLoop = loop;
+    entity->animator->runtimeFadeDuration = duration;
+    return true;
+}
+
 bool World::StopAnimation(EntityId id) {
     WorldEntity* entity = Find(id);
     if (entity == nullptr || !entity->animator) {
@@ -467,6 +483,7 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             entity.animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
             entity.animator->runtimeClip.clear();
             entity.animator->runtimeLoop = true;
+            entity.animator->runtimeFadeDuration = 0.0f;
             entity.animator->runtimePlaying = false;
             entity.animator->runtimeFinished = false;
         }

@@ -134,6 +134,7 @@ struct AnimatorComponent {
     enum class RuntimeCommand : uint8_t {
         None,
         Play,
+        CrossFade,
         Stop,
     };
 
@@ -145,6 +146,7 @@ struct AnimatorComponent {
     RuntimeCommand runtimeCommand = RuntimeCommand::None;
     std::string runtimeClip;
     bool runtimeLoop = true;
+    float runtimeFadeDuration = 0.0f;
     bool runtimePlaying = false;
     bool runtimeFinished = false;
 };
@@ -220,6 +222,8 @@ public:
     bool StopAudioSource(EntityId entity);
     [[nodiscard]] bool IsAudioSourcePlaying(EntityId entity) const;
     bool PlayAnimation(EntityId entity, std::string clip, bool loop = true);
+    bool CrossFadeAnimation(EntityId entity, std::string clip, float duration,
+                            bool loop = true);
     bool StopAnimation(EntityId entity);
     [[nodiscard]] bool IsAnimationPlaying(EntityId entity) const;
     [[nodiscard]] bool IsAnimationFinished(EntityId entity) const;
