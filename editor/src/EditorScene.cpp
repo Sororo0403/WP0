@@ -113,6 +113,67 @@ constexpr std::array<InputAxisChoice, 7> kInputAxisChoices = {{
     {InputActionAxisSource::GamepadRightTrigger, "Right Trigger"},
 }};
 
+struct InputActionUsage {
+    size_t total = 0u;
+    size_t button = 0u;
+    size_t axis = 0u;
+    size_t any = 0u;
+};
+
+std::unordered_map<std::string, InputActionUsage> CollectInputActionUsages(
+    const World& world, const BehaviorRegistry& registry) {
+    std::unordered_map<std::string, InputActionUsage> usages;
+    const auto countReference = [&usages](std::string_view actionName,
+                                          ScriptInputActionKind kind) {
+        if (actionName.empty()) {
+            return;
+        }
+        InputActionUsage& usage = usages[std::string(actionName)];
+        ++usage.total;
+        switch (kind) {
+        case ScriptInputActionKind::Button:
+            ++usage.button;
+            break;
+        case ScriptInputActionKind::Axis:
+            ++usage.axis;
+            break;
+        case ScriptInputActionKind::Any:
+            ++usage.any;
+            break;
+        }
+    };
+    for (const WorldEntity& entity : world.Entities()) {
+        for (const BehaviorComponent& script : entity.scripts) {
+            const std::vector<ScriptPropertyDefinition>* definitions =
+                registry.Properties(script.type);
+            if (definitions == nullptr) {
+                for (const ScriptPropertyValue& property : script.properties) {
+                    if (property.type == ScriptPropertyType::InputAction) {
+                        countReference(property.stringValue,
+                                       ScriptInputActionKind::Any);
+                    }
+                }
+                continue;
+            }
+            for (const ScriptPropertyDefinition& definition : *definitions) {
+                if (definition.type != ScriptPropertyType::InputAction) {
+                    continue;
+                }
+                const auto stored =
+                    std::ranges::find(script.properties, definition.name,
+                                      &ScriptPropertyValue::name);
+                const std::string_view value =
+                    stored != script.properties.end() &&
+                            stored->type == ScriptPropertyType::InputAction
+                        ? std::string_view(stored->stringValue)
+                        : std::string_view(definition.defaultString);
+                countReference(value, definition.inputActionKind);
+            }
+        }
+    }
+    return usages;
+}
+
 ImU32 PhysicsDebugLayerColor(uint8_t layer, bool enabled = true) {
     constexpr std::array<std::array<uint8_t, 3>, 8> colors = {{
         {80, 230, 130},
@@ -1508,6 +1569,8 @@ void EditorScene::DrawProjectSettingsWindow() {
         return changed;
     };
 
+    const std::unordered_map<std::string, InputActionUsage> inputActionUsages =
+        CollectInputActionUsages(world_, behaviorRegistry_);
     if (ImGui::BeginChild("InputActionBindings", {0.0f, 300.0f},
                           ImGuiChildFlags_Borders)) {
         for (const std::string& name : input->GetActionNames()) {
@@ -1533,6 +1596,28 @@ void EditorScene::DrawProjectSettingsWindow() {
                     changed = true;
                 }
                 ImGui::EndCombo();
+            }
+            const auto usageEntry = inputActionUsages.find(name);
+            const InputActionUsage usage =
+                usageEntry != inputActionUsages.end() ? usageEntry->second
+                                                      : InputActionUsage{};
+            if (usage.total == 0u) {
+                ImGui::TextDisabled("No Script references.");
+            } else {
+                ImGui::TextDisabled(
+                    "%zu Script reference%s (Button: %zu, Axis: %zu, Any: %zu)",
+                    usage.total, usage.total == 1u ? "" : "s", usage.button,
+                    usage.axis, usage.any);
+            }
+            const size_t incompatibleReferences =
+                binding.type == InputActionType::Button ? usage.axis : usage.button;
+            if (incompatibleReferences != 0u) {
+                ImGui::TextColored(
+                    {1.0f, 0.45f, 0.35f, 1.0f},
+                    "%zu Script reference%s expect%s the other Action type.",
+                    incompatibleReferences,
+                    incompatibleReferences == 1u ? "" : "s",
+                    incompatibleReferences == 1u ? "s" : "");
             }
             const bool axisAction = binding.type == InputActionType::Axis;
             if (axisAction) {
@@ -1625,6 +1710,19 @@ void EditorScene::DrawProjectSettingsWindow() {
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextDisabled("Current name: %s",
                             pendingInputActionName_.c_str());
+        const auto usageEntry =
+            inputActionUsages.find(pendingInputActionName_);
+        const InputActionUsage usage =
+            usageEntry != inputActionUsages.end() ? usageEntry->second
+                                                  : InputActionUsage{};
+        if (usage.total != 0u) {
+            ImGui::TextColored(
+                {1.0f, 0.75f, 0.25f, 1.0f},
+                "%zu Script reference%s will keep the old name.",
+                usage.total, usage.total == 1u ? "" : "s");
+            ImGui::TextWrapped(
+                "Update those Script properties before or after renaming.");
+        }
         if (focusInputActionNameInput_) {
             ImGui::SetKeyboardFocusHere();
             focusInputActionNameInput_ = false;
@@ -1661,6 +1759,17 @@ void EditorScene::DrawProjectSettingsWindow() {
     if (ImGui::BeginPopupModal("Remove Input Action", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Remove '%s'?", pendingInputActionName_.c_str());
+        const auto usageEntry =
+            inputActionUsages.find(pendingInputActionName_);
+        const InputActionUsage usage =
+            usageEntry != inputActionUsages.end() ? usageEntry->second
+                                                  : InputActionUsage{};
+        if (usage.total != 0u) {
+            ImGui::TextColored(
+                {1.0f, 0.45f, 0.35f, 1.0f},
+                "%zu Script reference%s will become missing.",
+                usage.total, usage.total == 1u ? "" : "s");
+        }
         ImGui::TextDisabled("The change is not permanent until Save is pressed.");
         if (ImGui::Button("Remove", {100.0f, 0.0f})) {
             const std::string removedName = pendingInputActionName_;
