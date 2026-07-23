@@ -23,11 +23,17 @@ enum class InputActionAxisSource : uint8_t {
     GamepadRightTrigger = 6,
 };
 
+enum class InputActionType : uint8_t {
+    Button = 0,
+    Axis = 1,
+};
+
 struct InputActionBinding {
     int negativeKey = -1;
     std::array<int, 2> positiveKeys{-1, -1};
     WORD gamepadButton = 0;
     InputActionAxisSource gamepadAxis = InputActionAxisSource::None;
+    InputActionType type = InputActionType::Button;
 };
 
 /// <summary>
@@ -219,6 +225,11 @@ public:
     /// 名前付きActionのBindingを削除する
     /// </summary>
     bool RemoveActionBinding(std::string_view name);
+
+    /// <summary>
+    /// すべての名前付きActionを削除する
+    /// </summary>
+    void ClearActionBindings();
 
     /// <summary>
     /// LikeEngine標準のゲーム操作Bindingへ戻す

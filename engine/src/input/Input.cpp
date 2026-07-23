@@ -73,7 +73,9 @@ bool Input::SetActionBinding(std::string name,
         name.find('\0') != std::string::npos || !validKey(binding.negativeKey) ||
         !std::ranges::all_of(binding.positiveKeys, validKey) ||
         binding.gamepadAxis < InputActionAxisSource::None ||
-        binding.gamepadAxis > InputActionAxisSource::GamepadRightTrigger) {
+        binding.gamepadAxis > InputActionAxisSource::GamepadRightTrigger ||
+        binding.type < InputActionType::Button ||
+        binding.type > InputActionType::Axis) {
         return false;
     }
     const auto found = std::ranges::find_if(
@@ -102,14 +104,20 @@ bool Input::RemoveActionBinding(std::string_view name) {
     return true;
 }
 
-void Input::ResetDefaultActionBindings() {
+void Input::ClearActionBindings() {
     state_->actionBindings.clear();
+}
+
+void Input::ResetDefaultActionBindings() {
+    ClearActionBindings();
     (void)SetActionBinding(
         "MoveHorizontal",
-        {DIK_A, {DIK_D, -1}, 0, InputActionAxisSource::GamepadLeftX});
+        {DIK_A, {DIK_D, -1}, 0, InputActionAxisSource::GamepadLeftX,
+         InputActionType::Axis});
     (void)SetActionBinding(
         "MoveVertical",
-        {DIK_S, {DIK_W, -1}, 0, InputActionAxisSource::GamepadLeftY});
+        {DIK_S, {DIK_W, -1}, 0, InputActionAxisSource::GamepadLeftY,
+         InputActionType::Axis});
     (void)SetActionBinding(
         "Sprint",
         {-1, {DIK_LSHIFT, DIK_RSHIFT}, XINPUT_GAMEPAD_LEFT_THUMB,
@@ -163,7 +171,7 @@ float Input::GetActionGamepadAxis(InputActionAxisSource source) const {
 
 float Input::GetActionAxis(std::string_view name) const {
     const InputActionBinding* binding = GetActionBinding(name);
-    if (binding == nullptr) {
+    if (binding == nullptr || binding->type != InputActionType::Axis) {
         return 0.0f;
     }
     float value = GetActionGamepadAxis(binding->gamepadAxis);
@@ -202,18 +210,21 @@ bool Input::EvaluateActionButton(const InputActionBinding& binding,
 
 bool Input::IsActionPressed(std::string_view name) const {
     const InputActionBinding* binding = GetActionBinding(name);
-    return binding != nullptr && EvaluateActionButton(*binding, false);
+    return binding != nullptr && binding->type == InputActionType::Button &&
+           EvaluateActionButton(*binding, false);
 }
 
 bool Input::IsActionTriggered(std::string_view name) const {
     const InputActionBinding* binding = GetActionBinding(name);
-    return binding != nullptr && EvaluateActionButton(*binding, false) &&
+    return binding != nullptr && binding->type == InputActionType::Button &&
+           EvaluateActionButton(*binding, false) &&
            !EvaluateActionButton(*binding, true);
 }
 
 bool Input::IsActionReleased(std::string_view name) const {
     const InputActionBinding* binding = GetActionBinding(name);
-    return binding != nullptr && !EvaluateActionButton(*binding, false) &&
+    return binding != nullptr && binding->type == InputActionType::Button &&
+           !EvaluateActionButton(*binding, false) &&
            EvaluateActionButton(*binding, true);
 }
 

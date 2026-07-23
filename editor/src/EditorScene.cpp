@@ -58,6 +58,61 @@ constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
 
+struct InputKeyChoice {
+    int value;
+    const char* label;
+};
+
+constexpr std::array<InputKeyChoice, 42> kInputKeyChoices = {{
+    {-1, "None"},
+    {DIK_A, "A"}, {DIK_B, "B"}, {DIK_C, "C"}, {DIK_D, "D"},
+    {DIK_E, "E"}, {DIK_F, "F"}, {DIK_G, "G"}, {DIK_H, "H"},
+    {DIK_I, "I"}, {DIK_J, "J"}, {DIK_K, "K"}, {DIK_L, "L"},
+    {DIK_M, "M"}, {DIK_N, "N"}, {DIK_O, "O"}, {DIK_P, "P"},
+    {DIK_Q, "Q"}, {DIK_R, "R"}, {DIK_S, "S"}, {DIK_T, "T"},
+    {DIK_U, "U"}, {DIK_V, "V"}, {DIK_W, "W"}, {DIK_X, "X"},
+    {DIK_Y, "Y"}, {DIK_Z, "Z"},
+    {DIK_0, "0"}, {DIK_1, "1"}, {DIK_2, "2"}, {DIK_3, "3"},
+    {DIK_4, "4"}, {DIK_5, "5"}, {DIK_6, "6"}, {DIK_7, "7"},
+    {DIK_8, "8"}, {DIK_9, "9"},
+    {DIK_SPACE, "Space"},
+    {DIK_LSHIFT, "Left Shift"}, {DIK_RSHIFT, "Right Shift"},
+    {DIK_LCONTROL, "Left Ctrl"}, {DIK_RCONTROL, "Right Ctrl"},
+}};
+
+struct InputGamepadButtonChoice {
+    WORD value;
+    const char* label;
+};
+
+constexpr std::array<InputGamepadButtonChoice, 13> kInputGamepadButtonChoices = {{
+    {0, "None"},
+    {XINPUT_GAMEPAD_A, "A"}, {XINPUT_GAMEPAD_B, "B"},
+    {XINPUT_GAMEPAD_X, "X"}, {XINPUT_GAMEPAD_Y, "Y"},
+    {XINPUT_GAMEPAD_LEFT_SHOULDER, "Left Shoulder"},
+    {XINPUT_GAMEPAD_RIGHT_SHOULDER, "Right Shoulder"},
+    {XINPUT_GAMEPAD_LEFT_THUMB, "Left Stick"},
+    {XINPUT_GAMEPAD_RIGHT_THUMB, "Right Stick"},
+    {XINPUT_GAMEPAD_DPAD_UP, "D-Pad Up"},
+    {XINPUT_GAMEPAD_DPAD_DOWN, "D-Pad Down"},
+    {XINPUT_GAMEPAD_START, "Start"}, {XINPUT_GAMEPAD_BACK, "Back"},
+}};
+
+struct InputAxisChoice {
+    InputActionAxisSource value;
+    const char* label;
+};
+
+constexpr std::array<InputAxisChoice, 7> kInputAxisChoices = {{
+    {InputActionAxisSource::None, "None"},
+    {InputActionAxisSource::GamepadLeftX, "Left Stick X"},
+    {InputActionAxisSource::GamepadLeftY, "Left Stick Y"},
+    {InputActionAxisSource::GamepadRightX, "Right Stick X"},
+    {InputActionAxisSource::GamepadRightY, "Right Stick Y"},
+    {InputActionAxisSource::GamepadLeftTrigger, "Left Trigger"},
+    {InputActionAxisSource::GamepadRightTrigger, "Right Trigger"},
+}};
+
 ImU32 PhysicsDebugLayerColor(uint8_t layer, bool enabled = true) {
     constexpr std::array<std::array<uint8_t, 3>, 8> colors = {{
         {80, 230, 130},
@@ -390,6 +445,7 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
       imguiSettingsPath_(std::move(imguiSettingsPath)),
       physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
+      inputSettingsStore_(projectRoot_ / L"settings" / L"input.json"),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
       scenePath_(std::move(startupScene)) {
     std::string physicsSettingsError;
@@ -413,6 +469,13 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
 
 void EditorScene::Initialize(const SceneContext& ctx) {
     BaseScene::Initialize(ctx);
+    std::string inputSettingsError;
+    if (ctx.systems.input == nullptr ||
+        !inputSettingsStore_.Load(*ctx.systems.input, inputSettingsError)) {
+        status_ = "Warning: Could not load Input Settings: " +
+                  (inputSettingsError.empty() ? std::string("Input service is unavailable.")
+                                              : inputSettingsError);
+    }
     std::string behaviorRequirementError;
     std::string scriptModuleError;
     if (!ScriptBuildService::BuildIfNeeded(projectRoot_, scriptModuleError) ||
@@ -630,6 +693,9 @@ bool EditorScene::OnCloseRequested() {
         StopPlayMode();
     }
     if (physicsSettingsDirty_ && !SavePhysicsSettings()) {
+        return false;
+    }
+    if (inputSettingsDirty_ && !SaveInputSettings()) {
         return false;
     }
     if (!dirty_) {
@@ -1210,6 +1276,22 @@ bool EditorScene::SavePhysicsSettings() {
     return true;
 }
 
+bool EditorScene::SaveInputSettings() {
+    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    if (input == nullptr) {
+        status_ = "Error: Could not save Input Settings: Input service is unavailable.";
+        return false;
+    }
+    std::string error;
+    if (!inputSettingsStore_.Save(*input, error)) {
+        status_ = "Error: Could not save Input Settings: " + error;
+        return false;
+    }
+    inputSettingsDirty_ = false;
+    status_ = "Saved Input Settings.";
+    return true;
+}
+
 void EditorScene::DrawProjectSettingsWindow() {
     if (!showProjectSettings_) {
         return;
@@ -1322,6 +1404,133 @@ void EditorScene::DrawProjectSettingsWindow() {
         }
         ImGui::EndTable();
     }
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Input Actions");
+    ImGui::TextDisabled("Project file: %s",
+                        inputSettingsStore_.Path().generic_string().c_str());
+    ImGui::TextWrapped(
+        "Named Actions combine keyboard and gamepad bindings used by C++ Scripts.");
+    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    ImGui::BeginDisabled(IsInPlayMode() || input == nullptr);
+    if (input == nullptr) {
+        ImGui::TextDisabled("Input service is unavailable.");
+        ImGui::EndDisabled();
+        ImGui::End();
+        return;
+    }
+    ImGui::BeginDisabled(!inputSettingsDirty_);
+    if (ImGui::Button("Save##InputSettings")) {
+        SaveInputSettings();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Revert##InputSettings")) {
+        std::string error;
+        if (inputSettingsStore_.Load(*input, error)) {
+            inputSettingsDirty_ = false;
+            status_ = "Reverted Input Settings.";
+        } else {
+            status_ = "Error: Could not reload Input Settings: " + error;
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Reset Defaults##InputSettings")) {
+        input->ResetDefaultActionBindings();
+        inputSettingsDirty_ = true;
+        status_ = "Reset Input Actions to defaults.";
+    }
+    if (inputSettingsDirty_) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.75f, 0.25f, 1.0f}, "Unsaved changes");
+    }
+
+    const auto drawKeyCombo = [](const char* label, int& value) {
+        const auto selected = std::ranges::find(kInputKeyChoices, value,
+                                                &InputKeyChoice::value);
+        const char* preview =
+            selected != kInputKeyChoices.end() ? selected->label : "Unknown";
+        bool changed = false;
+        if (ImGui::BeginCombo(label, preview)) {
+            for (const InputKeyChoice& choice : kInputKeyChoices) {
+                if (ImGui::Selectable(choice.label, value == choice.value)) {
+                    value = choice.value;
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    };
+    const auto drawGamepadButtonCombo = [](const char* label, WORD& value) {
+        const auto selected =
+            std::ranges::find(kInputGamepadButtonChoices, value,
+                              &InputGamepadButtonChoice::value);
+        const char* preview = selected != kInputGamepadButtonChoices.end()
+                                  ? selected->label
+                                  : "Unknown";
+        bool changed = false;
+        if (ImGui::BeginCombo(label, preview)) {
+            for (const InputGamepadButtonChoice& choice :
+                 kInputGamepadButtonChoices) {
+                if (ImGui::Selectable(choice.label, value == choice.value)) {
+                    value = choice.value;
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    };
+    const auto drawAxisCombo = [](const char* label,
+                                  InputActionAxisSource& value) {
+        const auto selected =
+            std::ranges::find(kInputAxisChoices, value, &InputAxisChoice::value);
+        const char* preview =
+            selected != kInputAxisChoices.end() ? selected->label : "Unknown";
+        bool changed = false;
+        if (ImGui::BeginCombo(label, preview)) {
+            for (const InputAxisChoice& choice : kInputAxisChoices) {
+                if (ImGui::Selectable(choice.label, value == choice.value)) {
+                    value = choice.value;
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    };
+
+    if (ImGui::BeginChild("InputActionBindings", {0.0f, 300.0f},
+                          ImGuiChildFlags_Borders)) {
+        for (const std::string& name : input->GetActionNames()) {
+            const InputActionBinding* stored = input->GetActionBinding(name);
+            if (stored == nullptr) {
+                continue;
+            }
+            InputActionBinding binding = *stored;
+            ImGui::PushID(name.c_str());
+            ImGui::SeparatorText(name.c_str());
+            bool changed = false;
+            const bool axisAction = binding.type == InputActionType::Axis;
+            if (axisAction) {
+                changed |= drawKeyCombo("Negative Key", binding.negativeKey);
+                changed |= drawKeyCombo("Positive Key", binding.positiveKeys[0]);
+                changed |= drawAxisCombo("Gamepad Axis", binding.gamepadAxis);
+            } else {
+                changed |= drawKeyCombo("Primary Key", binding.positiveKeys[0]);
+                changed |= drawKeyCombo("Alternate Key", binding.positiveKeys[1]);
+                changed |= drawGamepadButtonCombo("Gamepad Button",
+                                                  binding.gamepadButton);
+            }
+            if (changed && input->SetActionBinding(name, binding)) {
+                inputSettingsDirty_ = true;
+                status_ = "Modified Input Action: " + name;
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
     ImGui::EndDisabled();
     ImGui::End();
 }

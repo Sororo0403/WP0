@@ -1,4 +1,5 @@
 #include "AssetImportPlanner.h"
+#include "InputSettingsStore.h"
 #include "ProjectDescriptor.h"
 #include "PhysicsSettingsStore.h"
 #include "ProjectScriptLibrary.h"
@@ -263,8 +264,10 @@ int main() {
                    moveHorizontal->positiveKeys[0] == DIK_D &&
                    moveHorizontal->gamepadAxis ==
                        InputActionAxisSource::GamepadLeftX &&
+                   moveHorizontal->type == InputActionType::Axis &&
                    jump != nullptr && jump->positiveKeys[0] == DIK_SPACE &&
                    jump->gamepadButton == XINPUT_GAMEPAD_A &&
+                   jump->type == InputActionType::Button &&
                    actionInput.GetActionAxis("Missing") == 0.0f &&
                    !actionInput.IsActionPressed("Missing"),
                "Default Input Action bindings are invalid.")) {
@@ -1628,6 +1631,37 @@ int main() {
                    physicsSettingsError.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 143;
+    }
+    const std::filesystem::path inputSettingsPath =
+        projectDirectory / L"settings" / L"input.json";
+    InputSettingsStore inputStore(inputSettingsPath);
+    Input savedInput;
+    InputActionBinding interactBinding{};
+    interactBinding.positiveKeys = {DIK_E, -1};
+    interactBinding.gamepadButton = XINPUT_GAMEPAD_X;
+    savedInput.ClearActionBindings();
+    std::string inputSettingsError;
+    const bool inputSettingsSaved =
+        savedInput.SetActionBinding("Interact", interactBinding) &&
+        inputStore.Save(savedInput, inputSettingsError);
+    Input restoredInput;
+    const InputActionBinding* restoredInteract = nullptr;
+    if (inputSettingsSaved &&
+        inputStore.Load(restoredInput, inputSettingsError)) {
+        restoredInteract = restoredInput.GetActionBinding("Interact");
+    }
+    if (!Check(inputSettingsSaved && restoredInteract != nullptr &&
+                   restoredInput.GetActionNames() ==
+                       std::vector<std::string>{"Interact"} &&
+                   restoredInteract->positiveKeys[0] == DIK_E &&
+                   restoredInteract->gamepadButton == XINPUT_GAMEPAD_X &&
+                   restoredInteract->type == InputActionType::Button &&
+                   std::filesystem::is_regular_file(inputSettingsPath),
+               inputSettingsError.empty() ?
+                   "Input settings were not safely persisted." :
+                   inputSettingsError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 185;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {

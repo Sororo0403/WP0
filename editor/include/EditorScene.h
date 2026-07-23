@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetImportPlanner.h"
+#include "InputSettingsStore.h"
 #include "PhysicsSettingsStore.h"
 #include "ProjectScriptLibrary.h"
 #include "RecentScenesStore.h"
@@ -90,6 +91,7 @@ private:
     void DrawConsolePanel();
     void DrawProjectSettingsWindow();
     bool SavePhysicsSettings();
+    bool SaveInputSettings();
     void CaptureConsoleStatus();
     void AddConsoleEntry(std::string message, ConsoleSeverity severity,
                          std::filesystem::path sourcePath = {}, uint32_t sourceLine = 0u,
@@ -280,6 +282,8 @@ private:
     PhysicsSettingsStore physicsSettingsStore_;
     PhysicsSettings physicsSettings_ = PhysicsSettings::Defaults();
     bool physicsSettingsDirty_ = false;
+    InputSettingsStore inputSettingsStore_;
+    bool inputSettingsDirty_ = false;
     RecentScenesStore recentScenesStore_;
     World world_;
     ProjectScriptLibrary projectScripts_;
