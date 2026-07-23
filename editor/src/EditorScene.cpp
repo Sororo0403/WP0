@@ -4035,7 +4035,7 @@ void EditorScene::DrawInspectorPanel() {
                                     source.runtimePlaying ? "Playing" : "Stopped");
             } else {
                 ImGui::TextDisabled(
-                    "Script API: world.PlayAudioSource(entity) / StopAudioSource(entity)");
+                    "Script API: PlayAudioSource / PlayAudioSourceOneShot / StopAudioSource");
             }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
@@ -6819,9 +6819,17 @@ void EditorScene::UpdateRuntimeAudio() {
         const AudioSourceComponent::RuntimeCommand command =
             source != nullptr ? source->runtimeCommand
                               : AudioSourceComponent::RuntimeCommand::None;
+        const uint32_t pendingOneShots = source != nullptr ? source->pendingOneShots : 0u;
         if (source != nullptr) {
             source->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            source->pendingOneShots = 0u;
         }
+        const auto stopOneShots = [&] {
+            for (const uint32_t voice : runtime.oneShotVoices) {
+                sound->Stop(voice);
+            }
+            runtime.oneShotVoices.clear();
+        };
         const bool active = source != nullptr && source->enabled &&
                             world_.IsActiveInHierarchy(runtime.entity) &&
                             runtime.soundId != ISoundService::kInvalidSoundId;
@@ -6830,6 +6838,7 @@ void EditorScene::UpdateRuntimeAudio() {
                 sound->Stop(runtime.voice);
             }
             runtime.voice = ISoundService::kInvalidVoiceHandle;
+            stopOneShots();
             runtime.activated = false;
             if (source != nullptr) {
                 source->runtimePlaying = false;
@@ -6842,23 +6851,30 @@ void EditorScene::UpdateRuntimeAudio() {
                 sound->Stop(runtime.voice);
             }
             runtime.voice = ISoundService::kInvalidVoiceHandle;
+            stopOneShots();
             runtime.activated = true;
         }
+        std::erase_if(runtime.oneShotVoices,
+                      [sound](uint32_t voice) { return !sound->IsPlaying(voice); });
+        const auto playVoice = [&](bool loop) {
+            uint32_t voice = ISoundService::kInvalidVoiceHandle;
+            if (source->spatial) {
+                DirectX::XMFLOAT4X4 matrix{};
+                if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
+                    voice = sound->Play3D(runtime.soundId,
+                                          {matrix._41, matrix._42, matrix._43},
+                                          source->volume, loop);
+                }
+            } else {
+                voice = sound->Play(runtime.soundId, source->volume, loop);
+            }
+            return voice;
+        };
         const auto startVoice = [&] {
             if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
                 sound->Stop(runtime.voice);
             }
-            runtime.voice = ISoundService::kInvalidVoiceHandle;
-            if (source->spatial) {
-                DirectX::XMFLOAT4X4 matrix{};
-                if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
-                    runtime.voice = sound->Play3D(
-                        runtime.soundId, {matrix._41, matrix._42, matrix._43},
-                        source->volume, source->loop);
-                }
-            } else {
-                runtime.voice = sound->Play(runtime.soundId, source->volume, source->loop);
-            }
+            runtime.voice = playVoice(source->loop);
         };
         if (command == AudioSourceComponent::RuntimeCommand::Play) {
             runtime.activated = true;
@@ -6869,24 +6885,42 @@ void EditorScene::UpdateRuntimeAudio() {
                 startVoice();
             }
         }
-        if (runtime.voice == ISoundService::kInvalidVoiceHandle ||
+        for (uint32_t index = 0;
+             index < pendingOneShots &&
+             runtime.oneShotVoices.size() < AudioSourceComponent::kMaxOneShotVoices;
+             ++index) {
+            const uint32_t voice = playVoice(false);
+            if (voice != ISoundService::kInvalidVoiceHandle) {
+                runtime.oneShotVoices.push_back(voice);
+            }
+        }
+        if (runtime.voice != ISoundService::kInvalidVoiceHandle &&
             !sound->IsPlaying(runtime.voice)) {
             runtime.voice = ISoundService::kInvalidVoiceHandle;
-            source->runtimePlaying = false;
-            continue;
         }
-        source->runtimePlaying = true;
-        sound->SetVoiceVolume(runtime.voice, source->volume);
-        sound->SetVoiceFrequencyRatio(runtime.voice, source->pitch);
+        std::optional<DirectX::XMFLOAT3> sourcePosition;
         if (source->spatial) {
             DirectX::XMFLOAT4X4 matrix{};
             if (world_.TryGetWorldMatrix(runtime.entity, matrix)) {
-                sound->SetVoicePosition(runtime.voice,
-                                        {matrix._41, matrix._42, matrix._43});
-                sound->SetVoice3DRange(runtime.voice, source->minDistance,
-                                       source->maxDistance);
+                sourcePosition = {matrix._41, matrix._42, matrix._43};
             }
         }
+        const auto updateVoice = [&](uint32_t voice) {
+            sound->SetVoiceVolume(voice, source->volume);
+            sound->SetVoiceFrequencyRatio(voice, source->pitch);
+            if (sourcePosition) {
+                sound->SetVoicePosition(voice, *sourcePosition);
+                sound->SetVoice3DRange(voice, source->minDistance, source->maxDistance);
+            }
+        };
+        if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+            updateVoice(runtime.voice);
+        }
+        for (const uint32_t voice : runtime.oneShotVoices) {
+            updateVoice(voice);
+        }
+        source->runtimePlaying = runtime.voice != ISoundService::kInvalidVoiceHandle ||
+                                 !runtime.oneShotVoices.empty();
     }
 }
 
@@ -6896,13 +6930,18 @@ void EditorScene::PauseRuntimeAudio(bool paused) {
         return;
     }
     for (const RuntimeAudioSource& runtime : runtimeAudioSources_) {
-        if (runtime.voice == ISoundService::kInvalidVoiceHandle) {
-            continue;
+        const auto setPaused = [&](uint32_t voice) {
+            if (paused) {
+                sound->Pause(voice);
+            } else {
+                sound->Resume(voice);
+            }
+        };
+        if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
+            setPaused(runtime.voice);
         }
-        if (paused) {
-            sound->Pause(runtime.voice);
-        } else {
-            sound->Resume(runtime.voice);
+        for (const uint32_t voice : runtime.oneShotVoices) {
+            setPaused(voice);
         }
     }
 }
@@ -6914,12 +6953,16 @@ void EditorScene::EndRuntimeAudio() {
             if (runtime.voice != ISoundService::kInvalidVoiceHandle) {
                 sound->Stop(runtime.voice);
             }
+            for (const uint32_t voice : runtime.oneShotVoices) {
+                sound->Stop(voice);
+            }
         }
     }
     for (RuntimeAudioSource& runtime : runtimeAudioSources_) {
         if (WorldEntity* entity = world_.Find(runtime.entity);
             entity != nullptr && entity->audioSource) {
             entity->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            entity->audioSource->pendingOneShots = 0u;
             entity->audioSource->runtimePlaying = false;
         }
     }

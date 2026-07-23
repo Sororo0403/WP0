@@ -594,10 +594,14 @@ int main() {
     if (!Check(source.PlayAudioSource(child) &&
                    childEntity->audioSource->runtimeCommand ==
                        AudioSourceComponent::RuntimeCommand::Play &&
+                   source.PlayAudioSourceOneShot(child) &&
+                   source.PlayAudioSourceOneShot(child) &&
+                   childEntity->audioSource->pendingOneShots == 2u &&
                    !source.IsAudioSourcePlaying(child) && source.StopAudioSource(child) &&
                    childEntity->audioSource->runtimeCommand ==
                        AudioSourceComponent::RuntimeCommand::Stop &&
-                   !source.PlayAudioSource(root),
+                   childEntity->audioSource->pendingOneShots == 0u &&
+                   !source.PlayAudioSource(root) && !source.PlayAudioSourceOneShot(root),
                "World AudioSource playback commands are invalid.")) {
         return 159;
     }

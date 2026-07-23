@@ -104,6 +104,7 @@ struct LightComponent {
 struct AudioSourceComponent {
     static constexpr float kMinPitch = 0.1f;
     static constexpr float kMaxPitch = 3.0f;
+    static constexpr uint32_t kMaxOneShotVoices = 32u;
 
     enum class RuntimeCommand : uint8_t {
         None,
@@ -121,6 +122,7 @@ struct AudioSourceComponent {
     float minDistance = 1.0f;
     float maxDistance = 50.0f;
     RuntimeCommand runtimeCommand = RuntimeCommand::None;
+    uint32_t pendingOneShots = 0u;
     bool runtimePlaying = false;
 };
 
@@ -194,6 +196,7 @@ public:
     bool MoveEntityAfter(EntityId entity, EntityId sibling);
     bool SetPrimaryCamera(EntityId entity);
     bool PlayAudioSource(EntityId entity);
+    bool PlayAudioSourceOneShot(EntityId entity);
     bool StopAudioSource(EntityId entity);
     [[nodiscard]] bool IsAudioSourcePlaying(EntityId entity) const;
 

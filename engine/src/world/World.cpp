@@ -69,6 +69,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->audioListener = original.audioListener;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            duplicate->audioSource->pendingOneShots = 0u;
             duplicate->audioSource->runtimePlaying = false;
         }
         duplicate->scripts = original.scripts;
@@ -297,12 +298,24 @@ bool World::PlayAudioSource(EntityId id) {
     return true;
 }
 
+bool World::PlayAudioSourceOneShot(EntityId id) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->audioSource || !entity->audioSource->enabled ||
+        entity->audioSource->clipPath.empty() || !IsActiveInHierarchy(id) ||
+        entity->audioSource->pendingOneShots >= AudioSourceComponent::kMaxOneShotVoices) {
+        return false;
+    }
+    ++entity->audioSource->pendingOneShots;
+    return true;
+}
+
 bool World::StopAudioSource(EntityId id) {
     WorldEntity* entity = Find(id);
     if (entity == nullptr || !entity->audioSource) {
         return false;
     }
     entity->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::Stop;
+    entity->audioSource->pendingOneShots = 0u;
     return true;
 }
 
@@ -407,6 +420,7 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
     for (WorldEntity& entity : entities) {
         if (entity.audioSource) {
             entity.audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+            entity.audioSource->pendingOneShots = 0u;
             entity.audioSource->runtimePlaying = false;
         }
         if (!entity.id.IsValid() || !ids.insert(entity.id).second) {

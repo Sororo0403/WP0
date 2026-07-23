@@ -430,7 +430,7 @@
         },
         "Transform": {
           "position": [
-            0.0,
+            2.684441566467285,
             0.0,
             0.0
           ],
@@ -449,6 +449,43 @@
       "id": "4127623e-3380-ec6b-ccf3-adf406ecb2ac",
       "layer": 0,
       "name": "Audio",
+      "parent": null
+    },
+    {
+      "active": true,
+      "components": {
+        "AudioSource": {
+          "clip": "asset://決定ボタンを押す1.mp3",
+          "enabled": true,
+          "loop": false,
+          "maxDistance": 50.0,
+          "minDistance": 1.0,
+          "pitch": 1.5800000429153442,
+          "playOnAwake": true,
+          "spatial": false,
+          "volume": 1.0
+        },
+        "Transform": {
+          "position": [
+            -2.191612482070923,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4469c94d-90df-7eda-008c-26515b4b839d",
+      "layer": 0,
+      "name": "Audio Copy",
       "parent": null
     }
   ],

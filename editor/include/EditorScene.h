@@ -285,6 +285,7 @@ private:
         EntityId entity{};
         uint32_t soundId = kInvalidResourceId;
         uint32_t voice = kInvalidResourceId;
+        std::vector<uint32_t> oneShotVoices;
         bool activated = false;
     };
     std::vector<RuntimeAudioSource> runtimeAudioSources_;
