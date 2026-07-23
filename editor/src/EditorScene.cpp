@@ -3584,6 +3584,25 @@ void EditorScene::DrawInspectorPanel() {
             ImGui::PopID();
             break;
         } else {
+            ImGui::SameLine();
+            ImGui::BeginDisabled(scriptIndex == 0u);
+            const bool moveUp = ImGui::Button("Move Up");
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(scriptIndex + 1u >= entity->scripts.size());
+            const bool moveDown = ImGui::Button("Move Down");
+            ImGui::EndDisabled();
+            if (moveUp || moveDown) {
+                const std::string before = WorldSerializer::Serialize(world_);
+                const EntityId selectionBefore = selection_;
+                const size_t destination = moveUp ? scriptIndex - 1u : scriptIndex + 1u;
+                std::swap(entity->scripts[scriptIndex], entity->scripts[destination]);
+                RecordImmediateEdit("Reorder Scripts", before, selectionBefore);
+                status_ = "Changed Script execution order.";
+                ImGui::PopID();
+                break;
+            }
+            ImGui::TextDisabled("Execution Order: %zu", scriptIndex + 1u);
             BehaviorComponent& behavior = entity->scripts[scriptIndex];
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);

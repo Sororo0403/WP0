@@ -62,6 +62,25 @@ private:
     float& lastDeltaTime_;
 };
 
+class OrderedBehavior final : public Behavior {
+public:
+    OrderedBehavior(int id, std::vector<int>& events) : id_(id), events_(events) {}
+
+    void OnStart(World&, EntityId) override {
+        events_.push_back(id_ * 10 + 1);
+    }
+    void OnUpdate(World&, EntityId, float) override {
+        events_.push_back(id_ * 10 + 2);
+    }
+    void OnStop(World&, EntityId) override {
+        events_.push_back(id_ * 10 + 3);
+    }
+
+private:
+    int id_ = 0;
+    std::vector<int>& events_;
+};
+
 struct TriggerEventCounts {
     int enter = 0;
     int stay = 0;
@@ -578,6 +597,24 @@ int main() {
                    behaviorTarget->transform.position.y == 1.0f,
                "Runtime Behavior lifecycle or Entity activation handling is invalid.")) {
         return 126;
+    }
+    std::vector<int> orderedBehaviorEvents;
+    BehaviorSystem orderedBehaviors;
+    if (!Check(orderedBehaviors.Attach(
+                   behaviorEntity,
+                   std::make_unique<OrderedBehavior>(1, orderedBehaviorEvents)) &&
+                   orderedBehaviors.Attach(
+                       behaviorEntity,
+                       std::make_unique<OrderedBehavior>(2, orderedBehaviorEvents)),
+               "Ordered Runtime Behaviors could not be attached.")) {
+        return 181;
+    }
+    orderedBehaviors.Start(behaviorWorld);
+    orderedBehaviors.Update(0.25f);
+    orderedBehaviors.Stop();
+    if (!Check(orderedBehaviorEvents == std::vector<int>({11, 21, 12, 22, 23, 13}),
+               "Runtime Behaviors did not preserve component execution order.")) {
+        return 182;
     }
 
     World triggerWorld;
