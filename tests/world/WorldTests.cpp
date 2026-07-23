@@ -595,6 +595,19 @@ int main() {
     childEntity->animator->clip = "Run";
     childEntity->animator->loop = false;
     childEntity->animator->speed = 1.5f;
+    if (!Check(source.PlayAnimation(child, "Run", false) &&
+                   childEntity->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::Play &&
+                   childEntity->animator->runtimeClip == "Run" &&
+                   !childEntity->animator->runtimeLoop &&
+                   !source.IsAnimationPlaying(child) && !source.IsAnimationFinished(child) &&
+                   source.StopAnimation(child) &&
+                   childEntity->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::Stop &&
+                   !source.PlayAnimation(root, "Run") && !source.StopAnimation(root),
+               "World Animator playback commands are invalid.")) {
+        return 166;
+    }
     if (!Check(source.PlayAudioSource(child) &&
                    childEntity->audioSource->runtimeCommand ==
                        AudioSourceComponent::RuntimeCommand::Play &&
@@ -834,6 +847,11 @@ int main() {
                    restoredChild->animator->clip == "Run" &&
                    restoredChild->animator->playOnAwake && !restoredChild->animator->loop &&
                    restoredChild->animator->speed == 1.5f &&
+                   restoredChild->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::None &&
+                   restoredChild->animator->runtimeClip.empty() &&
+                   !restoredChild->animator->runtimePlaying &&
+                   !restoredChild->animator->runtimeFinished &&
                    restoredChild->scripts.size() == 3u &&
                    restoredChild->scripts[0].enabled &&
                    restoredChild->scripts[0].type == "Rotator" &&
@@ -906,7 +924,10 @@ int main() {
                    instanceChild != nullptr &&
                    instanceChild->id != child && instanceChild->parent == instanceRoot->id &&
                    instanceChild->meshRenderer && instanceChild->materialOverride &&
-                   instanceChild->light && instanceChild->audioSource &&
+                   instanceChild->light && instanceChild->audioSource && instanceChild->animator &&
+                   instanceChild->animator->clip == "Run" &&
+                   instanceChild->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::None &&
                    instanceChild->boxCollider &&
                    instanceChild->characterController && instanceChild->scripts.size() == 3u &&
                    instanceTarget != nullptr &&
@@ -954,6 +975,10 @@ int main() {
                    duplicateChild->materialOverride->cullMode ==
                        MaterialSurfaceCullMode::None &&
                    duplicateChild->light && duplicateChild->light->type == LightType::Point &&
+                   duplicateChild->animator && duplicateChild->animator->clip == "Run" &&
+                   duplicateChild->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::None &&
+                   duplicateChild->animator->runtimeClip.empty() &&
                    duplicateChild->scripts.size() == 3u &&
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==

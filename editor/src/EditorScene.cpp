@@ -4276,6 +4276,16 @@ void EditorScene::DrawInspectorPanel() {
             status_ = "Removed Animator.";
         } else {
             AnimatorComponent& animator = *entity->animator;
+            if (IsInPlayMode()) {
+                ImGui::TextDisabled("Runtime: %s%s",
+                                    animator.runtimePlaying ? "Playing" : "Stopped",
+                                    animator.runtimeFinished ? " (Finished)" : "");
+                if (!animator.runtimeClip.empty()) {
+                    ImGui::TextDisabled("Runtime Clip: %s", animator.runtimeClip.c_str());
+                }
+            } else {
+                ImGui::TextDisabled("Script API: PlayAnimation / StopAnimation");
+            }
             const EntityId selectionBefore = selection_;
             std::string before = WorldSerializer::Serialize(world_);
             if (ImGui::Checkbox("Enabled##Animator", &animator.enabled)) {
@@ -6927,6 +6937,14 @@ bool EditorScene::BeginRuntimeAnimators(std::string* error) {
             model->isPlaying = false;
             models->UpdateAnimation(handle, 0.0f);
         }
+        if (WorldEntity* runtimeEntity = world_.Find(entity.id); runtimeEntity != nullptr &&
+            runtimeEntity->animator) {
+            runtimeEntity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            runtimeEntity->animator->runtimeClip = clip;
+            runtimeEntity->animator->runtimeLoop = animator.loop;
+            runtimeEntity->animator->runtimePlaying = model->isPlaying;
+            runtimeEntity->animator->runtimeFinished = model->animationFinished;
+        }
         runtimeAnimators_.push_back({entity.id, handle});
     }
     if (valid && error != nullptr) {
@@ -7009,16 +7027,57 @@ void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
         return;
     }
     for (const RuntimeAnimator& runtime : runtimeAnimators_) {
-        const WorldEntity* entity = world_.Find(runtime.entity);
-        if (entity == nullptr || !world_.IsActiveInHierarchy(runtime.entity) ||
-            !entity->animator || !entity->animator->enabled) {
+        WorldEntity* entity = world_.Find(runtime.entity);
+        if (entity == nullptr || !entity->animator) {
             continue;
         }
-        models->UpdateAnimation(runtime.model, deltaTime * entity->animator->speed);
+        AnimatorComponent& animator = *entity->animator;
+        Model* model = models->GetModel(runtime.model);
+        if (model == nullptr) {
+            animator.runtimePlaying = false;
+            animator.runtimeFinished = false;
+            continue;
+        }
+        const AnimatorComponent::RuntimeCommand command = animator.runtimeCommand;
+        animator.runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+        if (command == AnimatorComponent::RuntimeCommand::Stop) {
+            const std::string clip = model->currentAnimation;
+            if (!clip.empty() && model->animations.contains(clip)) {
+                models->PlayAnimation(runtime.model, clip, model->isLoop);
+                model->isPlaying = false;
+                model->animationFinished = false;
+                models->UpdateAnimation(runtime.model, 0.0f);
+            }
+        } else if (command == AnimatorComponent::RuntimeCommand::Play &&
+                   model->animations.contains(animator.runtimeClip)) {
+            if (model->currentAnimation != animator.runtimeClip ||
+                (!model->isPlaying && !model->animationFinished)) {
+                models->PlayAnimation(runtime.model, animator.runtimeClip,
+                                      animator.runtimeLoop);
+            } else {
+                model->isLoop = animator.runtimeLoop;
+            }
+        }
+        if (animator.enabled && world_.IsActiveInHierarchy(runtime.entity) && model->isPlaying) {
+            models->UpdateAnimation(runtime.model, deltaTime * animator.speed);
+        }
+        animator.runtimePlaying = animator.enabled && world_.IsActiveInHierarchy(runtime.entity) &&
+                                  model->isPlaying;
+        animator.runtimeFinished = model->animationFinished;
     }
 }
 
 void EditorScene::EndRuntimeAnimators() {
+    for (const RuntimeAnimator& runtime : runtimeAnimators_) {
+        if (WorldEntity* entity = world_.Find(runtime.entity); entity != nullptr &&
+            entity->animator) {
+            entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            entity->animator->runtimeClip.clear();
+            entity->animator->runtimeLoop = true;
+            entity->animator->runtimePlaying = false;
+            entity->animator->runtimeFinished = false;
+        }
+    }
     runtimeAnimators_.clear();
 }
 

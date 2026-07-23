@@ -67,10 +67,18 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->light = original.light;
         duplicate->audioSource = original.audioSource;
         duplicate->audioListener = original.audioListener;
+        duplicate->animator = original.animator;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
             duplicate->audioSource->runtimePlaying = false;
+        }
+        if (duplicate->animator) {
+            duplicate->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            duplicate->animator->runtimeClip.clear();
+            duplicate->animator->runtimeLoop = true;
+            duplicate->animator->runtimePlaying = false;
+            duplicate->animator->runtimeFinished = false;
         }
         duplicate->scripts = original.scripts;
         duplicate->boxCollider = original.boxCollider;
@@ -324,6 +332,38 @@ bool World::IsAudioSourcePlaying(EntityId id) const {
     return entity != nullptr && entity->audioSource && entity->audioSource->runtimePlaying;
 }
 
+bool World::PlayAnimation(EntityId id, std::string clip, bool loop) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->animator || !entity->animator->enabled || clip.empty() ||
+        clip.size() > 256u || clip.find('\0') != std::string::npos ||
+        !IsActiveInHierarchy(id)) {
+        return false;
+    }
+    entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::Play;
+    entity->animator->runtimeClip = std::move(clip);
+    entity->animator->runtimeLoop = loop;
+    return true;
+}
+
+bool World::StopAnimation(EntityId id) {
+    WorldEntity* entity = Find(id);
+    if (entity == nullptr || !entity->animator) {
+        return false;
+    }
+    entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::Stop;
+    return true;
+}
+
+bool World::IsAnimationPlaying(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->animator && entity->animator->runtimePlaying;
+}
+
+bool World::IsAnimationFinished(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->animator && entity->animator->runtimeFinished;
+}
+
 bool World::IsActiveInHierarchy(EntityId id) const {
     EntityId current = id;
     for (size_t depth = 0; depth <= entities_.size(); ++depth) {
@@ -422,6 +462,13 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             entity.audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             entity.audioSource->pendingOneShots = 0u;
             entity.audioSource->runtimePlaying = false;
+        }
+        if (entity.animator) {
+            entity.animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            entity.animator->runtimeClip.clear();
+            entity.animator->runtimeLoop = true;
+            entity.animator->runtimePlaying = false;
+            entity.animator->runtimeFinished = false;
         }
         if (!entity.id.IsValid() || !ids.insert(entity.id).second) {
             SetError(error, "Scene contains an invalid or duplicate entity id.");

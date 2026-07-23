@@ -131,11 +131,22 @@ struct AudioListenerComponent {
 };
 
 struct AnimatorComponent {
+    enum class RuntimeCommand : uint8_t {
+        None,
+        Play,
+        Stop,
+    };
+
     bool enabled = true;
     std::string clip;
     bool playOnAwake = true;
     bool loop = true;
     float speed = 1.0f;
+    RuntimeCommand runtimeCommand = RuntimeCommand::None;
+    std::string runtimeClip;
+    bool runtimeLoop = true;
+    bool runtimePlaying = false;
+    bool runtimeFinished = false;
 };
 
 struct ScriptPropertyValue {
@@ -208,6 +219,10 @@ public:
     bool PlayAudioSourceOneShot(EntityId entity);
     bool StopAudioSource(EntityId entity);
     [[nodiscard]] bool IsAudioSourcePlaying(EntityId entity) const;
+    bool PlayAnimation(EntityId entity, std::string clip, bool loop = true);
+    bool StopAnimation(EntityId entity);
+    [[nodiscard]] bool IsAnimationPlaying(EntityId entity) const;
+    [[nodiscard]] bool IsAnimationFinished(EntityId entity) const;
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;
