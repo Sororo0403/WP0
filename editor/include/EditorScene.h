@@ -77,6 +77,7 @@ private:
     [[nodiscard]] bool ValidateWorldBehaviorRequirements(
         std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
+    bool ApplyPendingRuntimeSceneLoad();
     void UpdateRuntimeAnimators(float deltaTime);
     void EndRuntimeWorld();
     void EndRuntimeAnimators();
@@ -338,6 +339,7 @@ private:
     std::unordered_set<EntityId, EntityIdHash> hierarchySelection_;
     EntityId hierarchySelectionAnchor_{};
     std::filesystem::path scenePath_;
+    std::filesystem::path runtimeScenePath_;
     std::vector<std::filesystem::path> recentScenePaths_;
     PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;
     std::filesystem::path pendingScenePath_;

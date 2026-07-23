@@ -4,6 +4,7 @@
 #include "PlayerPackageBuilder.h"
 #include "PlayerProjectValidator.h"
 #include "ProjectDescriptor.h"
+#include "RuntimeSceneLoader.h"
 #include "ScriptAsset.h"
 #include "ScriptBuildService.h"
 
@@ -526,7 +527,7 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
       physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
       inputSettingsStore_(projectRoot_ / L"settings" / L"input.json"),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
-      scenePath_(std::move(startupScene)) {
+      scenePath_(startupScene), runtimeScenePath_(std::move(startupScene)) {
     if (playerMode_) {
         showHierarchyPanel_ = false;
         showProjectPanel_ = false;
@@ -7916,6 +7917,7 @@ void EditorScene::EnterPlayMode() {
     playModeDirtySnapshot_ = dirty_;
     editModeWorld_.emplace(std::move(world_));
     world_ = std::move(runtimeWorld);
+    runtimeScenePath_ = scenePath_;
     world_.SetPhysicsSettings(physicsSettings_);
     std::string runtimeError;
     const bool allBehaviorsStarted = BeginRuntimeWorld(&runtimeError);
@@ -7940,6 +7942,7 @@ void EditorScene::StopPlayMode() {
     EndRuntimeWorld();
     world_ = std::move(*editModeWorld_);
     editModeWorld_.reset();
+    runtimeScenePath_ = scenePath_;
     selection_ = world_.Contains(playModeSelectionSnapshot_) ? playModeSelectionSnapshot_
                                                               : EntityId{};
     hierarchySelection_.clear();
@@ -8276,11 +8279,48 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
     runtimeBehaviors_.Update(safeDeltaTime);
+    if (ApplyPendingRuntimeSceneLoad()) {
+        return;
+    }
     runtimeTriggers_.Update(world_, runtimeBehaviors_);
+    if (ApplyPendingRuntimeSceneLoad()) {
+        return;
+    }
     UpdateRuntimeAnimators(safeDeltaTime);
     UpdateRuntimeAudio();
     ++runtimeFrameCount_;
     runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
+}
+
+bool EditorScene::ApplyPendingRuntimeSceneLoad() {
+    const std::optional<std::string> request =
+        world_.ConsumeSceneLoadRequest();
+    if (!request) {
+        return false;
+    }
+    World loaded;
+    std::filesystem::path loadedPath;
+    std::string error;
+    if (!RuntimeSceneLoader::Load(sceneRoot_, *request, physicsSettings_,
+                                  loaded, loadedPath, error)) {
+        status_ = "Error: Could not load Runtime Scene: " + error;
+        return false;
+    }
+
+    EndRuntimeWorld();
+    world_ = std::move(loaded);
+    runtimeScenePath_ = std::move(loadedPath);
+    selection_ = {};
+    hierarchySelection_.clear();
+    hierarchySelectionAnchor_ = {};
+    std::string runtimeError;
+    const bool started = BeginRuntimeWorld(&runtimeError);
+    status_ = started
+                  ? "Loaded Runtime Scene: " +
+                        runtimeScenePath_.generic_string()
+                  : "Error: Loaded Runtime Scene with setup issue(s): " +
+                        runtimeError;
+    return true;
 }
 
 void EditorScene::EndRuntimeWorld() {

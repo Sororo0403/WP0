@@ -477,6 +477,22 @@ bool World::TryGetWorldMatrix(EntityId id, DirectX::XMFLOAT4X4& result) const {
 
 void World::Clear() {
     entities_.clear();
+    pendingSceneLoad_.reset();
+}
+
+bool World::RequestSceneLoad(std::string scene) {
+    if (scene.empty() || scene.size() > 1024u ||
+        scene.find('\0') != std::string::npos || pendingSceneLoad_) {
+        return false;
+    }
+    pendingSceneLoad_ = std::move(scene);
+    return true;
+}
+
+std::optional<std::string> World::ConsumeSceneLoadRequest() {
+    std::optional<std::string> request = std::move(pendingSceneLoad_);
+    pendingSceneLoad_.reset();
+    return request;
 }
 
 void World::SetPhysicsSettings(const PhysicsSettings& settings) {
@@ -677,6 +693,7 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
         }
     }
     entities_ = std::move(entities);
+    pendingSceneLoad_.reset();
     if (error != nullptr) {
         error->clear();
     }

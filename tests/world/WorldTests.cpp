@@ -8,6 +8,7 @@
 #include "ProjectScriptLibrary.h"
 #include "ScriptBuildService.h"
 #include "RecentScenesStore.h"
+#include "RuntimeSceneLoader.h"
 #include "ScriptAsset.h"
 #include "collision/CollisionUtil.h"
 #include "animation/Animator.h"
@@ -17,6 +18,7 @@
 #include "input/Input.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/BehaviorSystem.h"
+#include "runtime/SceneLoader.h"
 #include "runtime/TriggerSystem.h"
 #include "world/World.h"
 #include "world/WorldCollision.h"
@@ -1670,6 +1672,46 @@ int main() {
                error.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 189;
+    }
+    World sceneRequestWorld;
+    const bool firstSceneRequest =
+        SceneLoader::LoadScene(sceneRequestWorld, "alternate");
+    const bool duplicateSceneRequest =
+        SceneLoader::LoadScene(sceneRequestWorld, "untitled");
+    const std::optional<std::string> consumedSceneRequest =
+        sceneRequestWorld.ConsumeSceneLoadRequest();
+    if (!Check(firstSceneRequest && !duplicateSceneRequest &&
+                   consumedSceneRequest ==
+                       std::optional<std::string>("alternate") &&
+                   !sceneRequestWorld.ConsumeSceneLoadRequest() &&
+                   !SceneLoader::LoadScene(sceneRequestWorld, ""),
+               "Runtime Scene request queue is invalid.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 199;
+    }
+    World loadedRuntimeScene;
+    std::filesystem::path loadedRuntimeScenePath;
+    std::string runtimeSceneError;
+    const bool runtimeSceneLoaded = RuntimeSceneLoader::Load(
+        createdProject.sceneRoot, "alternate", PhysicsSettings::Defaults(),
+        loadedRuntimeScene, loadedRuntimeScenePath, runtimeSceneError);
+    World preservedRuntimeScene;
+    const EntityId preservedRuntimeEntity =
+        preservedRuntimeScene.CreateEntity("Preserved");
+    if (!Check(runtimeSceneLoaded &&
+                   loadedRuntimeScenePath == alternateStartupScene &&
+                   loadedRuntimeScene.Entities().size() ==
+                       source.Entities().size() &&
+                   !RuntimeSceneLoader::Load(
+                       createdProject.sceneRoot, "../outside",
+                       PhysicsSettings::Defaults(), preservedRuntimeScene,
+                       loadedRuntimeScenePath, runtimeSceneError) &&
+                   preservedRuntimeScene.Contains(preservedRuntimeEntity),
+               runtimeSceneError.empty()
+                   ? "Runtime Scene loading was not safe."
+                   : runtimeSceneError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 200;
     }
     ProjectDescriptor updatedProject;
     ProjectDescriptor restoredProject;

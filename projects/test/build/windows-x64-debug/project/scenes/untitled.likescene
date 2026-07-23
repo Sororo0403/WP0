@@ -17,26 +17,26 @@
         },
         "Transform": {
           "position": [
-            0.2964467406272888,
-            7.150000095367432,
-            4.561216354370117
+            0.0,
+            0.0,
+            0.0
           ],
           "rotation": [
-            79.75,
+            0.0,
             0.0,
             0.0
           ],
           "scale": [
-            1.0000077486038208,
-            0.999993622303009,
-            1.000010371208191
+            1.0,
+            1.0,
+            1.0
           ]
         }
       },
       "id": "423e7470-bb1c-6a5f-c411-2b5ab0d64190",
       "layer": 0,
       "name": "Camera",
-      "parent": null
+      "parent": "437a66b7-6bb6-2b78-a5f7-dc3c6c50b497"
     },
     {
       "active": true,
@@ -44,6 +44,7 @@
         "Animator": {
           "clip": "Anim_0",
           "enabled": true,
+          "lockRootPosition": true,
           "loop": true,
           "playOnAwake": true,
           "speed": 4.989999771118164
@@ -70,7 +71,7 @@
             1.0,
             1.0
           ],
-          "baseColorTexture": "asset://taro.png",
+          "baseColorTexture": "",
           "blendMode": "Opaque",
           "cullMode": "Back",
           "depthWrite": true,
@@ -78,10 +79,10 @@
           "metallic": 0.0,
           "metallicTexture": "",
           "normalStrength": 3.0399999618530273,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "normalTexture": "",
           "pbrTexturePacking": "Separate",
-          "roughness": 0.9900000095367432,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+          "roughness": 1.0,
+          "roughnessTexture": ""
         },
         "MeshRenderer": {
           "enabled": true,
@@ -104,9 +105,9 @@
         ],
         "Transform": {
           "position": [
-            -0.5288857221603394,
-            -1.1444064512033947e-05,
-            2.131462335586548
+            0.0,
+            0.0,
+            0.0
           ],
           "rotation": [
             0.0,
@@ -114,9 +115,9 @@
             0.0
           ],
           "scale": [
-            1.0000077486038208,
-            0.9999935030937195,
-            1.0000102519989014
+            1.0,
+            1.0,
+            1.0
           ]
         }
       },
@@ -383,7 +384,7 @@
       "parent": null
     },
     {
-      "active": false,
+      "active": true,
       "components": {
         "Light": {
           "color": [

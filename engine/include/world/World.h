@@ -238,6 +238,8 @@ public:
     [[nodiscard]] std::string GetCurrentAnimation(EntityId entity) const;
     [[nodiscard]] float GetAnimationNormalizedTime(EntityId entity) const;
     [[nodiscard]] bool IsAnimationTransitioning(EntityId entity) const;
+    bool RequestSceneLoad(std::string scene);
+    [[nodiscard]] std::optional<std::string> ConsumeSceneLoadRequest();
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;
@@ -261,4 +263,5 @@ private:
 
     std::vector<WorldEntity> entities_;
     PhysicsSettings physicsSettings_ = PhysicsSettings::Defaults();
+    std::optional<std::string> pendingSceneLoad_;
 };

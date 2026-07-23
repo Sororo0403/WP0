@@ -240,6 +240,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\Behavior.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\BehaviorRegistry.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\BehaviorSystem.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\SceneLoader.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\TriggerSystem.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\ScriptModuleApi.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\runtime\ScriptProperty.h" />
