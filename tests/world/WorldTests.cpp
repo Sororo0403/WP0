@@ -347,7 +347,7 @@ int main() {
                    projectBehaviorRegistry.Requirements("FirstPersonController")
                        ->characterController &&
                    controllerProperties != nullptr &&
-                   controllerProperties->size() == 12u &&
+                   controllerProperties->size() == 16u &&
                    (*controllerProperties)[0].name == "Move Speed" &&
                    (*controllerProperties)[0].defaultFloat == 4.0f &&
                    (*controllerProperties)[1].name == "Sprint Speed" &&
@@ -356,17 +356,26 @@ int main() {
                    (*controllerProperties)[5].defaultFloat == 1.5f &&
                    (*controllerProperties)[6].name == "Invert Y" &&
                    (*controllerProperties)[6].type == ScriptPropertyType::Boolean &&
-                   (*controllerProperties)[7].name == "Idle Animation" &&
-                   (*controllerProperties)[7].type == ScriptPropertyType::AnimationClip &&
-                   (*controllerProperties)[7].defaultString == "Idle" &&
-                   (*controllerProperties)[8].name == "Move Animation" &&
-                   (*controllerProperties)[8].defaultString == "Walk" &&
-                   (*controllerProperties)[9].name == "Sprint Animation" &&
-                   (*controllerProperties)[9].defaultString == "Run" &&
-                   (*controllerProperties)[10].name == "Jump Animation" &&
+                   (*controllerProperties)[7].name == "Move Horizontal Action" &&
+                   (*controllerProperties)[7].type == ScriptPropertyType::InputAction &&
+                   (*controllerProperties)[7].defaultString == "MoveHorizontal" &&
+                   (*controllerProperties)[8].name == "Move Vertical Action" &&
+                   (*controllerProperties)[8].defaultString == "MoveVertical" &&
+                   (*controllerProperties)[9].name == "Sprint Action" &&
+                   (*controllerProperties)[9].defaultString == "Sprint" &&
+                   (*controllerProperties)[10].name == "Jump Action" &&
                    (*controllerProperties)[10].defaultString == "Jump" &&
-                   (*controllerProperties)[11].name == "Animation Fade" &&
-                   (*controllerProperties)[11].defaultFloat == 0.2f &&
+                   (*controllerProperties)[11].name == "Idle Animation" &&
+                   (*controllerProperties)[11].type == ScriptPropertyType::AnimationClip &&
+                   (*controllerProperties)[11].defaultString == "Idle" &&
+                   (*controllerProperties)[12].name == "Move Animation" &&
+                   (*controllerProperties)[12].defaultString == "Walk" &&
+                   (*controllerProperties)[13].name == "Sprint Animation" &&
+                   (*controllerProperties)[13].defaultString == "Run" &&
+                   (*controllerProperties)[14].name == "Jump Animation" &&
+                   (*controllerProperties)[14].defaultString == "Jump" &&
+                   (*controllerProperties)[15].name == "Animation Fade" &&
+                   (*controllerProperties)[15].defaultFloat == 0.2f &&
                    projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
                    projectBehaviorRegistry.Requirements("ChasePlayer")
                        ->characterController &&
@@ -925,6 +934,11 @@ int main() {
     serializedClip.type = ScriptPropertyType::AnimationClip;
     serializedClip.stringValue = "Attack";
     childEntity->scripts[0].properties.push_back(serializedClip);
+    ScriptPropertyValue serializedInputAction{};
+    serializedInputAction.name = "Fire Action";
+    serializedInputAction.type = ScriptPropertyType::InputAction;
+    serializedInputAction.stringValue = "Fire";
+    childEntity->scripts[0].properties.push_back(serializedInputAction);
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -1088,6 +1102,10 @@ int main() {
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Animation") : nullptr;
     const ScriptPropertyValue* restoredClip = hasRestoredScript
         ? FindStoredScriptProperty(restoredChild->scripts[0], "Clip") : nullptr;
+    const ScriptPropertyValue* restoredInputAction =
+        hasRestoredScript
+            ? FindStoredScriptProperty(restoredChild->scripts[0], "Fire Action")
+            : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restored.Find(root) != nullptr && !restored.Find(root)->active &&
                    restoredChild->active && !restored.IsActiveInHierarchy(child) &&
@@ -1151,7 +1169,7 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   restoredChild->scripts[0].properties.size() == 7u &&
+                   restoredChild->scripts[0].properties.size() == 8u &&
                    restoredSpeed != nullptr && restoredSpeed->type == ScriptPropertyType::Float &&
                    restoredSpeed->floatValue == 3.5f && restoredTarget != nullptr &&
                    restoredTarget->type == ScriptPropertyType::Entity &&
@@ -1168,6 +1186,9 @@ int main() {
                    restoredString->stringValue == "Run" && restoredClip != nullptr &&
                    restoredClip->type == ScriptPropertyType::AnimationClip &&
                    restoredClip->stringValue == "Attack" &&
+                   restoredInputAction != nullptr &&
+                   restoredInputAction->type == ScriptPropertyType::InputAction &&
+                   restoredInputAction->stringValue == "Fire" &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -1290,7 +1311,7 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   duplicateChild->scripts[0].properties.size() == 7u &&
+                   duplicateChild->scripts[0].properties.size() == 8u &&
                    duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
                    duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
                    duplicateChild->scripts[0].properties[2].booleanValue &&
@@ -1300,6 +1321,9 @@ int main() {
                    duplicateChild->scripts[0].properties[6].type ==
                        ScriptPropertyType::AnimationClip &&
                    duplicateChild->scripts[0].properties[6].stringValue == "Attack" &&
+                   duplicateChild->scripts[0].properties[7].type ==
+                       ScriptPropertyType::InputAction &&
+                   duplicateChild->scripts[0].properties[7].stringValue == "Fire" &&
                    duplicateChild->scripts[1].type == "FirstPersonController" &&
                    duplicateChild->scripts[2].type.empty() &&
                    duplicateChild->boxCollider &&

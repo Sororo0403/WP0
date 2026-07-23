@@ -15,6 +15,7 @@ enum class ScriptPropertyType : uint32_t {
     Vector3 = 4,
     String = 5,
     AnimationClip = 6,
+    InputAction = 7,
 };
 
 struct ScriptVector3 {

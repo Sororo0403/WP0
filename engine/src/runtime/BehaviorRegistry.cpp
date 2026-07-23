@@ -38,11 +38,16 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
                  property.type == ScriptPropertyType::AnimationClip) &&
                 (property.defaultString.size() > 1024u ||
                  property.defaultString.find('\0') != std::string::npos);
+            const bool invalidInputAction =
+                property.type == ScriptPropertyType::InputAction &&
+                (property.defaultString.size() > 64u ||
+                 property.defaultString.find('\0') != std::string::npos);
             return property.name.empty() || property.name.size() > 128u ||
                    property.name.find('\0') != std::string::npos || duplicate ||
                    property.type < ScriptPropertyType::Float ||
-                   property.type > ScriptPropertyType::AnimationClip || invalidFloat ||
-                   invalidInteger || invalidVector3 || invalidString;
+                   property.type > ScriptPropertyType::InputAction || invalidFloat ||
+                   invalidInteger || invalidVector3 || invalidString ||
+                   invalidInputAction;
         });
     if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
         !factory || sourceAsset.size() > 1024u ||

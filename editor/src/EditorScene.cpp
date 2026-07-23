@@ -4219,6 +4219,49 @@ void EditorScene::DrawInspectorPanel() {
                                    !animationModel->animations.contains(value)) {
                             ImGui::TextDisabled("The selected Animation Clip was not found.");
                         }
+                    } else if (definition.type == ScriptPropertyType::InputAction) {
+                        const std::string value =
+                            stored != behavior.properties.end() &&
+                                    stored->type == definition.type
+                                ? stored->stringValue
+                                : definition.defaultString;
+                        Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+                        const std::string preview = value.empty() ? "None" : value;
+                        ImGui::BeginDisabled(input == nullptr);
+                        if (ImGui::BeginCombo(definition.name.c_str(), preview.c_str())) {
+                            const auto assignAction = [&](const std::string& action) {
+                                const std::string propertyBefore =
+                                    WorldSerializer::Serialize(world_);
+                                if (stored == behavior.properties.end()) {
+                                    behavior.properties.push_back({});
+                                    stored = std::prev(behavior.properties.end());
+                                }
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                                stored->stringValue = action;
+                                RecordImmediateEdit("Modify Script Input Action Property",
+                                                    propertyBefore, selectionBefore);
+                                status_ = "Modified Script Input Action property.";
+                            };
+                            if (ImGui::Selectable("None", value.empty())) {
+                                assignAction({});
+                            }
+                            for (const std::string& action : input->GetActionNames()) {
+                                if (ImGui::Selectable(action.c_str(), value == action)) {
+                                    assignAction(action);
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::EndDisabled();
+                        if (input == nullptr) {
+                            ImGui::TextDisabled("Input service is unavailable.");
+                        } else if (!value.empty() &&
+                                   input->GetActionBinding(value) == nullptr) {
+                            ImGui::TextDisabled(
+                                "The selected Input Action was not found.");
+                        }
                     } else if (definition.type == ScriptPropertyType::String) {
                         const std::string value =
                             stored != behavior.properties.end() &&

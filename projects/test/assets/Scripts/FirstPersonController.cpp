@@ -41,6 +41,10 @@ private:
     float gravity_ = -24.0f;
     float jumpHeight_ = 1.5f;
     bool invertY_ = false;
+    std::string moveHorizontalAction_ = "MoveHorizontal";
+    std::string moveVerticalAction_ = "MoveVertical";
+    std::string sprintAction_ = "Sprint";
+    std::string jumpAction_ = "Jump";
     std::string idleAnimation_ = "Idle";
     std::string moveAnimation_ = "Walk";
     std::string sprintAnimation_ = "Run";
@@ -83,6 +87,16 @@ void FirstPersonController::OnConfigure(const ScriptPropertyValueView* propertie
             properties, count, "Invert Y", ScriptPropertyType::Boolean)) {
         invertY_ = value->booleanValue;
     }
+    const auto readInputAction = [&](const char* name, std::string& destination) {
+        if (const ScriptPropertyValueView* value = FindScriptProperty(
+                properties, count, name, ScriptPropertyType::InputAction)) {
+            destination = value->stringValue != nullptr ? value->stringValue : "";
+        }
+    };
+    readInputAction("Move Horizontal Action", moveHorizontalAction_);
+    readInputAction("Move Vertical Action", moveVerticalAction_);
+    readInputAction("Sprint Action", sprintAction_);
+    readInputAction("Jump Action", jumpAction_);
     const auto readAnimation = [&](const char* name, std::string& destination) {
         if (const ScriptPropertyValueView* value = FindScriptProperty(
                 properties, count, name, ScriptPropertyType::AnimationClip)) {
@@ -162,8 +176,8 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
             input_->GetGamepadRightStickX() * gamepadLookSpeed_ * deltaTime,
         360.0f);
 
-    float forwardInput = input_->GetActionAxis("MoveVertical");
-    float rightInput = input_->GetActionAxis("MoveHorizontal");
+    float forwardInput = input_->GetActionAxis(moveVerticalAction_);
+    float rightInput = input_->GetActionAxis(moveHorizontalAction_);
     const float inputLength =
         std::sqrt(forwardInput * forwardInput + rightInput * rightInput);
     forwardInput /= (std::max)(1.0f, inputLength);
@@ -172,10 +186,10 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     const float yaw = DirectX::XMConvertToRadians(transform.rotationDegrees.y);
     const float sinYaw = std::sin(yaw);
     const float cosYaw = std::cos(yaw);
-    const bool sprinting = input_->IsActionPressed("Sprint");
+    const bool sprinting = input_->IsActionPressed(sprintAction_);
     const float speed = sprinting ? sprintSpeed_ : moveSpeed_;
     const float distance = speed * deltaTime;
-    const bool jumpRequested = input_->IsActionTriggered("Jump");
+    const bool jumpRequested = input_->IsActionTriggered(jumpAction_);
     if (grounded_ && jumpRequested && gravity_ < 0.0f && jumpHeight_ > 0.0f) {
         verticalVelocity_ = std::sqrt(jumpHeight_ * -2.0f * gravity_);
         grounded_ = false;
@@ -249,6 +263,18 @@ ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
         ScriptPropertyDescriptor{.name = "Invert Y",
                                  .type = ScriptPropertyType::Boolean,
                                  .defaultBoolean = false},
+        ScriptPropertyDescriptor{.name = "Move Horizontal Action",
+                                 .type = ScriptPropertyType::InputAction,
+                                 .defaultString = "MoveHorizontal"},
+        ScriptPropertyDescriptor{.name = "Move Vertical Action",
+                                 .type = ScriptPropertyType::InputAction,
+                                 .defaultString = "MoveVertical"},
+        ScriptPropertyDescriptor{.name = "Sprint Action",
+                                 .type = ScriptPropertyType::InputAction,
+                                 .defaultString = "Sprint"},
+        ScriptPropertyDescriptor{.name = "Jump Action",
+                                 .type = ScriptPropertyType::InputAction,
+                                 .defaultString = "Jump"},
         ScriptPropertyDescriptor{.name = "Idle Animation",
                                  .type = ScriptPropertyType::AnimationClip,
                                  .defaultString = "Idle"},

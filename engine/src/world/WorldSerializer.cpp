@@ -246,6 +246,10 @@ std::string WorldSerializer::Serialize(const World& world) {
                             encodedProperty["type"] = "AnimationClip";
                             encodedProperty["value"] = property.stringValue;
                             break;
+                        case ScriptPropertyType::InputAction:
+                            encodedProperty["type"] = "InputAction";
+                            encodedProperty["value"] = property.stringValue;
+                            break;
                         }
                         properties[property.name] = std::move(encodedProperty);
                     }
@@ -783,6 +787,18 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                         if (property.stringValue.size() > 1024u ||
                             property.stringValue.find('\0') != std::string::npos) {
                             SetError(error, "Scene Script AnimationClip property is invalid.");
+                            return false;
+                        }
+                    } else if (propertyType == "InputAction") {
+                        if (!encodedProperty["value"].is_string()) {
+                            SetError(error, "Scene Script InputAction property is invalid.");
+                            return false;
+                        }
+                        property.type = ScriptPropertyType::InputAction;
+                        property.stringValue = encodedProperty["value"].get<std::string>();
+                        if (property.stringValue.size() > 64u ||
+                            property.stringValue.find('\0') != std::string::npos) {
+                            SetError(error, "Scene Script InputAction property is invalid.");
                             return false;
                         }
                     } else {

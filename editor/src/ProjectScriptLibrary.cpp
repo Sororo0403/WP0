@@ -177,6 +177,10 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
                  property.type == ScriptPropertyType::AnimationClip) &&
                 property.defaultString != nullptr &&
                 std::char_traits<char>::length(property.defaultString) > 1024u;
+            const bool invalidInputAction =
+                property.type == ScriptPropertyType::InputAction &&
+                property.defaultString != nullptr &&
+                std::char_traits<char>::length(property.defaultString) > 64u;
             bool duplicate = false;
             for (size_t previous = 0u; previous < propertyIndex; ++previous) {
                 duplicate = duplicate ||
@@ -184,8 +188,9 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
             }
             if (propertyName.empty() || propertyName.size() > 128u || duplicate ||
                 property.type < ScriptPropertyType::Float ||
-                property.type > ScriptPropertyType::AnimationClip || invalidFloat ||
-                invalidInteger || invalidVector3 || invalidString) {
+                property.type > ScriptPropertyType::InputAction || invalidFloat ||
+                invalidInteger || invalidVector3 || invalidString ||
+                invalidInputAction) {
                 FreeLibrary(module);
                 error = "Project Script module contains an invalid property.";
                 return false;
