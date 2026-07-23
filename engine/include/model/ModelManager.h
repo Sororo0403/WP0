@@ -8,6 +8,7 @@
 #include "model/ModelRenderer.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <initializer_list>
 #include <string>
 #include <unordered_map>
@@ -52,6 +53,8 @@ public:
     /// <returns>モデルID</returns>
     uint32_t Load(const std::wstring& path);
     ModelHandle LoadHandle(const std::wstring& path);
+    uint32_t LoadUnique(const std::wstring& path);
+    ModelHandle LoadUniqueHandle(const std::wstring& path);
 
     /// <summary>
     /// XY平面の基本形状を生成する
@@ -313,6 +316,8 @@ public:
     bool IsReady() const;
 
 private:
+    uint32_t LoadNewModel(const std::filesystem::path& resolvedPath);
+
     DirectXCommon* dxCommon_ = nullptr;
     SrvManager* srvManager_ = nullptr;
     TextureManager* textureManager_ = nullptr;

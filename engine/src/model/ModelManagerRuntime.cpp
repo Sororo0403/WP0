@@ -6,6 +6,10 @@ ModelHandle ModelManager::LoadHandle(const std::wstring& path) {
     return ModelHandle(Load(path));
 }
 
+ModelHandle ModelManager::LoadUniqueHandle(const std::wstring& path) {
+    return ModelHandle(LoadUnique(path));
+}
+
 ModelHandle ModelManager::CreatePlaneHandle(uint32_t textureId, const Material& material) {
     return ModelHandle(CreatePlane(textureId, material));
 }

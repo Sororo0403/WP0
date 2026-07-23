@@ -367,9 +367,35 @@ uint32_t ModelManager::Load(const std::wstring& path) {
         }
     }
 
+    const uint32_t modelId = LoadNewModel(p);
+    if (!IsValidResourceId(modelId)) {
+        return modelId;
+    }
+    try {
+        modelPathToId_[pathKey] = modelId;
+    } catch (const std::exception&) {
+    }
+    return modelId;
+}
+
+uint32_t ModelManager::LoadUnique(const std::wstring& path) {
+    std::filesystem::path resolved;
+    try {
+        resolved = ResolveModelPath(path);
+    } catch (const std::exception&) {
+        return kInvalidResourceId;
+    }
+    std::error_code error;
+    if (!std::filesystem::exists(resolved, error) || error) {
+        return kInvalidResourceId;
+    }
+    return LoadNewModel(resolved);
+}
+
+uint32_t ModelManager::LoadNewModel(const std::filesystem::path& resolvedPath) {
     std::string pathStr;
     try {
-        pathStr = MakeAssimpModelPath(p);
+        pathStr = MakeAssimpModelPath(resolvedPath);
     } catch (const std::exception&) {
         return kInvalidResourceId;
     }
@@ -391,16 +417,8 @@ uint32_t ModelManager::Load(const std::wstring& path) {
     animator_.Update(model, 0.0f);
     modelRenderer_.UpdateSkinClusters(model);
 
-    uint32_t modelId = AppendModelOrDestroyResources(models_, meshManager_, materialManager_,
-                                                     dxCommon_, srvManager_, model);
-    if (!IsValidResourceId(modelId)) {
-        return modelId;
-    }
-    try {
-        modelPathToId_[pathKey] = modelId;
-    } catch (const std::exception&) {
-    }
-    return modelId;
+    return AppendModelOrDestroyResources(models_, meshManager_, materialManager_, dxCommon_,
+                                         srvManager_, model);
 }
 uint32_t ModelManager::CreatePlane(uint32_t textureId, const Material& material) {
     auto primitive = ModelPrimitiveFactory::BuildPlane(textureId, material);

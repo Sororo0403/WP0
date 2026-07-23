@@ -2135,7 +2135,8 @@ void EditorScene::DrawAssetPreviewPopup() {
         return;
     }
 
-    const Model* model = ctx_->rendering.model->GetModel(assetPreviewModel_);
+    ModelManager* modelManager = ctx_->rendering.model;
+    Model* model = modelManager->GetModel(assetPreviewModel_);
     uint64_t vertexCount = 0;
     uint64_t triangleCount = 0;
     std::unordered_set<uint32_t> materials;
@@ -2163,11 +2164,94 @@ void EditorScene::DrawAssetPreviewPopup() {
                             static_cast<unsigned long long>(triangleCount));
         ImGui::TextDisabled("Materials: %zu   Animations: %zu   Bones: %zu", materials.size(),
                             model->animations.size(), model->bones.size());
+        if (!model->animations.empty()) {
+            std::vector<std::string> animationNames;
+            animationNames.reserve(model->animations.size());
+            for (const auto& [name, clip] : model->animations) {
+                (void)clip;
+                animationNames.push_back(name);
+            }
+            std::ranges::sort(animationNames);
+            if (assetPreviewAnimation_.empty() ||
+                !model->animations.contains(assetPreviewAnimation_)) {
+                assetPreviewAnimation_ = model->animations.contains(model->currentAnimation)
+                                             ? model->currentAnimation
+                                             : animationNames.front();
+                modelManager->PlayAnimation(assetPreviewModel_, assetPreviewAnimation_,
+                                            assetPreviewAnimationLoop_);
+            }
+            if (ImGui::BeginCombo("Animation##ModelPreview",
+                                  assetPreviewAnimation_.c_str())) {
+                for (const std::string& name : animationNames) {
+                    const bool selected = name == assetPreviewAnimation_;
+                    if (ImGui::Selectable(name.c_str(), selected)) {
+                        assetPreviewAnimation_ = name;
+                        modelManager->PlayAnimation(assetPreviewModel_, name,
+                                                    assetPreviewAnimationLoop_);
+                    }
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (model->isPlaying) {
+                if (ImGui::Button("Pause##ModelPreviewAnimation")) {
+                    model->isPlaying = false;
+                }
+            } else if (ImGui::Button("Play##ModelPreviewAnimation")) {
+                if (model->animationFinished) {
+                    modelManager->PlayAnimation(assetPreviewModel_, assetPreviewAnimation_,
+                                                assetPreviewAnimationLoop_);
+                } else {
+                    model->isPlaying = true;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Restart##ModelPreviewAnimation")) {
+                modelManager->PlayAnimation(assetPreviewModel_, assetPreviewAnimation_,
+                                            assetPreviewAnimationLoop_);
+            }
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Loop##ModelPreviewAnimation", &assetPreviewAnimationLoop_)) {
+                model->isLoop = assetPreviewAnimationLoop_;
+            }
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::DragFloat("Speed##ModelPreviewAnimation", &assetPreviewAnimationSpeed_, 0.01f,
+                             0.0f, 4.0f, "%.2fx", ImGuiSliderFlags_AlwaysClamp);
+            const AnimationClip& clip = model->animations.at(assetPreviewAnimation_);
+            const float progress = clip.duration > 0.0f
+                                       ? std::clamp(model->animationTime / clip.duration, 0.0f, 1.0f)
+                                       : 0.0f;
+            char progressText[64]{};
+            std::snprintf(progressText, std::size(progressText), "%.2f / %.2f s",
+                          model->animationTime, clip.duration);
+            ImGui::ProgressBar(progress, {-FLT_MIN, 0.0f}, progressText);
+            if (model->isPlaying) {
+                const float deltaTime =
+                    std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.1f) *
+                    assetPreviewAnimationSpeed_;
+                modelManager->UpdateAnimation(assetPreviewModel_, deltaTime);
+            }
+        }
     }
 
-    BuildAssetPreviewScene();
-    sceneRenderer_.Render(assetPreviewScene_, assetPreviewCamera_, assetPreviewSurface_,
-                          {0.035f, 0.045f, 0.065f, 1.0f});
+    if (ImGui::SmallButton("Reset View##ModelPreview")) {
+        assetPreviewRotationDegrees_ = {0.0f, 180.0f};
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Drag the preview to rotate");
+    DirectX::XMStoreFloat4(
+        &assetPreviewTransform_.rotation,
+        DirectX::XMQuaternionRotationRollPitchYaw(
+            DirectX::XMConvertToRadians(assetPreviewRotationDegrees_.x),
+            DirectX::XMConvertToRadians(assetPreviewRotationDegrees_.y), 0.0f));
+    assetPreviewSurface_.BeginScenePass({0.035f, 0.045f, 0.065f, 1.0f});
+    ModelRenderer* previewRenderer = modelManager->GetRenderer();
+    previewRenderer->PreDraw();
+    modelManager->Draw(assetPreviewModel_, assetPreviewTransform_, assetPreviewCamera_);
+    ModelRenderer::PostDraw();
+    assetPreviewSurface_.EndScenePass();
     assetPreviewSurface_.TransitionDepthToShaderResource();
     assetPreviewSurface_.BeginOutputPass({0.0f, 0.0f, 0.0f, 1.0f});
     const PostProcessOutputTarget target{
@@ -2183,6 +2267,12 @@ void EditorScene::DrawAssetPreviewPopup() {
     ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
     const D3D12_GPU_DESCRIPTOR_HANDLE output = assetPreviewSurface_.GetOutputGpuHandle();
     ImGui::Image(static_cast<ImTextureID>(output.ptr), {320.0f, 320.0f});
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const ImVec2 delta = ImGui::GetIO().MouseDelta;
+        assetPreviewRotationDegrees_.x =
+            std::clamp(assetPreviewRotationDegrees_.x + delta.y * 0.4f, -89.0f, 89.0f);
+        assetPreviewRotationDegrees_.y += delta.x * 0.4f;
+    }
     ImGui::EndPopup();
 }
 
@@ -6288,6 +6378,10 @@ void EditorScene::UpdateAssetPreview() {
     audioPreviewSoundId_ = ISoundService::kInvalidSoundId;
     assetPreviewAsset_ = relative;
     assetPreviewModel_ = {};
+    assetPreviewAnimation_.clear();
+    assetPreviewAnimationLoop_ = true;
+    assetPreviewAnimationSpeed_ = 1.0f;
+    assetPreviewRotationDegrees_ = {0.0f, 180.0f};
     assetPreviewPlan_.clear();
     assetPreviewError_.clear();
     assetPreviewTransform_ = {};
@@ -6305,7 +6399,16 @@ void EditorScene::UpdateAssetPreview() {
         status_ = "Asset preview dependency validation failed: " + assetPreviewError_;
         return;
     }
-    assetPreviewModel_ = ctx_->rendering.model->LoadHandle(physical.wstring());
+    const std::string previewKey = physical.lexically_normal().generic_string();
+    const auto cachedPreview = assetPreviewModels_.find(previewKey);
+    if (cachedPreview != assetPreviewModels_.end()) {
+        assetPreviewModel_ = cachedPreview->second;
+    } else {
+        assetPreviewModel_ = ctx_->rendering.model->LoadUniqueHandle(physical.wstring());
+        if (assetPreviewModel_.IsValid()) {
+            assetPreviewModels_.emplace(previewKey, assetPreviewModel_);
+        }
+    }
     const Model* model = assetPreviewModel_.IsValid()
                              ? ctx_->rendering.model->GetModel(assetPreviewModel_)
                              : nullptr;
@@ -6339,40 +6442,6 @@ void EditorScene::UpdateAssetPreview() {
     assetPreviewCamera_.SetPosition({0.0f, 0.0f, -distance});
     assetPreviewCamera_.SetClipRange((std::max)(0.01f, distance - radius * 2.0f),
                                      distance + radius * 4.0f);
-}
-
-void EditorScene::BuildAssetPreviewScene() {
-    assetPreviewScene_.BeginFrame();
-    ModelManager* models = ctx_ ? ctx_->rendering.model : nullptr;
-    const Model* model = models != nullptr && assetPreviewModel_.IsValid()
-                             ? models->GetModel(assetPreviewModel_)
-                             : nullptr;
-    if (model == nullptr || models == nullptr) {
-        return;
-    }
-    auto submit = [&](uint32_t meshId, uint32_t materialId, uint32_t textureId,
-                      uint32_t normalTextureId) {
-        if (!IsValidResourceId(meshId)) {
-            return;
-        }
-        RenderMeshItem item{};
-        item.mesh = &models->GetMesh(meshId);
-        if (IsValidResourceId(materialId)) {
-            item.material = models->GetMaterial(materialId);
-        }
-        item.transform = assetPreviewTransform_;
-        item.textureId = textureId;
-        item.normalTextureId = normalTextureId;
-        assetPreviewScene_.SubmitMesh(item);
-    };
-    if (!model->subMeshes.empty()) {
-        for (const ModelSubMesh& subMesh : model->subMeshes) {
-            submit(subMesh.meshId, subMesh.materialId, subMesh.textureId,
-                   subMesh.normalTextureId);
-        }
-    } else {
-        submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
-    }
 }
 
 void EditorScene::BuildRenderScene() {

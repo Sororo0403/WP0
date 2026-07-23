@@ -186,7 +186,6 @@ private:
     void BuildRenderScene();
     void BuildEditorOverlayScene();
     void UpdateAssetPreview();
-    void BuildAssetPreviewScene();
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
     bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);
@@ -348,11 +347,15 @@ private:
     Camera cameraPreviewCamera_{};
     RenderSurface assetPreviewSurface_{};
     PostProcessSystem assetPreviewPostProcess_{};
-    RenderScene assetPreviewScene_{};
     Camera assetPreviewCamera_{};
     ModelHandle assetPreviewModel_{};
     Transform assetPreviewTransform_{};
+    DirectX::XMFLOAT2 assetPreviewRotationDegrees_{0.0f, 180.0f};
     std::filesystem::path assetPreviewAsset_;
+    std::unordered_map<std::string, ModelHandle> assetPreviewModels_;
+    std::string assetPreviewAnimation_;
+    bool assetPreviewAnimationLoop_ = true;
+    float assetPreviewAnimationSpeed_ = 1.0f;
     std::vector<AssetImport::File> assetPreviewPlan_;
     std::string assetPreviewError_;
     uint32_t audioPreviewSoundId_ = kInvalidResourceId;
