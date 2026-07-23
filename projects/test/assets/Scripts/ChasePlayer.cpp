@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <new>
+#include <string>
 
 namespace {
 constexpr char kTargetName[] = "Player";
@@ -22,14 +23,19 @@ public:
 
 private:
     void FindTarget(const World& world, EntityId self);
+    void UpdateAnimation(World& world, EntityId self, bool moving);
 
     EntityId target_{};
     EntityId configuredTarget_{};
     float moveSpeed_ = 2.5f;
     float catchDistance_ = 0.8f;
     float gravity_ = -24.0f;
+    std::string idleAnimation_ = "Idle";
+    std::string moveAnimation_ = "Run";
+    float animationFadeDuration_ = 0.2f;
     float verticalVelocity_ = 0.0f;
     bool caught_ = false;
+    bool moving_ = false;
 };
 
 void ChasePlayer::OnConfigure(const ScriptPropertyValueView* properties, size_t count) {
@@ -49,6 +55,18 @@ void ChasePlayer::OnConfigure(const ScriptPropertyValueView* properties, size_t 
             properties, count, "Gravity", ScriptPropertyType::Float)) {
         gravity_ = gravity->floatValue;
     }
+    if (const ScriptPropertyValueView* animation = FindScriptProperty(
+            properties, count, "Idle Animation", ScriptPropertyType::String)) {
+        idleAnimation_ = animation->stringValue != nullptr ? animation->stringValue : "";
+    }
+    if (const ScriptPropertyValueView* animation = FindScriptProperty(
+            properties, count, "Move Animation", ScriptPropertyType::String)) {
+        moveAnimation_ = animation->stringValue != nullptr ? animation->stringValue : "";
+    }
+    if (const ScriptPropertyValueView* duration = FindScriptProperty(
+            properties, count, "Animation Fade", ScriptPropertyType::Float)) {
+        animationFadeDuration_ = duration->floatValue;
+    }
 }
 
 void ChasePlayer::FindTarget(const World& world, EntityId self) {
@@ -64,9 +82,24 @@ void ChasePlayer::FindTarget(const World& world, EntityId self) {
 void ChasePlayer::OnStart(World& world, EntityId entity) {
     verticalVelocity_ = 0.0f;
     caught_ = false;
+    moving_ = false;
     target_ = configuredTarget_;
     if (!target_.IsValid()) {
         FindTarget(world, entity);
+    }
+    if (!idleAnimation_.empty()) {
+        world.PlayAnimation(entity, idleAnimation_, true);
+    }
+}
+
+void ChasePlayer::UpdateAnimation(World& world, EntityId self, bool moving) {
+    if (moving == moving_) {
+        return;
+    }
+    moving_ = moving;
+    const std::string& animation = moving ? moveAnimation_ : idleAnimation_;
+    if (!animation.empty()) {
+        world.CrossFadeAnimation(self, animation, animationFadeDuration_, true);
     }
 }
 
@@ -82,6 +115,7 @@ void ChasePlayer::OnUpdate(World& world, EntityId entity, float deltaTime) {
     }
 
     DirectX::XMFLOAT3 horizontalMotion{};
+    bool wantsToMove = false;
     if (target != nullptr && !caught_) {
         DirectX::XMFLOAT4X4 chaserWorld{};
         DirectX::XMFLOAT4X4 targetWorld{};
@@ -100,10 +134,12 @@ void ChasePlayer::OnUpdate(World& world, EntityId entity, float deltaTime) {
             const float inverseDistance = 1.0f / std::sqrt(distanceSquared);
             horizontalMotion.x = deltaX * inverseDistance * moveSpeed_ * deltaTime;
             horizontalMotion.z = deltaZ * inverseDistance * moveSpeed_ * deltaTime;
+            wantsToMove = true;
             chaser->transform.rotationDegrees.y = DirectX::XMConvertToDegrees(
                 std::atan2(deltaX, deltaZ));
         }
     }
+    UpdateAnimation(world, entity, wantsToMove);
 
     constexpr float terminalVelocity = -50.0f;
     verticalVelocity_ =
@@ -141,6 +177,17 @@ ScriptTypeRegistration GetChasePlayerScriptRegistration() {
                                  0.1f, 10.0f},
         ScriptPropertyDescriptor{"Gravity", ScriptPropertyType::Float, -24.0f, -100.0f,
                                  0.0f},
+        ScriptPropertyDescriptor{.name = "Idle Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Idle"},
+        ScriptPropertyDescriptor{.name = "Move Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Run"},
+        ScriptPropertyDescriptor{.name = "Animation Fade",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 0.2f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 2.0f},
     };
     return {"ChasePlayer", "asset://Scripts/ChasePlayer.cpp", &CreateChasePlayer,
             {.characterController = true}, properties.data(), properties.size()};

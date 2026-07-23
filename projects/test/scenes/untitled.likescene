@@ -308,10 +308,10 @@
           "enabled": true,
           "metallic": 0.0,
           "metallicTexture": "",
-          "normalStrength": 0.3199999928474426,
-          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
+          "normalStrength": 0.3499999940395355,
+          "normalTexture": "",
           "pbrTexturePacking": "Separate",
-          "roughness": 0.5,
+          "roughness": 0.5899999737739563,
           "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
         },
         "MeshRenderer": {
@@ -357,23 +357,23 @@
           "intensity": 17.65999984741211,
           "outerAngle": 45.0,
           "range": 29.450000762939453,
-          "type": "Point"
+          "type": "Spot"
         },
         "Transform": {
           "position": [
             0.0,
-            2.2854487895965576,
-            0.0
+            4.423959255218506,
+            8.009923934936523
           ],
           "rotation": [
-            0.0,
+            125.72126007080078,
             0.0,
             0.0
           ],
           "scale": [
             1.0,
-            1.0,
-            1.0
+            0.999993085861206,
+            0.999993085861206
           ]
         }
       },
@@ -383,7 +383,7 @@
       "parent": null
     },
     {
-      "active": true,
+      "active": false,
       "components": {
         "Light": {
           "color": [

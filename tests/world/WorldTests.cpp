@@ -295,11 +295,19 @@ int main() {
                    projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
                    projectBehaviorRegistry.Requirements("ChasePlayer")
                        ->characterController &&
-                   chaseProperties != nullptr && chaseProperties->size() == 4u &&
+                   chaseProperties != nullptr && chaseProperties->size() == 7u &&
                    (*chaseProperties)[0].name == "Target" &&
                    (*chaseProperties)[0].type == ScriptPropertyType::Entity &&
                    (*chaseProperties)[1].name == "Move Speed" &&
                    (*chaseProperties)[1].defaultFloat == 2.5f &&
+                   (*chaseProperties)[4].name == "Idle Animation" &&
+                   (*chaseProperties)[4].type == ScriptPropertyType::String &&
+                   (*chaseProperties)[4].defaultString == "Idle" &&
+                   (*chaseProperties)[5].name == "Move Animation" &&
+                   (*chaseProperties)[5].type == ScriptPropertyType::String &&
+                   (*chaseProperties)[5].defaultString == "Run" &&
+                   (*chaseProperties)[6].name == "Animation Fade" &&
+                   (*chaseProperties)[6].defaultFloat == 0.2f &&
                    projectBehaviorRegistry.TypeFromSourceAsset(
                        "asset://Scripts/FirstPersonController.cpp") ==
                        "FirstPersonController" &&
@@ -310,6 +318,51 @@ int main() {
                    projectScriptError.c_str())) {
         return 140;
     }
+    World chaseAnimationWorld;
+    const EntityId animatedChaser = chaseAnimationWorld.CreateEntity("Animated Chaser");
+    const EntityId chaseTarget = chaseAnimationWorld.CreateEntity("Chase Target");
+    chaseAnimationWorld.Find(animatedChaser)->characterController =
+        CharacterControllerComponent{};
+    chaseAnimationWorld.Find(animatedChaser)->animator = AnimatorComponent{};
+    chaseAnimationWorld.Find(chaseTarget)->transform.position.x = 10.0f;
+    BehaviorComponent chaseConfiguration{};
+    chaseConfiguration.type = "ChasePlayer";
+    ScriptPropertyValue chaseTargetProperty{};
+    chaseTargetProperty.name = "Target";
+    chaseTargetProperty.type = ScriptPropertyType::Entity;
+    chaseTargetProperty.entityValue = chaseTarget;
+    ScriptPropertyValue idleAnimationProperty{};
+    idleAnimationProperty.name = "Idle Animation";
+    idleAnimationProperty.type = ScriptPropertyType::String;
+    idleAnimationProperty.stringValue = "Wait";
+    ScriptPropertyValue moveAnimationProperty{};
+    moveAnimationProperty.name = "Move Animation";
+    moveAnimationProperty.type = ScriptPropertyType::String;
+    moveAnimationProperty.stringValue = "Sprint";
+    chaseConfiguration.properties = {chaseTargetProperty, idleAnimationProperty,
+                                     moveAnimationProperty};
+    BehaviorSystem chaseAnimationBehaviors;
+    if (!Check(projectBehaviorRegistry.Configure("ChasePlayer", chaseConfiguration,
+                                                  *chasePlayer) &&
+                   chaseAnimationBehaviors.Attach(animatedChaser, std::move(chasePlayer)),
+               "ChasePlayer Animation properties could not be configured.")) {
+        return 169;
+    }
+    chaseAnimationBehaviors.Start(chaseAnimationWorld);
+    const bool idleAnimationStarted =
+        chaseAnimationWorld.Find(animatedChaser)->animator->runtimeCommand ==
+            AnimatorComponent::RuntimeCommand::Play &&
+        chaseAnimationWorld.Find(animatedChaser)->animator->runtimeRequestedClip == "Wait";
+    chaseAnimationBehaviors.Update(0.1f);
+    if (!Check(idleAnimationStarted &&
+                   chaseAnimationWorld.Find(animatedChaser)->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::CrossFade &&
+                   chaseAnimationWorld.Find(animatedChaser)->animator->runtimeRequestedClip ==
+                       "Sprint",
+               "ChasePlayer did not switch from Idle to Move Animation.")) {
+        return 170;
+    }
+    chaseAnimationBehaviors.Clear();
     firstPerson.reset();
     rotator.reset();
     chasePlayer.reset();
