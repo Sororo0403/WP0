@@ -3,6 +3,7 @@
 #include "AssetImportPlanner.h"
 #include "InputSettingsStore.h"
 #include "PhysicsSettingsStore.h"
+#include "PlayerSettingsStore.h"
 #include "ProjectScriptLibrary.h"
 #include "RecentScenesStore.h"
 #include "camera/Camera.h"
@@ -93,6 +94,7 @@ private:
     void DrawConsolePanel();
     void DrawProjectSettingsWindow();
     bool SavePhysicsSettings();
+    bool SavePlayerSettings();
     bool SaveInputSettings();
     size_t UpgradeInputActionReferences();
     void CaptureConsoleStatus();
@@ -284,6 +286,9 @@ private:
     int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;
     double runtimeElapsedSeconds_ = 0.0;
+    PlayerSettingsStore playerSettingsStore_;
+    PlayerSettings playerSettings_{};
+    bool playerSettingsDirty_ = false;
     PhysicsSettingsStore physicsSettingsStore_;
     PhysicsSettings physicsSettings_ = PhysicsSettings::Defaults();
     bool physicsSettingsDirty_ = false;

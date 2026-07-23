@@ -86,6 +86,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerPackageBuilder.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PhysicsSettingsStore.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\InputSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectScriptLibrary.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />

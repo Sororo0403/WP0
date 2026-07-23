@@ -2,6 +2,7 @@
 #include "EditorScene.h"
 #include "ProjectDescriptor.h"
 #include "ProjectLauncher.h"
+#include "PlayerSettingsStore.h"
 #include "RecentProjectsStore.h"
 
 #include "core/AssetManager.h"
@@ -114,12 +115,24 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     AssetManager::SetProjectAssetRoot(project.assetRoot);
     AssetManager::SetUserDataRoot(paths.userData);
 
+    PlayerSettings playerSettings{};
+    if (playerMode) {
+        std::string playerSettingsError;
+        const PlayerSettingsStore playerSettingsStore(
+            project.root / L"settings" / L"player.json");
+        if (!playerSettingsStore.Load(playerSettings, playerSettingsError)) {
+            ShowError(playerSettingsError);
+            return -1;
+        }
+    }
+
     EngineRuntimeConfig config{};
-    config.width = playerMode ? 1280 : 1600;
-    config.height = playerMode ? 720 : 900;
+    config.width = playerMode ? playerSettings.width : 1600;
+    config.height = playerMode ? playerSettings.height : 900;
     config.title = playerMode ? Utf8ToWide(project.name)
                               : L"LikeEngine Editor - " + Utf8ToWide(project.name);
     config.cursorVisible = true;
+    config.fullscreen = playerMode && playerSettings.fullscreen;
     config.logPath =
         (paths.userData / L"logs" /
          (playerMode ? L"player.log" : L"editor.log"))

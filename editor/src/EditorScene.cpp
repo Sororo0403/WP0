@@ -521,6 +521,7 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
       startupScenePath_(startupScene),
       imguiSettingsPath_(std::move(imguiSettingsPath)),
+      playerSettingsStore_(projectRoot_ / L"settings" / L"player.json"),
       physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
       inputSettingsStore_(projectRoot_ / L"settings" / L"input.json"),
       recentScenesStore_(std::move(recentScenesPath), sceneRoot_),
@@ -532,6 +533,9 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
         showConsolePanel_ = false;
         showInspectorPanel_ = false;
     }
+    std::string playerSettingsError;
+    const bool playerSettingsLoaded =
+        playerSettingsStore_.Load(playerSettings_, playerSettingsError);
     std::string physicsSettingsError;
     const bool physicsSettingsLoaded =
         physicsSettingsStore_.Load(physicsSettings_, physicsSettingsError);
@@ -548,6 +552,8 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
     ClearHistory(true);
     if (!physicsSettingsLoaded) {
         status_ = "Warning: Could not load Physics Settings: " + physicsSettingsError;
+    } else if (!playerSettingsLoaded) {
+        status_ = "Warning: Could not load Player Settings: " + playerSettingsError;
     }
 }
 
@@ -799,6 +805,9 @@ bool EditorScene::OnCloseRequested() {
     if (physicsSettingsDirty_ && !SavePhysicsSettings()) {
         return false;
     }
+    if (playerSettingsDirty_ && !SavePlayerSettings()) {
+        return false;
+    }
     if (inputSettingsDirty_ && !SaveInputSettings()) {
         return false;
     }
@@ -838,7 +847,7 @@ bool EditorScene::LaunchPlayerPreview() {
         status_ = "Save the scene before running the Player Preview.";
         return false;
     }
-    if (physicsSettingsDirty_ || inputSettingsDirty_) {
+    if (playerSettingsDirty_ || physicsSettingsDirty_ || inputSettingsDirty_) {
         status_ = "Save Project Settings before running the Player Preview.";
         return false;
     }
@@ -878,7 +887,7 @@ bool EditorScene::LaunchPlayerPreview() {
 }
 
 bool EditorScene::BuildPlayerPackage() {
-    if (IsInPlayMode() || dirty_ || physicsSettingsDirty_ ||
+    if (IsInPlayMode() || dirty_ || playerSettingsDirty_ || physicsSettingsDirty_ ||
         inputSettingsDirty_) {
         status_ = "Save the scene and Project Settings before building.";
         return false;
@@ -1515,6 +1524,17 @@ bool EditorScene::SavePhysicsSettings() {
     return true;
 }
 
+bool EditorScene::SavePlayerSettings() {
+    std::string error;
+    if (!playerSettingsStore_.Save(playerSettings_, error)) {
+        status_ = "Error: Could not save Player Settings: " + error;
+        return false;
+    }
+    playerSettingsDirty_ = false;
+    status_ = "Saved Player Settings.";
+    return true;
+}
+
 bool EditorScene::SaveInputSettings() {
     Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
     if (input == nullptr) {
@@ -1609,6 +1629,51 @@ void EditorScene::DrawProjectSettingsWindow() {
     ImGui::SameLine();
     ImGui::TextDisabled(
         "The Player starts from this saved scene.");
+
+    ImGui::SeparatorText("Player");
+    ImGui::TextDisabled("Project file: %s",
+                        playerSettingsStore_.Path().generic_string().c_str());
+    ImGui::TextWrapped(
+        "These settings apply the next time Player Preview or a packaged Player starts.");
+    ImGui::BeginDisabled(IsInPlayMode());
+    ImGui::BeginDisabled(!playerSettingsDirty_);
+    if (ImGui::Button("Save##PlayerSettings")) {
+        SavePlayerSettings();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Revert##PlayerSettings")) {
+        PlayerSettings restored{};
+        std::string error;
+        if (playerSettingsStore_.Load(restored, error)) {
+            playerSettings_ = restored;
+            playerSettingsDirty_ = false;
+            status_ = "Reverted Player Settings.";
+        } else {
+            status_ = "Error: Could not reload Player Settings: " + error;
+        }
+    }
+    ImGui::EndDisabled();
+    if (playerSettingsDirty_) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.75f, 0.25f, 1.0f}, "Unsaved changes");
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::InputInt("Width", &playerSettings_.width)) {
+        playerSettings_.width =
+            std::clamp(playerSettings_.width, 320, 16384);
+        playerSettingsDirty_ = true;
+    }
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::InputInt("Height", &playerSettings_.height)) {
+        playerSettings_.height =
+            std::clamp(playerSettings_.height, 180, 16384);
+        playerSettingsDirty_ = true;
+    }
+    if (ImGui::Checkbox("Borderless Fullscreen",
+                        &playerSettings_.fullscreen)) {
+        playerSettingsDirty_ = true;
+    }
+    ImGui::EndDisabled();
 
     ImGui::SeparatorText("Physics");
     ImGui::TextDisabled("Project file: %s",

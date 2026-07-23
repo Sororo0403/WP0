@@ -2,6 +2,7 @@
 #include "InputSettingsStore.h"
 #include "ProjectDescriptor.h"
 #include "PhysicsSettingsStore.h"
+#include "PlayerSettingsStore.h"
 #include "PlayerPackageBuilder.h"
 #include "ProjectScriptLibrary.h"
 #include "ScriptBuildService.h"
@@ -1741,6 +1742,51 @@ int main() {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 143;
     }
+    const std::filesystem::path playerSettingsPath =
+        projectDirectory / L"settings" / L"player.json";
+    PlayerSettingsStore playerSettingsStore(playerSettingsPath);
+    PlayerSettings defaultPlayerSettings{};
+    std::string playerSettingsError;
+    const bool defaultPlayerSettingsLoaded =
+        playerSettingsStore.Load(defaultPlayerSettings, playerSettingsError);
+    const PlayerSettings savedPlayerSettings{
+        .width = 1920,
+        .height = 1080,
+        .fullscreen = true,
+    };
+    PlayerSettings restoredPlayerSettings{};
+    const bool playerSettingsSaved =
+        defaultPlayerSettingsLoaded &&
+        playerSettingsStore.Save(savedPlayerSettings, playerSettingsError);
+    if (!Check(playerSettingsSaved &&
+                   playerSettingsStore.Load(restoredPlayerSettings,
+                                            playerSettingsError) &&
+                   defaultPlayerSettings.width == 1280 &&
+                   defaultPlayerSettings.height == 720 &&
+                   !defaultPlayerSettings.fullscreen &&
+                   restoredPlayerSettings.width == 1920 &&
+                   restoredPlayerSettings.height == 1080 &&
+                   restoredPlayerSettings.fullscreen,
+               playerSettingsError.empty()
+                   ? "Player settings were not safely persisted."
+                   : playerSettingsError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 196;
+    }
+    {
+        std::ofstream invalidPlayerSettings(playerSettingsPath,
+                                            std::ios::trunc);
+        invalidPlayerSettings
+            << R"({"version":1,"width":0,"height":1080,"fullscreen":false})";
+    }
+    if (!Check(!playerSettingsStore.Load(restoredPlayerSettings,
+                                         playerSettingsError) &&
+                   playerSettingsStore.Save(savedPlayerSettings,
+                                            playerSettingsError),
+               "Invalid Player settings were accepted.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 197;
+    }
     const std::filesystem::path inputSettingsPath =
         projectDirectory / L"settings" / L"input.json";
     InputSettingsStore inputStore(inputSettingsPath);
@@ -1854,6 +1900,9 @@ int main() {
                    std::filesystem::is_regular_file(
                        packageDestination / L"project" /
                        createdProject.manifestPath.filename()) &&
+                   std::filesystem::is_regular_file(
+                       packageDestination / L"project" / L"settings" /
+                       L"player.json") &&
                    std::filesystem::is_regular_file(
                        packageDestination / L"project" / L"scenes" /
                        L"untitled.likescene") &&
