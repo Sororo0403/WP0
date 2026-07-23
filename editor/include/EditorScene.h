@@ -259,6 +259,7 @@ private:
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;
     std::filesystem::path sceneRoot_;
+    std::filesystem::path startupScenePath_;
     std::filesystem::path imguiSettingsPath_;
     bool resetDockLayoutRequested_ = false;
     bool showHierarchyPanel_ = true;

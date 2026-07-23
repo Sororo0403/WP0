@@ -519,6 +519,7 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
     : requestClose_(std::move(requestClose)), playerMode_(playerMode),
       projectRoot_(std::move(projectRoot)),
       assetRoot_(std::move(assetRoot)), sceneRoot_(std::move(sceneRoot)),
+      startupScenePath_(startupScene),
       imguiSettingsPath_(std::move(imguiSettingsPath)),
       physicsSettingsStore_(projectRoot_ / L"settings" / L"physics.json"),
       inputSettingsStore_(projectRoot_ / L"settings" / L"input.json"),
@@ -1566,6 +1567,45 @@ void EditorScene::DrawProjectSettingsWindow() {
         ImGui::End();
         return;
     }
+
+    ImGui::SeparatorText("General");
+    std::error_code startupSceneError;
+    std::filesystem::path startupSceneLabel =
+        std::filesystem::relative(startupScenePath_, sceneRoot_,
+                                  startupSceneError);
+    if (startupSceneError) {
+        startupSceneLabel = startupScenePath_.filename();
+    }
+    ImGui::Text("Startup Scene");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", startupSceneLabel.generic_string().c_str());
+    std::error_code currentSceneError;
+    const bool currentSceneCanStart =
+        !scenePath_.empty() &&
+        std::filesystem::is_regular_file(scenePath_, currentSceneError) &&
+        !currentSceneError && scenePath_ != startupScenePath_;
+    ImGui::BeginDisabled(IsInPlayMode() || !currentSceneCanStart);
+    if (ImGui::Button("Set Current Scene as Startup")) {
+        ProjectDescriptor project;
+        std::string error;
+        if (ProjectDescriptor::SetStartupScene(projectRoot_, scenePath_,
+                                               project, error)) {
+            startupScenePath_ = project.startupScene;
+            std::error_code labelError;
+            std::filesystem::path label = std::filesystem::relative(
+                startupScenePath_, sceneRoot_, labelError);
+            if (labelError) {
+                label = startupScenePath_.filename();
+            }
+            status_ = "Set Startup Scene: " + label.generic_string();
+        } else {
+            status_ = "Error: Could not set Startup Scene: " + error;
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled(
+        "The Player starts from this saved scene.");
 
     ImGui::SeparatorText("Physics");
     ImGui::TextDisabled("Project file: %s",

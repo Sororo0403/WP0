@@ -1659,6 +1659,44 @@ int main() {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 21;
     }
+    const std::filesystem::path alternateStartupScene =
+        createdProject.sceneRoot / L"alternate.likescene";
+    if (!Check(WorldSerializer::Save(source, alternateStartupScene, &error),
+               error.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 189;
+    }
+    ProjectDescriptor updatedProject;
+    ProjectDescriptor restoredProject;
+    const std::filesystem::path outsideStartupScene =
+        createdProject.assetRoot / L"outside.likescene";
+    if (!Check(WorldSerializer::Save(source, outsideStartupScene, &error),
+               error.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 190;
+    }
+    if (!Check(ProjectDescriptor::SetStartupScene(
+                   createdProject.root, alternateStartupScene, updatedProject,
+                   error),
+               error.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 191;
+    }
+    if (!Check(ProjectDescriptor::Load(createdProject.root, restoredProject,
+                                       error) &&
+                   updatedProject.startupScene == alternateStartupScene &&
+                   restoredProject.startupScene == alternateStartupScene,
+               "Updated Startup Scene was not restored.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 192;
+    }
+    if (!Check(!ProjectDescriptor::SetStartupScene(
+                   createdProject.root, outsideStartupScene, updatedProject,
+                   error),
+               "Startup Scene outside the scene directory was accepted.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 193;
+    }
     const std::filesystem::path recentSettings = projectDirectory / L"settings" / L"recent.json";
     RecentScenesStore recentScenes(recentSettings, createdProject.sceneRoot);
     if (!Check(recentScenes.Save({createdProject.startupScene,

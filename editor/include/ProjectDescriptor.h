@@ -17,4 +17,7 @@ struct ProjectDescriptor {
                      std::string& error);
     static bool Create(const std::filesystem::path& directory, const std::string& name,
                        ProjectDescriptor& descriptor, std::string& error);
+    static bool SetStartupScene(const std::filesystem::path& project,
+                                const std::filesystem::path& scene,
+                                ProjectDescriptor& descriptor, std::string& error);
 };

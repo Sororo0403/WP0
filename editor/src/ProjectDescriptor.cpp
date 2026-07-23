@@ -231,3 +231,63 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
     }
     return Load(manifest, descriptor, error);
 }
+
+bool ProjectDescriptor::SetStartupScene(const std::filesystem::path& project,
+                                        const std::filesystem::path& scene,
+                                        ProjectDescriptor& descriptor,
+                                        std::string& error) {
+    ProjectDescriptor current;
+    if (!Load(project, current, error)) {
+        return false;
+    }
+
+    std::error_code filesystemError;
+    const std::filesystem::path absoluteScene =
+        std::filesystem::absolute(scene, filesystemError).lexically_normal();
+    if (filesystemError || absoluteScene.extension() != L".likescene" ||
+        !std::filesystem::is_regular_file(absoluteScene, filesystemError) ||
+        filesystemError || !IsInside(current.sceneRoot, absoluteScene)) {
+        error = "Startup Scene must be an existing .likescene file inside the scene directory.";
+        return false;
+    }
+    const std::filesystem::path relativeScene =
+        std::filesystem::relative(absoluteScene, current.root, filesystemError);
+    if (filesystemError || !IsSafeRelative(relativeScene)) {
+        error = "Startup Scene path could not be stored safely.";
+        return false;
+    }
+
+    nlohmann::json json;
+    const std::filesystem::path temporary =
+        current.manifestPath.wstring() + L".tmp";
+    try {
+        std::ifstream input(current.manifestPath);
+        if (!input) {
+            error = "Project manifest could not be opened.";
+            return false;
+        }
+        input >> json;
+        input.close();
+        json["startupScene"] = relativeScene.generic_string();
+
+        std::ofstream output(temporary, std::ios::trunc);
+        output << json.dump(2) << '\n';
+        output.close();
+        if (!output) {
+            std::filesystem::remove(temporary, filesystemError);
+            error = "Could not write the Project manifest.";
+            return false;
+        }
+        if (!MoveFileExW(temporary.c_str(), current.manifestPath.c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            std::filesystem::remove(temporary, filesystemError);
+            error = "Could not finish updating the Project manifest.";
+            return false;
+        }
+    } catch (const std::exception&) {
+        std::filesystem::remove(temporary, filesystemError);
+        error = "Project manifest could not be updated.";
+        return false;
+    }
+    return Load(current.manifestPath, descriptor, error);
+}
