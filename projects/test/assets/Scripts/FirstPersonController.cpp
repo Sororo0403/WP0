@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <new>
+#include <string>
 
 namespace {
 class FirstPersonController final : public Behavior {
@@ -21,6 +22,17 @@ public:
     void OnUpdate(World& world, EntityId entity, float deltaTime) override;
 
 private:
+    enum class AnimationState {
+        None,
+        Idle,
+        Move,
+        Sprint,
+        Airborne,
+    };
+
+    void SetAnimationState(World& world, EntityId entity, AnimationState state,
+                           bool immediate = false);
+
     Input* input_ = nullptr;
     float moveSpeed_ = 4.0f;
     float sprintSpeed_ = 8.0f;
@@ -29,8 +41,14 @@ private:
     float gravity_ = -24.0f;
     float jumpHeight_ = 1.5f;
     bool invertY_ = false;
+    std::string idleAnimation_ = "Idle";
+    std::string moveAnimation_ = "Walk";
+    std::string sprintAnimation_ = "Run";
+    std::string jumpAnimation_ = "Jump";
+    float animationFadeDuration_ = 0.2f;
     float verticalVelocity_ = 0.0f;
     bool grounded_ = false;
+    AnimationState animationState_ = AnimationState::None;
 };
 
 FirstPersonController::FirstPersonController(Input* input) : input_(input) {}
@@ -65,13 +83,62 @@ void FirstPersonController::OnConfigure(const ScriptPropertyValueView* propertie
             properties, count, "Invert Y", ScriptPropertyType::Boolean)) {
         invertY_ = value->booleanValue;
     }
+    const auto readAnimation = [&](const char* name, std::string& destination) {
+        if (const ScriptPropertyValueView* value = FindScriptProperty(
+                properties, count, name, ScriptPropertyType::String)) {
+            destination = value->stringValue != nullptr ? value->stringValue : "";
+        }
+    };
+    readAnimation("Idle Animation", idleAnimation_);
+    readAnimation("Move Animation", moveAnimation_);
+    readAnimation("Sprint Animation", sprintAnimation_);
+    readAnimation("Jump Animation", jumpAnimation_);
+    if (const ScriptPropertyValueView* value = FindScriptProperty(
+            properties, count, "Animation Fade", ScriptPropertyType::Float)) {
+        animationFadeDuration_ = value->floatValue;
+    }
 }
 
 void FirstPersonController::OnStart(World& world, EntityId entity) {
-    (void)world;
-    (void)entity;
     verticalVelocity_ = 0.0f;
     grounded_ = false;
+    animationState_ = AnimationState::None;
+    SetAnimationState(world, entity, AnimationState::Idle, true);
+}
+
+void FirstPersonController::SetAnimationState(World& world, EntityId entity,
+                                              AnimationState state, bool immediate) {
+    if (state == animationState_) {
+        return;
+    }
+    animationState_ = state;
+    const std::string* animation = nullptr;
+    bool loop = true;
+    switch (state) {
+    case AnimationState::Idle:
+        animation = &idleAnimation_;
+        break;
+    case AnimationState::Move:
+        animation = &moveAnimation_;
+        break;
+    case AnimationState::Sprint:
+        animation = &sprintAnimation_;
+        break;
+    case AnimationState::Airborne:
+        animation = &jumpAnimation_;
+        loop = false;
+        break;
+    case AnimationState::None:
+        return;
+    }
+    if (animation == nullptr || animation->empty()) {
+        return;
+    }
+    if (immediate) {
+        world.PlayAnimation(entity, *animation, loop);
+    } else {
+        world.CrossFadeAnimation(entity, *animation, animationFadeDuration_, loop);
+    }
 }
 
 void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaTime) {
@@ -147,6 +214,13 @@ void FirstPersonController::OnUpdate(World& world, EntityId entity, float deltaT
     } else if (hitCeiling && verticalVelocity_ > 0.0f) {
         verticalVelocity_ = 0.0f;
     }
+    const bool moving = inputLength > 0.001f;
+    const AnimationState nextAnimation =
+        !grounded_ ? AnimationState::Airborne
+                   : moving ? (sprinting ? AnimationState::Sprint
+                                         : AnimationState::Move)
+                            : AnimationState::Idle;
+    SetAnimationState(world, entity, nextAnimation);
 }
 
 Behavior* CreateFirstPersonController(Input* input) {
@@ -189,6 +263,23 @@ ScriptTypeRegistration GetFirstPersonControllerScriptRegistration() {
         ScriptPropertyDescriptor{.name = "Invert Y",
                                  .type = ScriptPropertyType::Boolean,
                                  .defaultBoolean = false},
+        ScriptPropertyDescriptor{.name = "Idle Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Idle"},
+        ScriptPropertyDescriptor{.name = "Move Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Walk"},
+        ScriptPropertyDescriptor{.name = "Sprint Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Run"},
+        ScriptPropertyDescriptor{.name = "Jump Animation",
+                                 .type = ScriptPropertyType::String,
+                                 .defaultString = "Jump"},
+        ScriptPropertyDescriptor{.name = "Animation Fade",
+                                 .type = ScriptPropertyType::Float,
+                                 .defaultFloat = 0.2f,
+                                 .minimumFloat = 0.0f,
+                                 .maximumFloat = 2.0f},
     };
     return {"FirstPersonController", "asset://Scripts/FirstPersonController.cpp",
             &CreateFirstPersonController, {.characterController = true},

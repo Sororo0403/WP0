@@ -283,7 +283,7 @@ int main() {
                    projectBehaviorRegistry.Requirements("FirstPersonController")
                        ->characterController &&
                    controllerProperties != nullptr &&
-                   controllerProperties->size() == 7u &&
+                   controllerProperties->size() == 12u &&
                    (*controllerProperties)[0].name == "Move Speed" &&
                    (*controllerProperties)[0].defaultFloat == 4.0f &&
                    (*controllerProperties)[1].name == "Sprint Speed" &&
@@ -292,6 +292,17 @@ int main() {
                    (*controllerProperties)[5].defaultFloat == 1.5f &&
                    (*controllerProperties)[6].name == "Invert Y" &&
                    (*controllerProperties)[6].type == ScriptPropertyType::Boolean &&
+                   (*controllerProperties)[7].name == "Idle Animation" &&
+                   (*controllerProperties)[7].type == ScriptPropertyType::String &&
+                   (*controllerProperties)[7].defaultString == "Idle" &&
+                   (*controllerProperties)[8].name == "Move Animation" &&
+                   (*controllerProperties)[8].defaultString == "Walk" &&
+                   (*controllerProperties)[9].name == "Sprint Animation" &&
+                   (*controllerProperties)[9].defaultString == "Run" &&
+                   (*controllerProperties)[10].name == "Jump Animation" &&
+                   (*controllerProperties)[10].defaultString == "Jump" &&
+                   (*controllerProperties)[11].name == "Animation Fade" &&
+                   (*controllerProperties)[11].defaultFloat == 0.2f &&
                    projectBehaviorRegistry.Requirements("ChasePlayer") != nullptr &&
                    projectBehaviorRegistry.Requirements("ChasePlayer")
                        ->characterController &&
@@ -318,6 +329,36 @@ int main() {
                    projectScriptError.c_str())) {
         return 140;
     }
+    World controllerAnimationWorld;
+    const EntityId animatedController =
+        controllerAnimationWorld.CreateEntity("Animated Controller");
+    controllerAnimationWorld.Find(animatedController)->characterController =
+        CharacterControllerComponent{};
+    controllerAnimationWorld.Find(animatedController)->animator = AnimatorComponent{};
+    BehaviorComponent controllerConfiguration{};
+    controllerConfiguration.type = "FirstPersonController";
+    ScriptPropertyValue controllerIdleProperty{};
+    controllerIdleProperty.name = "Idle Animation";
+    controllerIdleProperty.type = ScriptPropertyType::String;
+    controllerIdleProperty.stringValue = "Stand";
+    controllerConfiguration.properties.push_back(controllerIdleProperty);
+    BehaviorSystem controllerAnimationBehaviors;
+    if (!Check(projectBehaviorRegistry.Configure("FirstPersonController",
+                                                  controllerConfiguration, *firstPerson) &&
+                   controllerAnimationBehaviors.Attach(animatedController,
+                                                        std::move(firstPerson)),
+               "FirstPersonController Animation properties could not be configured.")) {
+        return 171;
+    }
+    controllerAnimationBehaviors.Start(controllerAnimationWorld);
+    if (!Check(controllerAnimationWorld.Find(animatedController)->animator->runtimeCommand ==
+                       AnimatorComponent::RuntimeCommand::Play &&
+                   controllerAnimationWorld.Find(animatedController)
+                           ->animator->runtimeRequestedClip == "Stand",
+               "FirstPersonController did not start its Idle Animation.")) {
+        return 172;
+    }
+    controllerAnimationBehaviors.Clear();
     World chaseAnimationWorld;
     const EntityId animatedChaser = chaseAnimationWorld.CreateEntity("Animated Chaser");
     const EntityId chaseTarget = chaseAnimationWorld.CreateEntity("Chase Target");

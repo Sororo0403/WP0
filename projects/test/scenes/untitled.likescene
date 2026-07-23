@@ -301,18 +301,18 @@
             0.0,
             1.0
           ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "baseColorTexture": "asset://LockPBR/Rock051_1K-JPG_Color.jpg",
           "blendMode": "Opaque",
           "cullMode": "Back",
           "depthWrite": true,
           "enabled": true,
-          "metallic": 0.0,
-          "metallicTexture": "",
-          "normalStrength": 0.3499999940395355,
-          "normalTexture": "",
+          "metallic": 1.0,
+          "metallicTexture": "asset://LockPBR/Rock051_1K-JPG_Metalness.jpg",
+          "normalStrength": 4.0,
+          "normalTexture": "asset://LockPBR/Rock051_1K-JPG_NormalDX.jpg",
           "pbrTexturePacking": "Separate",
-          "roughness": 0.5899999737739563,
-          "roughnessTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Roughness.jpg"
+          "roughness": 1.0,
+          "roughnessTexture": "asset://LockPBR/Rock051_1K-JPG_Roughness.jpg"
         },
         "MeshRenderer": {
           "enabled": true,
@@ -354,10 +354,10 @@
           ],
           "enabled": true,
           "innerAngle": 25.0,
-          "intensity": 17.65999984741211,
+          "intensity": 6.639999866485596,
           "outerAngle": 45.0,
           "range": 29.450000762939453,
-          "type": "Spot"
+          "type": "Point"
         },
         "Transform": {
           "position": [
