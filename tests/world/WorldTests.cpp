@@ -631,13 +631,13 @@ int main() {
     if (!Check(source.PlayAnimation(child, "Run", false) &&
                    childEntity->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::Play &&
-                   childEntity->animator->runtimeClip == "Run" &&
+                   childEntity->animator->runtimeRequestedClip == "Run" &&
                    !childEntity->animator->runtimeLoop &&
                    !source.IsAnimationPlaying(child) && !source.IsAnimationFinished(child) &&
                    source.CrossFadeAnimation(child, "Idle", 0.25f) &&
                    childEntity->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::CrossFade &&
-                   childEntity->animator->runtimeClip == "Idle" &&
+                   childEntity->animator->runtimeRequestedClip == "Idle" &&
                    childEntity->animator->runtimeLoop &&
                    childEntity->animator->runtimeFadeDuration == 0.25f &&
                    !source.CrossFadeAnimation(child, "Idle", -1.0f) &&
@@ -647,6 +647,18 @@ int main() {
                    !source.PlayAnimation(root, "Run") && !source.StopAnimation(root),
                "World Animator playback commands are invalid.")) {
         return 166;
+    }
+    childEntity->animator->runtimeClip = "Attack";
+    childEntity->animator->runtimeNormalizedTime = 0.6f;
+    childEntity->animator->runtimeTransitioning = true;
+    if (!Check(source.GetCurrentAnimation(child) == "Attack" &&
+                   source.GetAnimationNormalizedTime(child) == 0.6f &&
+                   source.IsAnimationTransitioning(child) &&
+                   source.GetCurrentAnimation(root).empty() &&
+                   source.GetAnimationNormalizedTime(root) == 0.0f &&
+                   !source.IsAnimationTransitioning(root),
+               "World Animator playback state queries are invalid.")) {
+        return 168;
     }
     if (!Check(source.PlayAudioSource(child) &&
                    childEntity->audioSource->runtimeCommand ==
@@ -889,10 +901,16 @@ int main() {
                    restoredChild->animator->speed == 1.5f &&
                    restoredChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
+                   restoredChild->animator->runtimeRequestedClip.empty() &&
                    restoredChild->animator->runtimeClip.empty() &&
                    restoredChild->animator->runtimeFadeDuration == 0.0f &&
                    !restoredChild->animator->runtimePlaying &&
                    !restoredChild->animator->runtimeFinished &&
+                   restoredChild->animator->runtimeTime == 0.0f &&
+                   restoredChild->animator->runtimeDuration == 0.0f &&
+                   restoredChild->animator->runtimeNormalizedTime == 0.0f &&
+                   !restoredChild->animator->runtimeTransitioning &&
+                   restoredChild->animator->runtimeTransitionProgress == 0.0f &&
                    restoredChild->scripts.size() == 3u &&
                    restoredChild->scripts[0].enabled &&
                    restoredChild->scripts[0].type == "Rotator" &&
@@ -1019,8 +1037,14 @@ int main() {
                    duplicateChild->animator && duplicateChild->animator->clip == "Run" &&
                    duplicateChild->animator->runtimeCommand ==
                        AnimatorComponent::RuntimeCommand::None &&
+                   duplicateChild->animator->runtimeRequestedClip.empty() &&
                    duplicateChild->animator->runtimeClip.empty() &&
                    duplicateChild->animator->runtimeFadeDuration == 0.0f &&
+                   duplicateChild->animator->runtimeTime == 0.0f &&
+                   duplicateChild->animator->runtimeDuration == 0.0f &&
+                   duplicateChild->animator->runtimeNormalizedTime == 0.0f &&
+                   !duplicateChild->animator->runtimeTransitioning &&
+                   duplicateChild->animator->runtimeTransitionProgress == 0.0f &&
                    duplicateChild->scripts.size() == 3u &&
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==

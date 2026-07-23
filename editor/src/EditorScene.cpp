@@ -4283,6 +4283,15 @@ void EditorScene::DrawInspectorPanel() {
                 if (!animator.runtimeClip.empty()) {
                     ImGui::TextDisabled("Runtime Clip: %s", animator.runtimeClip.c_str());
                 }
+                char animationProgress[64]{};
+                std::snprintf(animationProgress, std::size(animationProgress), "%.2f / %.2f s",
+                              animator.runtimeTime, animator.runtimeDuration);
+                ImGui::ProgressBar(animator.runtimeNormalizedTime, {-FLT_MIN, 0.0f},
+                                   animationProgress);
+                if (animator.runtimeTransitioning) {
+                    ImGui::ProgressBar(animator.runtimeTransitionProgress, {-FLT_MIN, 0.0f},
+                                       "Cross Fade");
+                }
             } else {
                 ImGui::TextDisabled(
                     "Script API: PlayAnimation / CrossFadeAnimation / StopAnimation");
@@ -6941,11 +6950,17 @@ bool EditorScene::BeginRuntimeAnimators(std::string* error) {
         if (WorldEntity* runtimeEntity = world_.Find(entity.id); runtimeEntity != nullptr &&
             runtimeEntity->animator) {
             runtimeEntity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            runtimeEntity->animator->runtimeRequestedClip.clear();
             runtimeEntity->animator->runtimeClip = clip;
             runtimeEntity->animator->runtimeLoop = animator.loop;
             runtimeEntity->animator->runtimeFadeDuration = 0.0f;
             runtimeEntity->animator->runtimePlaying = model->isPlaying;
             runtimeEntity->animator->runtimeFinished = model->animationFinished;
+            runtimeEntity->animator->runtimeTime = model->animationTime;
+            runtimeEntity->animator->runtimeDuration = model->animations.at(clip).duration;
+            runtimeEntity->animator->runtimeNormalizedTime = 0.0f;
+            runtimeEntity->animator->runtimeTransitioning = false;
+            runtimeEntity->animator->runtimeTransitionProgress = 0.0f;
         }
         runtimeAnimators_.push_back({entity.id, handle});
     }
@@ -7038,6 +7053,12 @@ void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
         if (model == nullptr) {
             animator.runtimePlaying = false;
             animator.runtimeFinished = false;
+            animator.runtimeClip.clear();
+            animator.runtimeTime = 0.0f;
+            animator.runtimeDuration = 0.0f;
+            animator.runtimeNormalizedTime = 0.0f;
+            animator.runtimeTransitioning = false;
+            animator.runtimeTransitionProgress = 0.0f;
             continue;
         }
         const AnimatorComponent::RuntimeCommand command = animator.runtimeCommand;
@@ -7051,17 +7072,17 @@ void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
                 models->UpdateAnimation(runtime.model, 0.0f);
             }
         } else if (command == AnimatorComponent::RuntimeCommand::Play &&
-                   model->animations.contains(animator.runtimeClip)) {
-            if (model->currentAnimation != animator.runtimeClip ||
+                   model->animations.contains(animator.runtimeRequestedClip)) {
+            if (model->currentAnimation != animator.runtimeRequestedClip ||
                 (!model->isPlaying && !model->animationFinished)) {
-                models->PlayAnimation(runtime.model, animator.runtimeClip,
+                models->PlayAnimation(runtime.model, animator.runtimeRequestedClip,
                                       animator.runtimeLoop);
             } else {
                 model->isLoop = animator.runtimeLoop;
             }
         } else if (command == AnimatorComponent::RuntimeCommand::CrossFade &&
-                   model->animations.contains(animator.runtimeClip)) {
-            models->CrossFadeAnimation(runtime.model, animator.runtimeClip,
+                   model->animations.contains(animator.runtimeRequestedClip)) {
+            models->CrossFadeAnimation(runtime.model, animator.runtimeRequestedClip,
                                        animator.runtimeFadeDuration, animator.runtimeLoop);
         }
         if (animator.enabled && world_.IsActiveInHierarchy(runtime.entity) && model->isPlaying) {
@@ -7070,6 +7091,22 @@ void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
         animator.runtimePlaying = animator.enabled && world_.IsActiveInHierarchy(runtime.entity) &&
                                   model->isPlaying;
         animator.runtimeFinished = model->animationFinished;
+        animator.runtimeClip = model->currentAnimation;
+        animator.runtimeTime = model->animationTime;
+        const auto currentClip = model->animations.find(model->currentAnimation);
+        animator.runtimeDuration = currentClip != model->animations.end()
+                                       ? (std::max)(currentClip->second.duration, 0.0f)
+                                       : 0.0f;
+        animator.runtimeNormalizedTime = animator.runtimeDuration > 0.0f
+                                             ? std::clamp(animator.runtimeTime /
+                                                              animator.runtimeDuration,
+                                                          0.0f, 1.0f)
+                                             : 0.0f;
+        animator.runtimeTransitioning = !model->blendSourceAnimation.empty();
+        animator.runtimeTransitionProgress =
+            animator.runtimeTransitioning && model->blendDuration > 0.0f
+                ? std::clamp(model->blendTime / model->blendDuration, 0.0f, 1.0f)
+                : 0.0f;
     }
 }
 
@@ -7078,11 +7115,17 @@ void EditorScene::EndRuntimeAnimators() {
         if (WorldEntity* entity = world_.Find(runtime.entity); entity != nullptr &&
             entity->animator) {
             entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            entity->animator->runtimeRequestedClip.clear();
             entity->animator->runtimeClip.clear();
             entity->animator->runtimeLoop = true;
             entity->animator->runtimeFadeDuration = 0.0f;
             entity->animator->runtimePlaying = false;
             entity->animator->runtimeFinished = false;
+            entity->animator->runtimeTime = 0.0f;
+            entity->animator->runtimeDuration = 0.0f;
+            entity->animator->runtimeNormalizedTime = 0.0f;
+            entity->animator->runtimeTransitioning = false;
+            entity->animator->runtimeTransitionProgress = 0.0f;
         }
     }
     runtimeAnimators_.clear();

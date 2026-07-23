@@ -46,7 +46,7 @@
           "enabled": true,
           "loop": true,
           "playOnAwake": true,
-          "speed": 1.0
+          "speed": 4.989999771118164
         },
         "CharacterController": {
           "center": [
@@ -70,7 +70,7 @@
             1.0,
             1.0
           ],
-          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
+          "baseColorTexture": "asset://taro.png",
           "blendMode": "Opaque",
           "cullMode": "Back",
           "depthWrite": true,
@@ -87,7 +87,7 @@
           "enabled": true,
           "model": "asset://BrainStem.glb",
           "primitive": 0,
-          "source": "Model"
+          "source": "Primitive"
         },
         "Scripts": [
           {
@@ -95,7 +95,7 @@
             "properties": {
               "Move Speed": {
                 "type": "Float",
-                "value": 20.0
+                "value": 7.699999809265137
               }
             },
             "script": "asset://Scripts/FirstPersonController.cpp",
@@ -104,9 +104,9 @@
         ],
         "Transform": {
           "position": [
-            0.2964467406272888,
+            -0.5288857221603394,
             -1.1444064512033947e-05,
-            4.561216354370117
+            2.131462335586548
           ],
           "rotation": [
             0.0,
@@ -296,9 +296,9 @@
         "MaterialOverride": {
           "alphaCutoff": 0.5,
           "baseColor": [
-            1.0,
-            1.0,
-            1.0,
+            0.0,
+            0.0,
+            0.0,
             1.0
           ],
           "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
@@ -306,9 +306,9 @@
           "cullMode": "Back",
           "depthWrite": true,
           "enabled": true,
-          "metallic": 1.0,
+          "metallic": 0.0,
           "metallicTexture": "",
-          "normalStrength": 4.0,
+          "normalStrength": 0.3199999928474426,
           "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
           "pbrTexturePacking": "Separate",
           "roughness": 0.5,
@@ -323,8 +323,8 @@
         "Transform": {
           "position": [
             0.0,
-            -2.069087505340576,
-            6.373710632324219
+            -2.2652857303619385,
+            6.3737568855285645
           ],
           "rotation": [
             0.0,
@@ -333,8 +333,8 @@
           ],
           "scale": [
             21.459999084472656,
-            1.940000057220459,
-            20.440000534057617
+            1.9400209188461304,
+            20.440011978149414
           ]
         }
       },
@@ -354,7 +354,7 @@
           ],
           "enabled": true,
           "innerAngle": 25.0,
-          "intensity": 2.119999885559082,
+          "intensity": 17.65999984741211,
           "outerAngle": 45.0,
           "range": 29.450000762939453,
           "type": "Point"

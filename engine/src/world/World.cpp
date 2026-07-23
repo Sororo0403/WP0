@@ -75,11 +75,17 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         }
         if (duplicate->animator) {
             duplicate->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            duplicate->animator->runtimeRequestedClip.clear();
             duplicate->animator->runtimeClip.clear();
             duplicate->animator->runtimeLoop = true;
             duplicate->animator->runtimeFadeDuration = 0.0f;
             duplicate->animator->runtimePlaying = false;
             duplicate->animator->runtimeFinished = false;
+            duplicate->animator->runtimeTime = 0.0f;
+            duplicate->animator->runtimeDuration = 0.0f;
+            duplicate->animator->runtimeNormalizedTime = 0.0f;
+            duplicate->animator->runtimeTransitioning = false;
+            duplicate->animator->runtimeTransitionProgress = 0.0f;
         }
         duplicate->scripts = original.scripts;
         duplicate->boxCollider = original.boxCollider;
@@ -341,7 +347,7 @@ bool World::PlayAnimation(EntityId id, std::string clip, bool loop) {
         return false;
     }
     entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::Play;
-    entity->animator->runtimeClip = std::move(clip);
+    entity->animator->runtimeRequestedClip = std::move(clip);
     entity->animator->runtimeLoop = loop;
     return true;
 }
@@ -355,7 +361,7 @@ bool World::CrossFadeAnimation(EntityId id, std::string clip, float duration, bo
         return false;
     }
     entity->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::CrossFade;
-    entity->animator->runtimeClip = std::move(clip);
+    entity->animator->runtimeRequestedClip = std::move(clip);
     entity->animator->runtimeLoop = loop;
     entity->animator->runtimeFadeDuration = duration;
     return true;
@@ -378,6 +384,21 @@ bool World::IsAnimationPlaying(EntityId id) const {
 bool World::IsAnimationFinished(EntityId id) const {
     const WorldEntity* entity = Find(id);
     return entity != nullptr && entity->animator && entity->animator->runtimeFinished;
+}
+
+std::string World::GetCurrentAnimation(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->animator ? entity->animator->runtimeClip : std::string{};
+}
+
+float World::GetAnimationNormalizedTime(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->animator ? entity->animator->runtimeNormalizedTime : 0.0f;
+}
+
+bool World::IsAnimationTransitioning(EntityId id) const {
+    const WorldEntity* entity = Find(id);
+    return entity != nullptr && entity->animator && entity->animator->runtimeTransitioning;
 }
 
 bool World::IsActiveInHierarchy(EntityId id) const {
@@ -481,11 +502,17 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
         }
         if (entity.animator) {
             entity.animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+            entity.animator->runtimeRequestedClip.clear();
             entity.animator->runtimeClip.clear();
             entity.animator->runtimeLoop = true;
             entity.animator->runtimeFadeDuration = 0.0f;
             entity.animator->runtimePlaying = false;
             entity.animator->runtimeFinished = false;
+            entity.animator->runtimeTime = 0.0f;
+            entity.animator->runtimeDuration = 0.0f;
+            entity.animator->runtimeNormalizedTime = 0.0f;
+            entity.animator->runtimeTransitioning = false;
+            entity.animator->runtimeTransitionProgress = 0.0f;
         }
         if (!entity.id.IsValid() || !ids.insert(entity.id).second) {
             SetError(error, "Scene contains an invalid or duplicate entity id.");

@@ -144,11 +144,17 @@ struct AnimatorComponent {
     bool loop = true;
     float speed = 1.0f;
     RuntimeCommand runtimeCommand = RuntimeCommand::None;
+    std::string runtimeRequestedClip;
     std::string runtimeClip;
     bool runtimeLoop = true;
     float runtimeFadeDuration = 0.0f;
     bool runtimePlaying = false;
     bool runtimeFinished = false;
+    float runtimeTime = 0.0f;
+    float runtimeDuration = 0.0f;
+    float runtimeNormalizedTime = 0.0f;
+    bool runtimeTransitioning = false;
+    float runtimeTransitionProgress = 0.0f;
 };
 
 struct ScriptPropertyValue {
@@ -227,6 +233,9 @@ public:
     bool StopAnimation(EntityId entity);
     [[nodiscard]] bool IsAnimationPlaying(EntityId entity) const;
     [[nodiscard]] bool IsAnimationFinished(EntityId entity) const;
+    [[nodiscard]] std::string GetCurrentAnimation(EntityId entity) const;
+    [[nodiscard]] float GetAnimationNormalizedTime(EntityId entity) const;
+    [[nodiscard]] bool IsAnimationTransitioning(EntityId entity) const;
 
     WorldEntity* Find(EntityId id);
     const WorldEntity* Find(EntityId id) const;
