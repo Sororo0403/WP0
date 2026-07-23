@@ -118,18 +118,30 @@ struct InputActionUsage {
     size_t button = 0u;
     size_t axis = 0u;
     size_t any = 0u;
+    size_t stable = 0u;
+    size_t legacy = 0u;
 };
 
 std::unordered_map<std::string, InputActionUsage> CollectInputActionUsages(
-    const World& world, const BehaviorRegistry& registry) {
+    const World& world, const BehaviorRegistry& registry, const Input& input) {
     std::unordered_map<std::string, InputActionUsage> usages;
-    const auto countReference = [&usages](std::string_view actionName,
-                                          ScriptInputActionKind kind) {
+    const auto countReference = [&usages, &input](
+                                    std::string_view actionIdentifier,
+                                    ScriptInputActionKind kind) {
+        const std::string resolvedName = input.GetActionName(actionIdentifier);
+        const std::string_view actionName =
+            resolvedName.empty() ? actionIdentifier : std::string_view(resolvedName);
         if (actionName.empty()) {
             return;
         }
         InputActionUsage& usage = usages[std::string(actionName)];
         ++usage.total;
+        const std::string resolvedId = input.GetActionId(actionIdentifier);
+        if (!resolvedId.empty() && actionIdentifier == resolvedId) {
+            ++usage.stable;
+        } else {
+            ++usage.legacy;
+        }
         switch (kind) {
         case ScriptInputActionKind::Button:
             ++usage.button;
@@ -546,6 +558,12 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     } else if (!ValidateWorldBehaviorRequirements(&behaviorRequirementError)) {
         status_ = "Error: Scene contains an invalid Behavior: " +
                   behaviorRequirementError;
+    } else {
+        const size_t upgradedReferences = UpgradeInputActionReferences();
+        if (upgradedReferences != 0u) {
+            status_ = "Upgraded " + std::to_string(upgradedReferences) +
+                      " Input Action reference(s) to stable IDs.";
+        }
     }
     if (ctx.systems.imgui == nullptr ||
         !ctx.systems.imgui->ConfigureDocking(imguiSettingsPath_)) {
@@ -1353,6 +1371,36 @@ bool EditorScene::SaveInputSettings() {
     return true;
 }
 
+size_t EditorScene::UpgradeInputActionReferences() {
+    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    if (input == nullptr || IsInPlayMode()) {
+        return 0u;
+    }
+    size_t upgraded = 0u;
+    for (const WorldEntity& snapshot : world_.Entities()) {
+        WorldEntity* entity = world_.Find(snapshot.id);
+        if (entity == nullptr) {
+            continue;
+        }
+        for (BehaviorComponent& script : entity->scripts) {
+            for (ScriptPropertyValue& property : script.properties) {
+                if (property.type != ScriptPropertyType::InputAction) {
+                    continue;
+                }
+                const std::string id = input->GetActionId(property.stringValue);
+                if (!id.empty() && property.stringValue != id) {
+                    property.stringValue = id;
+                    ++upgraded;
+                }
+            }
+        }
+    }
+    if (upgraded != 0u) {
+        RefreshDirty();
+    }
+    return upgraded;
+}
+
 void EditorScene::DrawProjectSettingsWindow() {
     if (!showProjectSettings_) {
         return;
@@ -1570,7 +1618,7 @@ void EditorScene::DrawProjectSettingsWindow() {
     };
 
     const std::unordered_map<std::string, InputActionUsage> inputActionUsages =
-        CollectInputActionUsages(world_, behaviorRegistry_);
+        CollectInputActionUsages(world_, behaviorRegistry_, *input);
     if (ImGui::BeginChild("InputActionBindings", {0.0f, 300.0f},
                           ImGuiChildFlags_Borders)) {
         for (const std::string& name : input->GetActionNames()) {
@@ -1581,6 +1629,7 @@ void EditorScene::DrawProjectSettingsWindow() {
             InputActionBinding binding = *stored;
             ImGui::PushID(name.c_str());
             ImGui::SeparatorText(name.c_str());
+            ImGui::TextDisabled("ID: %s", input->GetActionId(name).c_str());
             bool changed = false;
             const char* typePreview =
                 binding.type == InputActionType::Axis ? "Axis" : "Button";
@@ -1605,9 +1654,11 @@ void EditorScene::DrawProjectSettingsWindow() {
                 ImGui::TextDisabled("No Script references.");
             } else {
                 ImGui::TextDisabled(
-                    "%zu Script reference%s (Button: %zu, Axis: %zu, Any: %zu)",
-                    usage.total, usage.total == 1u ? "" : "s", usage.button,
-                    usage.axis, usage.any);
+                    "%zu Script reference%s (Stable: %zu, Legacy: %zu)",
+                    usage.total, usage.total == 1u ? "" : "s", usage.stable,
+                    usage.legacy);
+                ImGui::TextDisabled("Expected kind: Button %zu, Axis %zu, Any %zu",
+                                    usage.button, usage.axis, usage.any);
             }
             const size_t incompatibleReferences =
                 binding.type == InputActionType::Button ? usage.axis : usage.button;
@@ -1715,13 +1766,18 @@ void EditorScene::DrawProjectSettingsWindow() {
         const InputActionUsage usage =
             usageEntry != inputActionUsages.end() ? usageEntry->second
                                                   : InputActionUsage{};
-        if (usage.total != 0u) {
+        if (usage.legacy != 0u) {
             ImGui::TextColored(
                 {1.0f, 0.75f, 0.25f, 1.0f},
                 "%zu Script reference%s will keep the old name.",
-                usage.total, usage.total == 1u ? "" : "s");
+                usage.legacy, usage.legacy == 1u ? "" : "s");
             ImGui::TextWrapped(
                 "Update those Script properties before or after renaming.");
+        }
+        if (usage.stable != 0u) {
+            ImGui::TextDisabled("%zu stable reference%s will remain connected.",
+                                usage.stable,
+                                usage.stable == 1u ? "" : "s");
         }
         if (focusInputActionNameInput_) {
             ImGui::SetKeyboardFocusHere();
@@ -2024,6 +2080,7 @@ bool EditorScene::ReloadProjectScripts(std::string& error) {
     // Destroy factories that point into the old DLL before unloading that DLL.
     behaviorRegistry_ = std::move(newRegistry);
     projectScripts_ = std::move(newLibrary);
+    (void)UpgradeInputActionReferences();
     RefreshAssetBrowser();
     error.clear();
     return true;
@@ -4335,7 +4392,13 @@ void EditorScene::DrawInspectorPanel() {
                                 ? stored->stringValue
                                 : definition.defaultString;
                         Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
-                        const std::string preview = value.empty() ? "None" : value;
+                        const std::string resolvedName =
+                            input != nullptr ? input->GetActionName(value)
+                                             : std::string{};
+                        const std::string preview =
+                            value.empty() ? "None"
+                                          : resolvedName.empty() ? value
+                                                                 : resolvedName;
                         const auto acceptsAction =
                             [&definition](const InputActionBinding& binding) {
                                 switch (definition.inputActionKind) {
@@ -4374,8 +4437,9 @@ void EditorScene::DrawInspectorPanel() {
                                 if (binding == nullptr || !acceptsAction(*binding)) {
                                     continue;
                                 }
-                                if (ImGui::Selectable(action.c_str(), value == action)) {
-                                    assignAction(action);
+                                if (ImGui::Selectable(action.c_str(),
+                                                      resolvedName == action)) {
+                                    assignAction(input->GetActionId(action));
                                 }
                             }
                             ImGui::EndCombo();

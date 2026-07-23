@@ -275,13 +275,24 @@ int main() {
     }
     InputActionBinding customAction{};
     customAction.positiveKeys[0] = DIK_E;
-    if (!Check(actionInput.SetActionBinding("Interact", customAction) &&
+    const bool customActionAdded =
+        actionInput.SetActionBinding("Interact", customAction);
+    const std::string interactActionId = actionInput.GetActionId("Interact");
+    if (!Check(customActionAdded && !interactActionId.empty() &&
+                   actionInput.GetActionName(interactActionId) == "Interact" &&
+                   actionInput.GetActionBinding(interactActionId) != nullptr &&
                    actionInput.GetActionBinding("Interact") != nullptr &&
                    actionInput.RenameActionBinding("Interact", "Use") &&
+                   actionInput.GetActionId("Use") == interactActionId &&
+                   actionInput.GetActionName(interactActionId) == "Use" &&
                    actionInput.GetActionBinding("Interact") == nullptr &&
                    actionInput.GetActionBinding("Use") != nullptr &&
                    actionInput.GetActionBinding("Use")->positiveKeys[0] == DIK_E &&
                    actionInput.GetActionNames().back() == "Use" &&
+                   !actionInput.SetActionBinding("Duplicate", customAction,
+                                                 interactActionId) &&
+                   !actionInput.SetActionBinding("InvalidId", customAction,
+                                                 "not-an-action-id") &&
                    !actionInput.RenameActionBinding("Use", "Jump") &&
                    !actionInput.RenameActionBinding("Missing", "Other") &&
                    !actionInput.RenameActionBinding("Use", "") &&
@@ -325,12 +336,13 @@ int main() {
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
     ProjectScriptLibrary projectScripts;
     BehaviorRegistry projectBehaviorRegistry;
+    Input projectInput;
     std::string projectScriptError;
     const std::filesystem::path testProjectRoot =
         repositoryRoot / L"projects" / L"test";
     const bool projectScriptsLoaded =
         ScriptBuildService::BuildIfNeeded(testProjectRoot, projectScriptError) &&
-        projectScripts.Load(testProjectRoot, nullptr, projectBehaviorRegistry,
+        projectScripts.Load(testProjectRoot, &projectInput, projectBehaviorRegistry,
                             projectScriptError);
     std::unique_ptr<Behavior> firstPerson =
         projectBehaviorRegistry.Create("FirstPersonController");
@@ -358,19 +370,23 @@ int main() {
                    (*controllerProperties)[6].type == ScriptPropertyType::Boolean &&
                    (*controllerProperties)[7].name == "Move Horizontal Action" &&
                    (*controllerProperties)[7].type == ScriptPropertyType::InputAction &&
-                   (*controllerProperties)[7].defaultString == "MoveHorizontal" &&
+                   (*controllerProperties)[7].defaultString ==
+                       projectInput.GetActionId("MoveHorizontal") &&
                    (*controllerProperties)[7].inputActionKind ==
                        ScriptInputActionKind::Axis &&
                    (*controllerProperties)[8].name == "Move Vertical Action" &&
-                   (*controllerProperties)[8].defaultString == "MoveVertical" &&
+                   (*controllerProperties)[8].defaultString ==
+                       projectInput.GetActionId("MoveVertical") &&
                    (*controllerProperties)[8].inputActionKind ==
                        ScriptInputActionKind::Axis &&
                    (*controllerProperties)[9].name == "Sprint Action" &&
-                   (*controllerProperties)[9].defaultString == "Sprint" &&
+                   (*controllerProperties)[9].defaultString ==
+                       projectInput.GetActionId("Sprint") &&
                    (*controllerProperties)[9].inputActionKind ==
                        ScriptInputActionKind::Button &&
                    (*controllerProperties)[10].name == "Jump Action" &&
-                   (*controllerProperties)[10].defaultString == "Jump" &&
+                   (*controllerProperties)[10].defaultString ==
+                       projectInput.GetActionId("Jump") &&
                    (*controllerProperties)[10].inputActionKind ==
                        ScriptInputActionKind::Button &&
                    (*controllerProperties)[11].name == "Idle Animation" &&
@@ -409,6 +425,18 @@ int main() {
                    "Project Script module registration or factory is invalid." :
                    projectScriptError.c_str())) {
         return 140;
+    }
+    const std::string stableMoveHorizontalId =
+        (*controllerProperties)[7].defaultString;
+    if (!Check(projectInput.RenameActionBinding("MoveHorizontal",
+                                                "RenamedMoveHorizontal") &&
+                   projectInput.GetActionName(stableMoveHorizontalId) ==
+                       "RenamedMoveHorizontal" &&
+                   projectInput.GetActionBinding(stableMoveHorizontalId) != nullptr &&
+                   projectInput.RenameActionBinding("RenamedMoveHorizontal",
+                                                    "MoveHorizontal"),
+               "Stable Script Input Action references did not survive a rename.")) {
+        return 187;
     }
     World controllerAnimationWorld;
     const EntityId animatedController =
@@ -493,7 +521,7 @@ int main() {
     BehaviorRegistry reloadedProjectBehaviorRegistry;
     const bool projectScriptsReloaded =
         ScriptBuildService::Build(testProjectRoot, projectScriptError, &rebuildOutput) &&
-        reloadedProjectScripts.Load(testProjectRoot, nullptr,
+        reloadedProjectScripts.Load(testProjectRoot, &projectInput,
                                     reloadedProjectBehaviorRegistry,
                                     projectScriptError);
     if (projectScriptsReloaded) {
@@ -1685,6 +1713,7 @@ int main() {
     const bool inputSettingsSaved =
         savedInput.SetActionBinding("Interact", interactBinding) &&
         inputStore.Save(savedInput, inputSettingsError);
+    const std::string savedInteractId = savedInput.GetActionId("Interact");
     Input restoredInput;
     const InputActionBinding* restoredInteract = nullptr;
     if (inputSettingsSaved &&
@@ -1694,6 +1723,9 @@ int main() {
     if (!Check(inputSettingsSaved && restoredInteract != nullptr &&
                    restoredInput.GetActionNames() ==
                        std::vector<std::string>{"Interact"} &&
+                   !savedInteractId.empty() &&
+                   restoredInput.GetActionId("Interact") == savedInteractId &&
+                   restoredInput.GetActionName(savedInteractId) == "Interact" &&
                    restoredInteract->positiveKeys[0] == DIK_E &&
                    restoredInteract->gamepadButton == XINPUT_GAMEPAD_X &&
                    restoredInteract->type == InputActionType::Button &&
@@ -1703,6 +1735,31 @@ int main() {
                    inputSettingsError.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 185;
+    }
+    {
+        std::ofstream legacyInputSettings(inputSettingsPath, std::ios::trunc);
+        legacyInputSettings
+            << R"({"version":1,"actions":[{"name":"LegacyAction","negativeKey":-1,"positiveKeys":[18,-1],"gamepadButton":0,"gamepadAxis":"None","type":"Button"}]})";
+    }
+    Input legacyInput;
+    const bool legacyInputLoaded =
+        inputStore.Load(legacyInput, inputSettingsError);
+    const std::string legacyActionId =
+        legacyInput.GetActionId("LegacyAction");
+    Input secondLegacyInput;
+    if (!Check(legacyInputLoaded && !legacyActionId.empty() &&
+                   inputStore.Load(secondLegacyInput, inputSettingsError) &&
+                   secondLegacyInput.GetActionId("LegacyAction") ==
+                       legacyActionId &&
+                   legacyInput.RenameActionBinding("LegacyAction",
+                                                   "RenamedLegacyAction") &&
+                   legacyInput.GetActionId("RenamedLegacyAction") ==
+                       legacyActionId,
+               inputSettingsError.empty()
+                   ? "Legacy Input settings were not migrated to stable IDs."
+                   : inputSettingsError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 186;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {

@@ -22,6 +22,12 @@ struct Input::InputFrame {
 };
 
 struct Input::State {
+    struct ActionBindingEntry {
+        std::string id;
+        std::string name;
+        InputActionBinding binding;
+    };
+
     Microsoft::WRL::ComPtr<IDirectInput8> directInput;
     Microsoft::WRL::ComPtr<IDirectInputDevice8> keyboard;
     Microsoft::WRL::ComPtr<IDirectInputDevice8> mouse;
@@ -45,7 +51,7 @@ struct Input::State {
     bool keyboardQueryEnabled = true;
     bool mouseQueryEnabled = true;
     bool gamepadQueryEnabled = true;
-    std::vector<std::pair<std::string, InputActionBinding>> actionBindings;
+    std::vector<ActionBindingEntry> actionBindings;
 
     Input::ReplayMode replayMode = Input::ReplayMode::Live;
     std::wstring replayPath;

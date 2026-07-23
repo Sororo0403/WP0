@@ -92,6 +92,7 @@ private:
     void DrawProjectSettingsWindow();
     bool SavePhysicsSettings();
     bool SaveInputSettings();
+    size_t UpgradeInputActionReferences();
     void CaptureConsoleStatus();
     void AddConsoleEntry(std::string message, ConsoleSeverity severity,
                          std::filesystem::path sourcePath = {}, uint32_t sourceLine = 0u,

@@ -1,5 +1,6 @@
 #include "ProjectScriptLibrary.h"
 
+#include "input/Input.h"
 #include "runtime/BehaviorRegistry.h"
 #include "runtime/ScriptModuleApi.h"
 
@@ -214,13 +215,20 @@ bool ProjectScriptLibrary::Load(const std::filesystem::path& projectRoot, Input*
              ++propertyIndex) {
             const ScriptPropertyDescriptor& property =
                 registration.properties[propertyIndex];
+            std::string defaultString =
+                property.defaultString != nullptr ? property.defaultString : "";
+            if (property.type == ScriptPropertyType::InputAction &&
+                input != nullptr) {
+                const std::string actionId = input->GetActionId(defaultString);
+                if (!actionId.empty()) {
+                    defaultString = actionId;
+                }
+            }
             properties.push_back({property.name, property.type, property.defaultFloat,
                                   property.minimumFloat, property.maximumFloat,
                                   property.defaultBoolean, property.defaultInteger,
                                   property.minimumInteger, property.maximumInteger,
-                                  property.defaultVector3,
-                                  property.defaultString != nullptr ? property.defaultString
-                                                                    : "",
+                                  property.defaultVector3, std::move(defaultString),
                                   property.inputActionKind});
         }
         if (!registry.Register(

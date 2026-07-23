@@ -220,6 +220,8 @@ public:
     /// 名前付きActionのBindingを登録または置換する
     /// </summary>
     bool SetActionBinding(std::string name, const InputActionBinding& binding);
+    bool SetActionBinding(std::string name, const InputActionBinding& binding,
+                          std::string id);
 
     /// <summary>
     /// 名前付きActionの名前をBindingと登録順を保ったまま変更する
@@ -251,6 +253,16 @@ public:
     /// </summary>
     [[nodiscard]] const InputActionBinding* GetActionBinding(
         std::string_view name) const;
+
+    /// <summary>
+    /// Action名またはIDから安定IDを取得する
+    /// </summary>
+    [[nodiscard]] std::string GetActionId(std::string_view nameOrId) const;
+
+    /// <summary>
+    /// Action名またはIDから表示名を取得する
+    /// </summary>
+    [[nodiscard]] std::string GetActionName(std::string_view nameOrId) const;
 
     /// <summary>
     /// Axis Actionを-1から1の範囲で取得する

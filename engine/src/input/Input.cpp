@@ -4,19 +4,71 @@
 #include "internal/InputInternal.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
+#include <cctype>
 #include <exception>
 #include <filesystem>
 #include <new>
 #include <string>
 #include <utility>
 
+#include <objbase.h>
+
 #pragma comment(lib, "dinput8.lib")
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "xinput.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace {
+bool IsValidActionName(std::string_view name) {
+    return !name.empty() && name.size() <= 64u &&
+           name.find('\0') == std::string_view::npos;
+}
+
+bool IsValidActionId(std::string_view id) {
+    if (id.size() != 36u || id[8] != '-' || id[13] != '-' ||
+        id[18] != '-' || id[23] != '-') {
+        return false;
+    }
+    for (size_t index = 0u; index < id.size(); ++index) {
+        if (index == 8u || index == 13u || index == 18u || index == 23u) {
+            continue;
+        }
+        if (!std::isxdigit(static_cast<unsigned char>(id[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsValidActionBinding(const InputActionBinding& binding) {
+    const auto validKey = [](int key) {
+        return key == -1 || (key >= 0 && key < 256);
+    };
+    return validKey(binding.negativeKey) &&
+           std::ranges::all_of(binding.positiveKeys, validKey) &&
+           binding.gamepadAxis >= InputActionAxisSource::None &&
+           binding.gamepadAxis <= InputActionAxisSource::GamepadRightTrigger &&
+           binding.type >= InputActionType::Button &&
+           binding.type <= InputActionType::Axis;
+}
+
+std::string GenerateActionId() {
+    GUID guid{};
+    if (FAILED(CoCreateGuid(&guid))) {
+        return {};
+    }
+    std::array<char, 37> text{};
+    sprintf_s(text.data(), text.size(),
+              "%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+              guid.Data1, guid.Data2, guid.Data3, guid.Data4[0], guid.Data4[1],
+              guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5],
+              guid.Data4[6], guid.Data4[7]);
+    return text.data();
+}
+
 float NormalizeThumbAxis(SHORT value, SHORT deadZone) {
     const int intValue = static_cast<int>(value);
     const int absValue = std::abs(intValue);
@@ -68,59 +120,76 @@ Input::~Input() {
 
 bool Input::SetActionBinding(std::string name,
                              const InputActionBinding& binding) {
-    const auto validKey = [](int key) { return key == -1 || (key >= 0 && key < 256); };
-    if (name.empty() || name.size() > 64u ||
-        name.find('\0') != std::string::npos || !validKey(binding.negativeKey) ||
-        !std::ranges::all_of(binding.positiveKeys, validKey) ||
-        binding.gamepadAxis < InputActionAxisSource::None ||
-        binding.gamepadAxis > InputActionAxisSource::GamepadRightTrigger ||
-        binding.type < InputActionType::Button ||
-        binding.type > InputActionType::Axis) {
+    if (!IsValidActionName(name) || !IsValidActionBinding(binding)) {
         return false;
     }
     const auto found = std::ranges::find_if(
         state_->actionBindings,
-        [&name](const auto& action) { return action.first == name; });
+        [&name](const auto& action) { return action.name == name; });
     if (found != state_->actionBindings.end()) {
-        found->second = binding;
-    } else {
-        try {
-            state_->actionBindings.emplace_back(std::move(name), binding);
-        } catch (const std::exception&) {
-            return false;
-        }
+        found->binding = binding;
+        return true;
+    }
+    return SetActionBinding(std::move(name), binding, GenerateActionId());
+}
+
+bool Input::SetActionBinding(std::string name,
+                             const InputActionBinding& binding,
+                             std::string id) {
+    if (!IsValidActionName(name) || !IsValidActionBinding(binding) ||
+        !IsValidActionId(id)) {
+        return false;
+    }
+    const bool duplicate = std::ranges::any_of(
+        state_->actionBindings, [&name, &id](const auto& action) {
+            return action.name == name || action.id == id ||
+                   action.id == name || action.name == id;
+        });
+    if (duplicate) {
+        return false;
+    }
+    try {
+        state_->actionBindings.push_back(
+            {std::move(id), std::move(name), binding});
+    } catch (const std::exception&) {
+        return false;
     }
     return true;
 }
 
 bool Input::RenameActionBinding(std::string_view oldName, std::string newName) {
-    if (newName.empty() || newName.size() > 64u ||
-        newName.find('\0') != std::string::npos) {
+    if (!IsValidActionName(newName)) {
         return false;
     }
     const auto source = std::ranges::find_if(
         state_->actionBindings,
-        [oldName](const auto& action) { return action.first == oldName; });
+        [oldName](const auto& action) {
+            return action.name == oldName || action.id == oldName;
+        });
     if (source == state_->actionBindings.end()) {
         return false;
     }
-    if (source->first == newName) {
+    if (source->name == newName) {
         return true;
     }
     const auto duplicate = std::ranges::find_if(
         state_->actionBindings,
-        [&newName](const auto& action) { return action.first == newName; });
+        [&newName](const auto& action) {
+            return action.name == newName || action.id == newName;
+        });
     if (duplicate != state_->actionBindings.end()) {
         return false;
     }
-    source->first = std::move(newName);
+    source->name = std::move(newName);
     return true;
 }
 
 bool Input::RemoveActionBinding(std::string_view name) {
     const auto found = std::ranges::find_if(
         state_->actionBindings,
-        [name](const auto& action) { return action.first == name; });
+        [name](const auto& action) {
+            return action.name == name || action.id == name;
+        });
     if (found == state_->actionBindings.end()) {
         return false;
     }
@@ -137,28 +206,31 @@ void Input::ResetDefaultActionBindings() {
     (void)SetActionBinding(
         "MoveHorizontal",
         {DIK_A, {DIK_D, -1}, 0, InputActionAxisSource::GamepadLeftX,
-         InputActionType::Axis});
+         InputActionType::Axis},
+        "00000000-0000-4000-8000-000000000001");
     (void)SetActionBinding(
         "MoveVertical",
         {DIK_S, {DIK_W, -1}, 0, InputActionAxisSource::GamepadLeftY,
-         InputActionType::Axis});
+         InputActionType::Axis},
+        "00000000-0000-4000-8000-000000000002");
     (void)SetActionBinding(
         "Sprint",
         {-1, {DIK_LSHIFT, DIK_RSHIFT}, XINPUT_GAMEPAD_LEFT_THUMB,
-         InputActionAxisSource::None});
+         InputActionAxisSource::None},
+        "00000000-0000-4000-8000-000000000003");
     (void)SetActionBinding(
         "Jump",
         {-1, {DIK_SPACE, -1}, XINPUT_GAMEPAD_A,
-         InputActionAxisSource::None});
+         InputActionAxisSource::None},
+        "00000000-0000-4000-8000-000000000004");
 }
 
 std::vector<std::string> Input::GetActionNames() const {
     std::vector<std::string> names;
     try {
         names.reserve(state_->actionBindings.size());
-        for (const auto& [name, binding] : state_->actionBindings) {
-            (void)binding;
-            names.push_back(name);
+        for (const auto& action : state_->actionBindings) {
+            names.push_back(action.name);
         }
     } catch (const std::exception&) {
         names.clear();
@@ -169,8 +241,28 @@ std::vector<std::string> Input::GetActionNames() const {
 const InputActionBinding* Input::GetActionBinding(std::string_view name) const {
     const auto found = std::ranges::find_if(
         state_->actionBindings,
-        [name](const auto& action) { return action.first == name; });
-    return found == state_->actionBindings.end() ? nullptr : &found->second;
+        [name](const auto& action) {
+            return action.name == name || action.id == name;
+        });
+    return found == state_->actionBindings.end() ? nullptr : &found->binding;
+}
+
+std::string Input::GetActionId(std::string_view nameOrId) const {
+    const auto found = std::ranges::find_if(
+        state_->actionBindings,
+        [nameOrId](const auto& action) {
+            return action.name == nameOrId || action.id == nameOrId;
+        });
+    return found == state_->actionBindings.end() ? std::string{} : found->id;
+}
+
+std::string Input::GetActionName(std::string_view nameOrId) const {
+    const auto found = std::ranges::find_if(
+        state_->actionBindings,
+        [nameOrId](const auto& action) {
+            return action.name == nameOrId || action.id == nameOrId;
+        });
+    return found == state_->actionBindings.end() ? std::string{} : found->name;
 }
 
 float Input::GetActionGamepadAxis(InputActionAxisSource source) const {

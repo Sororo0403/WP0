@@ -5,12 +5,42 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <fstream>
 #include <unordered_set>
 
 namespace {
 constexpr uintmax_t kMaxSettingsBytes = 1024u * 1024u;
 constexpr size_t kMaxActions = 128u;
+
+std::string LegacyActionId(std::string_view name) {
+    if (name == "MoveHorizontal") {
+        return "00000000-0000-4000-8000-000000000001";
+    }
+    if (name == "MoveVertical") {
+        return "00000000-0000-4000-8000-000000000002";
+    }
+    if (name == "Sprint") {
+        return "00000000-0000-4000-8000-000000000003";
+    }
+    if (name == "Jump") {
+        return "00000000-0000-4000-8000-000000000004";
+    }
+    uint64_t first = 14695981039346656037ull;
+    uint64_t second = 1099511628211ull;
+    for (const unsigned char character : name) {
+        first = (first ^ character) * 1099511628211ull;
+        second = (second ^ character) * 14695981039346656037ull;
+    }
+    std::array<char, 37> text{};
+    sprintf_s(text.data(), text.size(), "%08x-%04x-%04x-%04x-%012llx",
+              static_cast<unsigned int>(first >> 32u),
+              static_cast<unsigned int>((first >> 16u) & 0xffffu),
+              static_cast<unsigned int>(first & 0xffffu),
+              static_cast<unsigned int>(second >> 48u),
+              static_cast<unsigned long long>(second & 0xffffffffffffull));
+    return text.data();
+}
 
 const std::array<std::pair<InputActionAxisSource, const char*>, 7> kAxisNames = {{
     {InputActionAxisSource::None, "None"},
@@ -78,7 +108,8 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
         std::ifstream stream(path_);
         nlohmann::json json;
         stream >> json;
-        if (!stream || !json.is_object() || json.value("version", 0u) != 1u ||
+        const uint32_t version = json.value("version", 0u);
+        if (!stream || !json.is_object() || (version != 1u && version != 2u) ||
             !json.contains("actions") || !json["actions"].is_array() ||
             json["actions"].size() > kMaxActions) {
             error = "Input settings JSON structure is invalid.";
@@ -87,6 +118,7 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
         Input staged;
         staged.ClearActionBindings();
         std::unordered_set<std::string> actionNames;
+        std::unordered_set<std::string> actionIds;
         for (const nlohmann::json& action : json["actions"]) {
             if (!action.is_object() || !action.contains("name") ||
                 !action["name"].is_string() || !action.contains("negativeKey") ||
@@ -100,7 +132,9 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
                 !action["gamepadButton"].is_number_unsigned() ||
                 !action.contains("gamepadAxis") ||
                 !action["gamepadAxis"].is_string() ||
-                !action.contains("type") || !action["type"].is_string()) {
+                !action.contains("type") || !action["type"].is_string() ||
+                (version == 2u &&
+                 (!action.contains("id") || !action["id"].is_string()))) {
                 error = "Input Action data is invalid.";
                 return false;
             }
@@ -126,7 +160,13 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
             binding.positiveKeys = {static_cast<int>(positiveKey0),
                                     static_cast<int>(positiveKey1)};
             binding.gamepadButton = static_cast<WORD>(gamepadButton);
-            if (!staged.SetActionBinding(name, binding)) {
+            const std::string id =
+                version == 2u ? action["id"].get<std::string>()
+                              : LegacyActionId(name);
+            const bool added =
+                actionIds.insert(id).second &&
+                staged.SetActionBinding(name, binding, id);
+            if (!added) {
                 error = "Input Action binding is invalid.";
                 return false;
             }
@@ -134,7 +174,9 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
         input.ClearActionBindings();
         for (const std::string& name : staged.GetActionNames()) {
             const InputActionBinding* binding = staged.GetActionBinding(name);
-            if (binding == nullptr || !input.SetActionBinding(name, *binding)) {
+            const std::string id = staged.GetActionId(name);
+            if (binding == nullptr ||
+                !input.SetActionBinding(name, *binding, id)) {
                 input.ResetDefaultActionBindings();
                 error = "Could not apply Input Action bindings.";
                 return false;
@@ -161,6 +203,7 @@ bool InputSettingsStore::Save(const Input& input, std::string& error) const {
             return false;
         }
         actions.push_back({
+            {"id", input.GetActionId(name)},
             {"name", name},
             {"negativeKey", binding->negativeKey},
             {"positiveKeys", binding->positiveKeys},
@@ -170,7 +213,7 @@ bool InputSettingsStore::Save(const Input& input, std::string& error) const {
         });
     }
     nlohmann::json json = {
-        {"version", 1u},
+        {"version", 2u},
         {"actions", std::move(actions)},
     };
     std::error_code filesystemError;
