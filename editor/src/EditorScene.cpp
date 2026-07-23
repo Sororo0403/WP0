@@ -2220,13 +2220,44 @@ void EditorScene::DrawAssetPreviewPopup() {
             ImGui::DragFloat("Speed##ModelPreviewAnimation", &assetPreviewAnimationSpeed_, 0.01f,
                              0.0f, 4.0f, "%.2fx", ImGuiSliderFlags_AlwaysClamp);
             const AnimationClip& clip = model->animations.at(assetPreviewAnimation_);
-            const float progress = clip.duration > 0.0f
-                                       ? std::clamp(model->animationTime / clip.duration, 0.0f, 1.0f)
-                                       : 0.0f;
-            char progressText[64]{};
-            std::snprintf(progressText, std::size(progressText), "%.2f / %.2f s",
-                          model->animationTime, clip.duration);
-            ImGui::ProgressBar(progress, {-FLT_MIN, 0.0f}, progressText);
+            const float animationDuration = (std::max)(clip.duration, 0.0f);
+            const auto seekAnimation = [&](const float time) {
+                model->animationTime = std::clamp(time, 0.0f, animationDuration);
+                model->isPlaying = false;
+                model->animationFinished =
+                    animationDuration > 0.0f && model->animationTime >= animationDuration;
+                modelManager->UpdateAnimation(assetPreviewModel_, 0.0f);
+            };
+            constexpr float kAnimationPreviewStepSeconds = 1.0f / 30.0f;
+            if (ImGui::SmallButton("|<##ModelPreviewAnimation")) {
+                seekAnimation(0.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("<##ModelPreviewAnimation")) {
+                seekAnimation(model->animationTime - kAnimationPreviewStepSeconds);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Step backward 1/30 second");
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(">##ModelPreviewAnimation")) {
+                seekAnimation(model->animationTime + kAnimationPreviewStepSeconds);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Step forward 1/30 second");
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(">|##ModelPreviewAnimation")) {
+                seekAnimation(animationDuration);
+            }
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            float animationTime = model->animationTime;
+            if (ImGui::SliderFloat("##ModelPreviewAnimationTimeline", &animationTime, 0.0f,
+                                   animationDuration, "%.2f s",
+                                   ImGuiSliderFlags_AlwaysClamp)) {
+                seekAnimation(animationTime);
+            }
+            ImGui::TextDisabled("%.2f / %.2f s", model->animationTime, animationDuration);
             if (model->isPlaying) {
                 const float deltaTime =
                     std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.1f) *
