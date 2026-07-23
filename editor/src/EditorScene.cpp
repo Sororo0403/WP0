@@ -2,6 +2,7 @@
 
 #include "AssetImportPlanner.h"
 #include "PlayerPackageBuilder.h"
+#include "PlayerProjectValidator.h"
 #include "ProjectDescriptor.h"
 #include "ScriptAsset.h"
 #include "ScriptBuildService.h"
@@ -855,6 +856,13 @@ bool EditorScene::LaunchPlayerPreview() {
         status_ = "Wait for Project Script compilation before running the Player Preview.";
         return false;
     }
+    ProjectDescriptor project;
+    std::string validationError;
+    if (!ProjectDescriptor::Load(projectRoot_, project, validationError) ||
+        !PlayerProjectValidator::Validate(project, validationError)) {
+        status_ = "Could not run Player Preview: " + validationError;
+        return false;
+    }
     std::array<wchar_t, 32768> executableBuffer{};
     const DWORD executableLength = GetModuleFileNameW(
         nullptr, executableBuffer.data(),
@@ -898,7 +906,8 @@ bool EditorScene::BuildPlayerPackage(std::filesystem::path* destination) {
     }
     ProjectDescriptor project;
     std::string error;
-    if (!ProjectDescriptor::Load(projectRoot_, project, error)) {
+    if (!ProjectDescriptor::Load(projectRoot_, project, error) ||
+        !PlayerProjectValidator::Validate(project, error)) {
         status_ = "Could not build Player: " + error;
         return false;
     }

@@ -4,6 +4,7 @@
 #include "PhysicsSettingsStore.h"
 #include "PlayerSettingsStore.h"
 #include "PlayerPackageBuilder.h"
+#include "PlayerProjectValidator.h"
 #include "ProjectScriptLibrary.h"
 #include "ScriptBuildService.h"
 #include "RecentScenesStore.h"
@@ -1693,6 +1694,28 @@ int main() {
                "Updated Startup Scene was not restored.")) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 192;
+    }
+    std::string playerValidationError;
+    ProjectDescriptor missingStartupProject = restoredProject;
+    missingStartupProject.startupScene =
+        createdProject.sceneRoot / L"missing.likescene";
+    const std::filesystem::path corruptStartupScene =
+        createdProject.sceneRoot / L"corrupt.likescene";
+    {
+        std::ofstream corruptScene(corruptStartupScene, std::ios::trunc);
+        corruptScene << "not a scene";
+    }
+    ProjectDescriptor corruptStartupProject = restoredProject;
+    corruptStartupProject.startupScene = corruptStartupScene;
+    if (!Check(PlayerProjectValidator::Validate(restoredProject,
+                                                playerValidationError) &&
+                   !PlayerProjectValidator::Validate(missingStartupProject,
+                                                     playerValidationError) &&
+                   !PlayerProjectValidator::Validate(corruptStartupProject,
+                                                     playerValidationError),
+               "Player Startup Scene validation did not reject an invalid scene.")) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 198;
     }
     if (!Check(!ProjectDescriptor::SetStartupScene(
                    createdProject.root, outsideStartupScene, updatedProject,

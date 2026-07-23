@@ -3,6 +3,7 @@
 #include "ProjectDescriptor.h"
 #include "ProjectLauncher.h"
 #include "PlayerSettingsStore.h"
+#include "PlayerProjectValidator.h"
 #include "RecentProjectsStore.h"
 
 #include "core/AssetManager.h"
@@ -106,6 +107,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     ProjectDescriptor project;
     std::string projectError;
     if (!ProjectDescriptor::Load(*projectPath, project, projectError)) {
+        ShowError(projectError);
+        return -1;
+    }
+    if (playerMode &&
+        !PlayerProjectValidator::Validate(project, projectError)) {
         ShowError(projectError);
         return -1;
     }
