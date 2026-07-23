@@ -22,7 +22,11 @@ bool SceneRenderer::Render(const RenderScene& scene, const Camera& camera, Rende
     meshRenderer_->PreDraw();
     auto drawItems = [&](const RenderScene& source, bool includeInStats) {
         for (const RenderMeshItem& item : source.OpaqueMeshes()) {
-            if (IsValidResourceId(item.pipelineId)) {
+            if (item.vertexBufferOverride.BufferLocation != 0) {
+                meshRenderer_->DrawMeshWithVertexBuffer(
+                    *item.mesh, item.vertexBufferOverride, item.material, item.transform, camera,
+                    item.textureId, item.normalTextureId);
+            } else if (IsValidResourceId(item.pipelineId)) {
                 meshRenderer_->DrawMeshWithPipeline(item.pipelineId, *item.mesh, item.material,
                                                     item.transform, camera, item.textureId,
                                                     item.normalTextureId);
@@ -33,7 +37,11 @@ bool SceneRenderer::Render(const RenderScene& scene, const Camera& camera, Rende
             stats_.opaqueDraws += includeInStats ? 1u : 0u;
         }
         for (const RenderMeshItem& item : source.TransparentMeshes()) {
-            if (IsValidResourceId(item.pipelineId)) {
+            if (item.vertexBufferOverride.BufferLocation != 0) {
+                meshRenderer_->DrawMeshWithVertexBuffer(
+                    *item.mesh, item.vertexBufferOverride, item.material, item.transform, camera,
+                    item.textureId, item.normalTextureId);
+            } else if (IsValidResourceId(item.pipelineId)) {
                 meshRenderer_->DrawMeshWithPipeline(item.pipelineId, *item.mesh, item.material,
                                                     item.transform, camera, item.textureId,
                                                     item.normalTextureId);

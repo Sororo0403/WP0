@@ -64,10 +64,13 @@ private:
     void StepRuntimeWorld();
     void ReleaseGameInputCapture();
     bool BeginRuntimeWorld(std::string* error = nullptr);
+    bool BeginRuntimeAnimators(std::string* error = nullptr);
     [[nodiscard]] bool ValidateWorldBehaviorRequirements(
         std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
+    void UpdateRuntimeAnimators(float deltaTime);
     void EndRuntimeWorld();
+    void EndRuntimeAnimators();
     bool BeginRuntimeAudio(std::string* error = nullptr);
     void UpdateRuntimeAudio();
     void PauseRuntimeAudio(bool paused);
@@ -288,6 +291,12 @@ private:
         bool activated = false;
     };
     std::vector<RuntimeAudioSource> runtimeAudioSources_;
+    struct RuntimeAnimator {
+        EntityId entity{};
+        ModelHandle model{};
+    };
+    std::vector<RuntimeAnimator> runtimeAnimators_;
+    std::unordered_map<std::string, ModelHandle> animatorModels_;
     std::future<ScriptBuildCompletion> scriptBuildFuture_;
     uint64_t scriptSourceFingerprint_ = 0u;
     bool scriptFingerprintInitialized_ = false;

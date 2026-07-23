@@ -40,6 +40,30 @@ void MeshRenderer::DrawMesh(const Mesh& mesh, const Material& material, const Tr
                                       normalTextureId);
 }
 
+void MeshRenderer::DrawMeshWithVertexBuffer(
+    const Mesh& mesh, const D3D12_VERTEX_BUFFER_VIEW& vertexBuffer, const Material& material,
+    const Transform& transform, const Camera& camera, uint32_t textureId,
+    uint32_t normalTextureId) {
+    Material drawMaterial{};
+    D3D12_GPU_VIRTUAL_ADDRESS objectCbAddr = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS sceneCbAddr = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS materialCbAddr = 0;
+    if (vertexBuffer.BufferLocation == 0 || vertexBuffer.SizeInBytes == 0 ||
+        vertexBuffer.StrideInBytes == 0 ||
+        !PrepareForwardMeshDrawConstants(mesh, material, transform, camera, drawMaterial,
+                                         objectCbAddr, sceneCbAddr, materialCbAddr)) {
+        return;
+    }
+    SetGraphicsRootSignatureCached(state_->rootSignature.Get());
+    if (!SetPipelineForMaterial(drawMaterial)) {
+        return;
+    }
+    SubmitForwardMeshDraw(
+        mesh, drawMaterial, MeshDrawConstants{objectCbAddr, sceneCbAddr, materialCbAddr},
+        MeshVertexViewSpan{&vertexBuffer, 1, 1},
+        ForwardTextureIds{textureId, normalTextureId});
+}
+
 void MeshRenderer::DrawMeshWithPipeline(uint32_t pipelineId, const Mesh& mesh,
                                         const Material& material, const Transform& transform,
                                         const Camera& camera, uint32_t textureId,

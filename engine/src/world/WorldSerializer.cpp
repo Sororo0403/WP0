@@ -187,6 +187,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedListener["enabled"] = entity.audioListener->enabled;
             encoded["components"]["AudioListener"] = std::move(encodedListener);
         }
+        if (entity.animator) {
+            const AnimatorComponent& animator = *entity.animator;
+            Json encodedAnimator;
+            encodedAnimator["enabled"] = animator.enabled;
+            encodedAnimator["clip"] = animator.clip;
+            encodedAnimator["playOnAwake"] = animator.playOnAwake;
+            encodedAnimator["loop"] = animator.loop;
+            encodedAnimator["speed"] = animator.speed;
+            encoded["components"]["Animator"] = std::move(encodedAnimator);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -616,6 +626,31 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.audioListener = AudioListenerComponent{listener["enabled"].get<bool>()};
+        }
+        if (encoded["components"].contains("Animator")) {
+            const Json& animator = encoded["components"]["Animator"];
+            if (!animator.is_object() || !animator.contains("enabled") ||
+                !animator["enabled"].is_boolean() || !animator.contains("clip") ||
+                !animator["clip"].is_string() || !animator.contains("playOnAwake") ||
+                !animator["playOnAwake"].is_boolean() || !animator.contains("loop") ||
+                !animator["loop"].is_boolean() || !animator.contains("speed") ||
+                !animator["speed"].is_number()) {
+                SetError(error, "Scene Animator component is invalid.");
+                return false;
+            }
+            AnimatorComponent component{};
+            component.enabled = animator["enabled"].get<bool>();
+            component.clip = animator["clip"].get<std::string>();
+            component.playOnAwake = animator["playOnAwake"].get<bool>();
+            component.loop = animator["loop"].get<bool>();
+            component.speed = animator["speed"].get<float>();
+            if (component.clip.size() > 256u || component.clip.find('\0') != std::string::npos ||
+                !std::isfinite(component.speed) || component.speed < 0.0f ||
+                component.speed > 100.0f) {
+                SetError(error, "Scene Animator settings are invalid.");
+                return false;
+            }
+            entity.animator = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

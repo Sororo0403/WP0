@@ -41,6 +41,13 @@
     {
       "active": true,
       "components": {
+        "Animator": {
+          "clip": "",
+          "enabled": true,
+          "loop": true,
+          "playOnAwake": true,
+          "speed": 1.0
+        },
         "CharacterController": {
           "center": [
             0.0,
@@ -78,9 +85,9 @@
         },
         "MeshRenderer": {
           "enabled": true,
-          "model": "",
+          "model": "asset://BrainStem.glb",
           "primitive": 0,
-          "source": "Primitive"
+          "source": "Model"
         },
         "Scripts": [
           {

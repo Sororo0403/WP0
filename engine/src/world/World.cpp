@@ -476,6 +476,15 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 return false;
             }
         }
+        if (entity.animator) {
+            const AnimatorComponent& animator = *entity.animator;
+            if (animator.clip.size() > 256u || animator.clip.find('\0') != std::string::npos ||
+                !std::isfinite(animator.speed) || animator.speed < 0.0f ||
+                animator.speed > 100.0f) {
+                SetError(error, "Scene contains an invalid Animator component.");
+                return false;
+            }
+        }
         if (entity.audioSource) {
             const AudioSourceComponent& source = *entity.audioSource;
             if (source.clipPath.size() > 1024u ||

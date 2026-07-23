@@ -44,6 +44,7 @@ inline constexpr bool HasRenderObjectFlag(RenderObjectFlags flags, RenderObjectF
 
 struct RenderMeshItem {
     const Mesh* mesh = nullptr;
+    D3D12_VERTEX_BUFFER_VIEW vertexBufferOverride{};
     Material material{};
     Transform transform{};
     uint32_t textureId = kInvalidResourceId;

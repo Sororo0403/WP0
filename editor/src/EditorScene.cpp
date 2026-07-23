@@ -2481,6 +2481,7 @@ bool EditorScene::RenamePendingAsset() {
         UpdateAssetReferences(oldRelative, newRelative, pendingAssetOperationIsDirectory_);
     selectedAsset_ = newRelative;
     loadedModels_.clear();
+    animatorModels_.clear();
     RefreshAssetBrowser();
     RefreshDirty();
     status_ = "Renamed asset to assets/" + newRelative.generic_string();
@@ -2511,6 +2512,7 @@ bool EditorScene::DeletePendingAsset() {
     }
     selectedAsset_.clear();
     loadedModels_.clear();
+    animatorModels_.clear();
     RefreshAssetBrowser();
     status_ = "Deleted asset: assets/" + relative.generic_string();
     return true;
@@ -3536,6 +3538,13 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add AudioListener", before, selectionBefore);
             status_ = "Added AudioListener.";
         }
+        if (!entity->animator && ImGui::MenuItem("Animator")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->animator = AnimatorComponent{};
+            RecordImmediateEdit("Add Animator", before, selectionBefore);
+            status_ = "Added Animator.";
+        }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
@@ -4253,6 +4262,82 @@ void EditorScene::DrawInspectorPanel() {
             ImGui::TextDisabled("Receives 3D audio at this Entity's Transform.");
             if (!entity->camera) {
                 ImGui::TextDisabled("A Camera component is not required.");
+            }
+        }
+    }
+
+    if (entity->animator) {
+        ImGui::SeparatorText("Animator");
+        if (ImGui::Button("Remove Animator")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->animator.reset();
+            RecordImmediateEdit("Remove Animator", before, selectionBefore);
+            status_ = "Removed Animator.";
+        } else {
+            AnimatorComponent& animator = *entity->animator;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Animator", &animator.enabled)) {
+                RecordImmediateEdit("Toggle Animator", std::move(before), selectionBefore);
+            }
+
+            const ModelHandle handle = entity->meshRenderer
+                                           ? ResolveModel(*entity->meshRenderer)
+                                           : ModelHandle{};
+            const Model* model = handle.IsValid() && ctx_ != nullptr && ctx_->rendering.model
+                                     ? ctx_->rendering.model->GetModel(handle)
+                                     : nullptr;
+            const char* clipLabel = animator.clip.empty() ? "First Clip" : animator.clip.c_str();
+            if (ImGui::BeginCombo("Clip##Animator", clipLabel)) {
+                if (ImGui::Selectable("First Clip", animator.clip.empty())) {
+                    before = WorldSerializer::Serialize(world_);
+                    animator.clip.clear();
+                    RecordImmediateEdit("Change Animator Clip", std::move(before),
+                                        selectionBefore);
+                }
+                if (model != nullptr) {
+                    std::vector<std::string> clips;
+                    clips.reserve(model->animations.size());
+                    for (const auto& [name, clip] : model->animations) {
+                        (void)clip;
+                        clips.push_back(name);
+                    }
+                    std::ranges::sort(clips);
+                    for (const std::string& clip : clips) {
+                        if (ImGui::Selectable(clip.c_str(), animator.clip == clip)) {
+                            before = WorldSerializer::Serialize(world_);
+                            animator.clip = clip;
+                            RecordImmediateEdit("Change Animator Clip", std::move(before),
+                                                selectionBefore);
+                        }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (model == nullptr || model->animations.empty()) {
+                ImGui::TextDisabled("Assign an animated Model to Mesh Renderer.");
+            }
+            auto drawAnimatorCheckbox = [&](const char* label, bool& value,
+                                            const char* historyLabel) {
+                before = WorldSerializer::Serialize(world_);
+                if (ImGui::Checkbox(label, &value)) {
+                    RecordImmediateEdit(historyLabel, std::move(before), selectionBefore);
+                }
+            };
+            drawAnimatorCheckbox("Play On Awake##Animator", animator.playOnAwake,
+                                 "Toggle Animator Play On Awake");
+            drawAnimatorCheckbox("Loop##Animator", animator.loop, "Toggle Animator Loop");
+            if (ImGui::DragFloat("Speed##Animator", &animator.speed, 0.01f, 0.0f, 100.0f,
+                                 "%.2fx", ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Animator.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Animator Speed");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
             }
         }
     }
@@ -5182,6 +5267,7 @@ void EditorScene::AssignModelAsset(EntityId entityId, const std::filesystem::pat
     entity->meshRenderer->modelPath = assetPath;
     loadedModels_.erase(previousPath);
     loadedModels_.erase(assetPath);
+    animatorModels_.clear();
     selection_ = entityId;
     RecordImmediateEdit("Assign Model Asset", before, selectionBefore);
     status_ = "Assigned model asset: " + assetPath;
@@ -5814,6 +5900,7 @@ void EditorScene::CreateModelEntityFromAsset(const std::filesystem::path& path,
     entity->meshRenderer->modelPath = assetPath;
     entity->materialOverride = MaterialOverrideComponent{};
     loadedModels_.erase(assetPath);
+    animatorModels_.clear();
     selection_ = entityId;
     RecordImmediateEdit("Create Model Entity", before, selectionBefore);
     status_ = "Created model entity: " + assetPath;
@@ -6487,15 +6574,30 @@ void EditorScene::BuildRenderScene() {
             !entity.materialOverride || !entity.materialOverride->enabled) {
             continue;
         }
-        const ModelHandle handle = ResolveModel(*entity.meshRenderer);
+        const auto runtimeAnimator = std::ranges::find_if(
+            runtimeAnimators_, [&entity](const RuntimeAnimator& runtime) {
+                return runtime.entity == entity.id;
+            });
+        const bool animated = runtimeAnimator != runtimeAnimators_.end();
+        const ModelHandle handle =
+            animated ? runtimeAnimator->model : ResolveModel(*entity.meshRenderer);
         const Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
         DirectX::XMFLOAT4X4 worldMatrix{};
         if (model == nullptr || !world_.TryGetWorldMatrix(entity.id, worldMatrix)) {
             continue;
         }
+        if (animated) {
+            models->PrepareSkinning(handle);
+        }
+        DirectX::XMMATRIX renderWorld = DirectX::XMLoadFloat4x4(&worldMatrix);
+        if (animated && model->hasRootAnimation) {
+            renderWorld = DirectX::XMLoadFloat4x4(&model->rootAnimationMatrix) * renderWorld;
+        }
+        DirectX::XMStoreFloat4x4(&worldMatrix, renderWorld);
         const Transform transform = DecomposeTransform(worldMatrix);
         auto submit = [&](uint32_t meshId, uint32_t materialId, uint32_t textureId,
-                          uint32_t normalTextureId) {
+                          uint32_t normalTextureId,
+                          const D3D12_VERTEX_BUFFER_VIEW* vertexBufferOverride = nullptr) {
             if (!IsValidResourceId(meshId)) {
                 return;
             }
@@ -6580,12 +6682,19 @@ void EditorScene::BuildRenderScene() {
                 item.normalTextureId = normalTextureId;
             }
             item.objectId = static_cast<uint32_t>(EntityIdHash{}(entity.id));
+            if (vertexBufferOverride != nullptr) {
+                item.vertexBufferOverride = *vertexBufferOverride;
+            }
             renderScene_.SubmitMesh(item);
         };
         if (!model->subMeshes.empty()) {
             for (const ModelSubMesh& subMesh : model->subMeshes) {
+                const D3D12_VERTEX_BUFFER_VIEW* animatedVertices =
+                    animated && subMesh.skinCluster.skinnedVertexResource
+                        ? &subMesh.skinCluster.skinnedVertexBufferView
+                        : nullptr;
                 submit(subMesh.meshId, subMesh.materialId, subMesh.textureId,
-                       subMesh.normalTextureId);
+                       subMesh.normalTextureId, animatedVertices);
             }
         } else {
             submit(model->meshId, model->materialId, model->textureId, kInvalidResourceId);
@@ -6743,6 +6852,83 @@ bool EditorScene::BeginRuntimeWorld(std::string* error) {
             *error = audioError;
         }
     }
+    std::string animatorError;
+    if (!BeginRuntimeAnimators(&animatorError)) {
+        valid = false;
+        if (error != nullptr && error->empty()) {
+            *error = animatorError;
+        }
+    }
+    if (valid && error != nullptr) {
+        error->clear();
+    }
+    return valid;
+}
+
+bool EditorScene::BeginRuntimeAnimators(std::string* error) {
+    EndRuntimeAnimators();
+    if (std::ranges::none_of(world_.Entities(), [](const WorldEntity& entity) {
+            return entity.animator && entity.animator->enabled;
+        })) {
+        if (error != nullptr) {
+            error->clear();
+        }
+        return true;
+    }
+    ModelManager* models = ctx_ != nullptr ? ctx_->rendering.model : nullptr;
+    if (models == nullptr) {
+        if (error != nullptr) {
+            *error = "Model service is unavailable.";
+        }
+        return false;
+    }
+    bool valid = true;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.animator || !entity.animator->enabled) {
+            continue;
+        }
+        if (!entity.meshRenderer || entity.meshRenderer->sourceType != MeshSourceType::Model ||
+            entity.meshRenderer->modelPath.empty()) {
+            valid = false;
+            if (error != nullptr && error->empty()) {
+                *error = entity.name + ": Animator requires a Model MeshRenderer.";
+            }
+            continue;
+        }
+        const std::optional<std::filesystem::path> path =
+            ResolveProjectAssetPath(entity.meshRenderer->modelPath);
+        const std::string cacheKey = entity.id.ToString() + "|" + entity.meshRenderer->modelPath;
+        const auto cached = animatorModels_.find(cacheKey);
+        const ModelHandle handle =
+            cached != animatorModels_.end()
+                ? cached->second
+                : (path ? models->LoadUniqueHandle(path->wstring()) : ModelHandle{});
+        Model* model = handle.IsValid() ? models->GetModel(handle) : nullptr;
+        if (model == nullptr || model->animations.empty()) {
+            valid = false;
+            if (error != nullptr && error->empty()) {
+                *error = entity.name + ": Animator model has no animation clips.";
+            }
+            continue;
+        }
+        animatorModels_.insert_or_assign(cacheKey, handle);
+        const AnimatorComponent& animator = *entity.animator;
+        const std::string clip = animator.clip.empty() ? model->animations.begin()->first
+                                                       : animator.clip;
+        if (!model->animations.contains(clip)) {
+            valid = false;
+            if (error != nullptr && error->empty()) {
+                *error = entity.name + ": Animator clip was not found: " + clip;
+            }
+            continue;
+        }
+        models->PlayAnimation(handle, clip, animator.loop);
+        if (!animator.playOnAwake) {
+            model->isPlaying = false;
+            models->UpdateAnimation(handle, 0.0f);
+        }
+        runtimeAnimators_.push_back({entity.id, handle});
+    }
     if (valid && error != nullptr) {
         error->clear();
     }
@@ -6802,17 +6988,38 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
     runtimeBehaviors_.Update(safeDeltaTime);
     runtimeTriggers_.Update(world_, runtimeBehaviors_);
+    UpdateRuntimeAnimators(safeDeltaTime);
     UpdateRuntimeAudio();
     ++runtimeFrameCount_;
     runtimeElapsedSeconds_ += static_cast<double>(safeDeltaTime);
 }
 
 void EditorScene::EndRuntimeWorld() {
+    EndRuntimeAnimators();
     EndRuntimeAudio();
     runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
+}
+
+void EditorScene::UpdateRuntimeAnimators(float deltaTime) {
+    ModelManager* models = ctx_ != nullptr ? ctx_->rendering.model : nullptr;
+    if (models == nullptr) {
+        return;
+    }
+    for (const RuntimeAnimator& runtime : runtimeAnimators_) {
+        const WorldEntity* entity = world_.Find(runtime.entity);
+        if (entity == nullptr || !world_.IsActiveInHierarchy(runtime.entity) ||
+            !entity->animator || !entity->animator->enabled) {
+            continue;
+        }
+        models->UpdateAnimation(runtime.model, deltaTime * entity->animator->speed);
+    }
+}
+
+void EditorScene::EndRuntimeAnimators() {
+    runtimeAnimators_.clear();
 }
 
 bool EditorScene::BeginRuntimeAudio(std::string* error) {

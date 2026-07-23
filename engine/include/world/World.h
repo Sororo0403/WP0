@@ -130,6 +130,14 @@ struct AudioListenerComponent {
     bool enabled = true;
 };
 
+struct AnimatorComponent {
+    bool enabled = true;
+    std::string clip;
+    bool playOnAwake = true;
+    bool loop = true;
+    float speed = 1.0f;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -178,6 +186,7 @@ struct WorldEntity {
     std::optional<LightComponent> light;
     std::optional<AudioSourceComponent> audioSource;
     std::optional<AudioListenerComponent> audioListener;
+    std::optional<AnimatorComponent> animator;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

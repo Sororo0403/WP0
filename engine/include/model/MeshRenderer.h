@@ -60,6 +60,11 @@ public:
     void DrawMesh(const Mesh& mesh, const Material& material, const Transform& transform,
                   const Camera& camera, uint32_t textureId = 0,
                   uint32_t normalTextureId = kInvalidResourceId);
+    void DrawMeshWithVertexBuffer(const Mesh& mesh,
+                                  const D3D12_VERTEX_BUFFER_VIEW& vertexBuffer,
+                                  const Material& material, const Transform& transform,
+                                  const Camera& camera, uint32_t textureId = 0,
+                                  uint32_t normalTextureId = kInvalidResourceId);
     /// <summary>
     /// Pipelineを生成する
     /// </summary>

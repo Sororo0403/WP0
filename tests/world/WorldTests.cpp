@@ -591,6 +591,10 @@ int main() {
     childEntity->audioSource->spatial = true;
     childEntity->audioSource->minDistance = 2.0f;
     childEntity->audioSource->maxDistance = 30.0f;
+    childEntity->animator = AnimatorComponent{};
+    childEntity->animator->clip = "Run";
+    childEntity->animator->loop = false;
+    childEntity->animator->speed = 1.5f;
     if (!Check(source.PlayAudioSource(child) &&
                    childEntity->audioSource->runtimeCommand ==
                        AudioSourceComponent::RuntimeCommand::Play &&
@@ -826,6 +830,10 @@ int main() {
                    restoredChild->audioSource->spatial &&
                    restoredChild->audioSource->minDistance == 2.0f &&
                    restoredChild->audioSource->maxDistance == 30.0f &&
+                   restoredChild->animator && restoredChild->animator->enabled &&
+                   restoredChild->animator->clip == "Run" &&
+                   restoredChild->animator->playOnAwake && !restoredChild->animator->loop &&
+                   restoredChild->animator->speed == 1.5f &&
                    restoredChild->scripts.size() == 3u &&
                    restoredChild->scripts[0].enabled &&
                    restoredChild->scripts[0].type == "Rotator" &&
