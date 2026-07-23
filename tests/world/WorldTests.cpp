@@ -2,6 +2,7 @@
 #include "InputSettingsStore.h"
 #include "ProjectDescriptor.h"
 #include "PhysicsSettingsStore.h"
+#include "PlayerPackageBuilder.h"
 #include "ProjectScriptLibrary.h"
 #include "ScriptBuildService.h"
 #include "RecentScenesStore.h"
@@ -1642,7 +1643,8 @@ int main() {
                                    std::ios::trunc);
         scriptHeader << "// second version\n";
     }
-    if (!Check(ignoreContents == "/library/\n" && initialFingerprintValid &&
+    if (!Check(ignoreContents == "/library/\n/build/\n" &&
+                   initialFingerprintValid &&
                    firstScriptFingerprint == repeatedScriptFingerprint &&
                    ScriptBuildService::GetSourceFingerprint(
                        createdProject.root, changedScriptFingerprint, fingerprintError) &&
@@ -1760,6 +1762,70 @@ int main() {
                    : inputSettingsError.c_str())) {
         std::filesystem::remove_all(projectDirectory, projectFilesystemError);
         return 186;
+    }
+    const std::filesystem::path packageRuntime =
+        projectDirectory / L"test-runtime";
+    const std::filesystem::path packageExecutable =
+        packageRuntime / L"Editor.exe";
+    const std::filesystem::path packageDestination =
+        projectDirectory / L"build" / L"test-package";
+    const std::filesystem::path packageScriptDirectory =
+        projectDirectory / L"library" / L"ScriptAssemblies" / L"x64" /
+        L"Debug";
+    std::filesystem::create_directories(packageRuntime / L"resources" /
+                                            L"engine",
+                                        projectFilesystemError);
+    std::filesystem::create_directories(packageScriptDirectory,
+                                        projectFilesystemError);
+    {
+        std::ofstream(packageExecutable, std::ios::binary) << "player";
+        std::ofstream(packageRuntime / L"runtime.dll", std::ios::binary)
+            << "runtime";
+        std::ofstream(packageRuntime / L"resources" / L"engine" /
+                          L"resource.bin",
+                      std::ios::binary)
+            << "resource";
+        std::ofstream(packageScriptDirectory / L"ProjectScripts.dll",
+                      std::ios::binary)
+            << "scripts";
+    }
+    const PlayerPackageRequest packageRequest{
+        .executable = packageExecutable,
+        .projectRoot = createdProject.root,
+        .manifest = createdProject.manifestPath,
+        .assetRoot = createdProject.assetRoot,
+        .sceneRoot = createdProject.sceneRoot,
+        .destination = packageDestination,
+        .configuration = "Debug",
+    };
+    std::string packageError;
+    const bool packageBuilt =
+        !projectFilesystemError &&
+        PlayerPackageBuilder::Build(packageRequest, packageError);
+    if (!Check(packageBuilt &&
+                   std::filesystem::is_regular_file(packageDestination /
+                                                    L"Game.exe") &&
+                   std::filesystem::is_regular_file(packageDestination /
+                                                    L"runtime.dll") &&
+                   std::filesystem::is_regular_file(
+                       packageDestination / L"resources" / L"engine" /
+                       L"resource.bin") &&
+                   std::filesystem::is_regular_file(
+                       packageDestination / L"project" /
+                       createdProject.manifestPath.filename()) &&
+                   std::filesystem::is_regular_file(
+                       packageDestination / L"project" / L"scenes" /
+                       L"untitled.likescene") &&
+                   std::filesystem::is_regular_file(
+                       packageDestination / L"project" / L"library" /
+                       L"ScriptAssemblies" / L"x64" / L"Debug" /
+                       L"ProjectScripts.dll") &&
+                   !PlayerPackageBuilder::Build(packageRequest, packageError),
+               packageError.empty()
+                   ? "Player package was not built safely."
+                   : packageError.c_str())) {
+        std::filesystem::remove_all(projectDirectory, projectFilesystemError);
+        return 188;
     }
     std::filesystem::remove_all(projectDirectory, projectFilesystemError);
     if (!Check(!projectFilesystemError, "Project test directory cleanup failed.")) {

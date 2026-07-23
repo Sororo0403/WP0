@@ -60,6 +60,7 @@ private:
 
     void DrawMainMenu();
     bool LaunchPlayerPreview();
+    bool BuildPlayerPackage();
     void EnterPlayMode();
     void StopPlayMode();
     void TogglePlayPause();

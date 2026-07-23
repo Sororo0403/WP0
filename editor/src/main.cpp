@@ -81,11 +81,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR command
     (void)previousInstance;
     (void)commandLine;
 
-    const bool playerMode = HasCommandLineFlag(L"--player");
+    bool playerMode = HasCommandLineFlag(L"--player");
     const ApplicationPaths paths = ApplicationPaths::Discover();
     const RecentProjectsStore recentProjects(paths.userData / L"settings" /
                                               L"recent_projects.json");
     std::optional<std::filesystem::path> projectPath = ParseProjectArgument();
+    const std::filesystem::path bundledProject =
+        paths.installRoot / L"project";
+    std::error_code bundledProjectError;
+    if (!projectPath &&
+        std::filesystem::is_directory(bundledProject, bundledProjectError) &&
+        !bundledProjectError) {
+        projectPath = bundledProject;
+        playerMode = true;
+    }
     if (!projectPath) {
         projectPath = ProjectLauncher::ChooseProject(recentProjects.Load());
     }

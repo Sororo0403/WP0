@@ -1,6 +1,8 @@
 #include "EditorScene.h"
 
 #include "AssetImportPlanner.h"
+#include "PlayerPackageBuilder.h"
+#include "ProjectDescriptor.h"
 #include "ScriptAsset.h"
 #include "ScriptBuildService.h"
 
@@ -559,7 +561,8 @@ void EditorScene::Initialize(const SceneContext& ctx) {
     }
     std::string behaviorRequirementError;
     std::string scriptModuleError;
-    if (!ScriptBuildService::BuildIfNeeded(projectRoot_, scriptModuleError) ||
+    if ((!playerMode_ &&
+         !ScriptBuildService::BuildIfNeeded(projectRoot_, scriptModuleError)) ||
         !projectScripts_.Load(projectRoot_, ctx.systems.input, behaviorRegistry_,
                               scriptModuleError)) {
         status_ = "Error: " + scriptModuleError;
@@ -873,6 +876,57 @@ bool EditorScene::LaunchPlayerPreview() {
     return true;
 }
 
+bool EditorScene::BuildPlayerPackage() {
+    if (IsInPlayMode() || dirty_ || physicsSettingsDirty_ ||
+        inputSettingsDirty_) {
+        status_ = "Save the scene and Project Settings before building.";
+        return false;
+    }
+    if (scriptBuildInProgress_ || scriptBuildPending_) {
+        status_ = "Wait for Project Script compilation before building.";
+        return false;
+    }
+    ProjectDescriptor project;
+    std::string error;
+    if (!ProjectDescriptor::Load(projectRoot_, project, error)) {
+        status_ = "Could not build Player: " + error;
+        return false;
+    }
+    std::array<wchar_t, 32768> executableBuffer{};
+    const DWORD executableLength = GetModuleFileNameW(
+        nullptr, executableBuffer.data(),
+        static_cast<DWORD>(executableBuffer.size()));
+    if (executableLength == 0u ||
+        executableLength >= executableBuffer.size()) {
+        status_ = "Could not locate the Player executable.";
+        return false;
+    }
+#ifdef _DEBUG
+    constexpr char configuration[] = "Debug";
+    constexpr wchar_t outputName[] = L"windows-x64-debug";
+#else
+    constexpr char configuration[] = "Release";
+    constexpr wchar_t outputName[] = L"windows-x64";
+#endif
+    const PlayerPackageRequest request{
+        .executable = std::filesystem::path(
+            std::wstring(executableBuffer.data(), executableLength)),
+        .projectRoot = project.root,
+        .manifest = project.manifestPath,
+        .assetRoot = project.assetRoot,
+        .sceneRoot = project.sceneRoot,
+        .destination = project.root / L"build" / outputName,
+        .configuration = configuration,
+    };
+    if (!PlayerPackageBuilder::Build(request, error)) {
+        status_ = "Could not build Player: " + error;
+        return false;
+    }
+    status_ = "Built Player package: " +
+              request.destination.generic_string();
+    return true;
+}
+
 void EditorScene::DrawMainMenu() {
     if (!ImGui::BeginMainMenuBar()) {
         return;
@@ -916,6 +970,10 @@ void EditorScene::DrawMainMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Build")) {
+        if (ImGui::MenuItem("Build Project", nullptr, false,
+                            !IsInPlayMode())) {
+            BuildPlayerPackage();
+        }
         if (ImGui::MenuItem("Run Project", "F8", false,
                             !IsInPlayMode())) {
             LaunchPlayerPreview();

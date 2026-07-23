@@ -195,7 +195,7 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
     }
     try {
         std::ofstream ignoreStream(ignore, std::ios::trunc);
-        ignoreStream << "/library/\n";
+        ignoreStream << "/library/\n/build/\n";
         ignoreStream.close();
         if (!ignoreStream) {
             throw std::ios_base::failure("project ignore write failed");
