@@ -3656,6 +3656,42 @@ void EditorScene::DrawInspectorPanel() {
             }
             ImGui::TextDisabled("Runtime type: %s",
                                 behavior.type.empty() ? "None" : behavior.type.c_str());
+            if (behavior.type.empty() || behavior.scriptAssetPath.empty()) {
+                ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f},
+                                   "Assign a C++ Script asset.");
+            } else {
+                std::string requirementError;
+                if (!behaviorRegistry_.ValidateRequirements(
+                        behavior.type, *entity, &requirementError)) {
+                    ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s",
+                                       requirementError.c_str());
+                    const BehaviorRequirements* requirements =
+                        behaviorRegistry_.Requirements(behavior.type);
+                    if (requirements != nullptr &&
+                        ImGui::Button("Add Required Components")) {
+                        const std::string requirementBefore =
+                            WorldSerializer::Serialize(world_);
+                        if (behaviorRegistry_.EnsureRequirements(
+                                behavior.type, *entity)) {
+                            RecordImmediateEdit("Add Script Requirements",
+                                                requirementBefore,
+                                                selectionBefore);
+                            status_ = "Added required components for Script.";
+                        } else {
+                            status_ = "Script requirements could not be added.";
+                        }
+                    }
+                } else {
+                    const std::string_view registeredSource =
+                        behaviorRegistry_.SourceAsset(behavior.type);
+                    if (registeredSource.empty() ||
+                        registeredSource != behavior.scriptAssetPath) {
+                        ImGui::TextColored(
+                            {1.0f, 0.45f, 0.35f, 1.0f},
+                            "The Script asset does not match its registered runtime type.");
+                    }
+                }
+            }
             const std::vector<ScriptPropertyDefinition>* propertyDefinitions =
                 behaviorRegistry_.Properties(behavior.type);
             if (propertyDefinitions != nullptr) {
