@@ -4773,6 +4773,48 @@ void EditorScene::DrawInspectorPanel() {
                                     "The selected Input Action has the wrong type.");
                             }
                         }
+                    } else if (definition.type == ScriptPropertyType::Scene) {
+                        const std::string value =
+                            stored != behavior.properties.end() &&
+                                    stored->type == definition.type
+                                ? stored->stringValue
+                                : definition.defaultString;
+                        const std::string preview = value.empty() ? "None" : value;
+                        if (ImGui::BeginCombo(definition.name.c_str(), preview.c_str())) {
+                            const auto assignScene = [&](const std::string& scene) {
+                                const std::string propertyBefore =
+                                    WorldSerializer::Serialize(world_);
+                                if (stored == behavior.properties.end()) {
+                                    behavior.properties.push_back({});
+                                    stored = std::prev(behavior.properties.end());
+                                }
+                                *stored = {};
+                                stored->name = definition.name;
+                                stored->type = definition.type;
+                                stored->stringValue = scene;
+                                RecordImmediateEdit("Modify Script Scene Property",
+                                                    propertyBefore, selectionBefore);
+                                status_ = "Modified Script Scene property.";
+                            };
+                            if (ImGui::Selectable("None", value.empty())) {
+                                assignScene({});
+                            }
+                            for (const std::filesystem::path& scene : sceneAssets_) {
+                                const std::string reference = scene.generic_string();
+                                if (ImGui::Selectable(reference.c_str(),
+                                                      value == reference)) {
+                                    assignScene(reference);
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        if (!value.empty() &&
+                            std::ranges::none_of(
+                                sceneAssets_, [&value](const std::filesystem::path& scene) {
+                                    return scene.generic_string() == value;
+                                })) {
+                            ImGui::TextDisabled("The selected Scene was not found.");
+                        }
                     } else if (definition.type == ScriptPropertyType::String) {
                         const std::string value =
                             stored != behavior.properties.end() &&
@@ -7239,8 +7281,27 @@ void EditorScene::RefreshAssetBrowser() {
     audioAssets_.clear();
     scriptAssets_.clear();
     prefabAssets_.clear();
+    sceneAssets_.clear();
     assetBrowserEntries_.clear();
     std::error_code error;
+    std::filesystem::recursive_directory_iterator sceneIterator(
+        sceneRoot_, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::recursive_directory_iterator sceneEnd;
+    while (!error && sceneIterator != sceneEnd) {
+        if (sceneIterator->is_regular_file(error) && !error &&
+            LowercaseAscii(sceneIterator->path().extension().string()) == ".likescene") {
+            std::filesystem::path relative =
+                std::filesystem::relative(sceneIterator->path(), sceneRoot_, error);
+            if (!error) {
+                sceneAssets_.push_back(relative.lexically_normal());
+            }
+        }
+        sceneIterator.increment(error);
+    }
+    std::ranges::sort(sceneAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    error.clear();
     if (!std::filesystem::is_directory(assetRoot_, error) || error) {
         return;
     }

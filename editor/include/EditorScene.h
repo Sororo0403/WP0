@@ -410,6 +410,7 @@ private:
     std::vector<std::filesystem::path> audioAssets_;
     std::vector<std::filesystem::path> scriptAssets_;
     std::vector<std::filesystem::path> prefabAssets_;
+    std::vector<std::filesystem::path> sceneAssets_;
     struct AssetBrowserEntry {
         std::filesystem::path relativePath;
         bool directory = false;

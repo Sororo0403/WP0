@@ -35,7 +35,8 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
                  !std::isfinite(property.defaultVector3.z));
             const bool invalidString =
                 (property.type == ScriptPropertyType::String ||
-                 property.type == ScriptPropertyType::AnimationClip) &&
+                 property.type == ScriptPropertyType::AnimationClip ||
+                 property.type == ScriptPropertyType::Scene) &&
                 (property.defaultString.size() > 1024u ||
                  property.defaultString.find('\0') != std::string::npos);
             const bool invalidInputAction =
@@ -50,7 +51,7 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
             return property.name.empty() || property.name.size() > 128u ||
                    property.name.find('\0') != std::string::npos || duplicate ||
                    property.type < ScriptPropertyType::Float ||
-                   property.type > ScriptPropertyType::InputAction || invalidFloat ||
+                   property.type > ScriptPropertyType::Scene || invalidFloat ||
                    invalidInteger || invalidVector3 || invalidString ||
                    invalidInputAction || invalidInputActionKind;
         });

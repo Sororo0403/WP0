@@ -980,6 +980,11 @@ int main() {
     serializedInputAction.type = ScriptPropertyType::InputAction;
     serializedInputAction.stringValue = "Fire";
     childEntity->scripts[0].properties.push_back(serializedInputAction);
+    ScriptPropertyValue serializedScene{};
+    serializedScene.name = "Next Scene";
+    serializedScene.type = ScriptPropertyType::Scene;
+    serializedScene.stringValue = "stages/alternate.likescene";
+    childEntity->scripts[0].properties.push_back(serializedScene);
     childEntity->scripts.push_back(
         {false, "FirstPersonController",
          "asset://Scripts/FirstPersonController.cpp"});
@@ -1147,6 +1152,10 @@ int main() {
         hasRestoredScript
             ? FindStoredScriptProperty(restoredChild->scripts[0], "Fire Action")
             : nullptr;
+    const ScriptPropertyValue* restoredScene =
+        hasRestoredScript
+            ? FindStoredScriptProperty(restoredChild->scripts[0], "Next Scene")
+            : nullptr;
     if (!Check(restored.Entities().size() == 2u && restoredChild != nullptr &&
                    restored.Find(root) != nullptr && !restored.Find(root)->active &&
                    restoredChild->active && !restored.IsActiveInHierarchy(child) &&
@@ -1210,7 +1219,7 @@ int main() {
                    restoredChild->scripts[0].type == "Rotator" &&
                    restoredChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   restoredChild->scripts[0].properties.size() == 8u &&
+                   restoredChild->scripts[0].properties.size() == 9u &&
                    restoredSpeed != nullptr && restoredSpeed->type == ScriptPropertyType::Float &&
                    restoredSpeed->floatValue == 3.5f && restoredTarget != nullptr &&
                    restoredTarget->type == ScriptPropertyType::Entity &&
@@ -1230,6 +1239,9 @@ int main() {
                    restoredInputAction != nullptr &&
                    restoredInputAction->type == ScriptPropertyType::InputAction &&
                    restoredInputAction->stringValue == "Fire" &&
+                   restoredScene != nullptr &&
+                   restoredScene->type == ScriptPropertyType::Scene &&
+                   restoredScene->stringValue == "stages/alternate.likescene" &&
                    !restoredChild->scripts[1].enabled &&
                    restoredChild->scripts[1].type == "FirstPersonController" &&
                    restoredChild->scripts[2].type.empty() &&
@@ -1352,7 +1364,7 @@ int main() {
                    duplicateChild->scripts[0].type == "Rotator" &&
                    duplicateChild->scripts[0].scriptAssetPath ==
                        "asset://Scripts/Rotator.cpp" &&
-                   duplicateChild->scripts[0].properties.size() == 8u &&
+                   duplicateChild->scripts[0].properties.size() == 9u &&
                    duplicateChild->scripts[0].properties[0].floatValue == 3.5f &&
                    duplicateChild->scripts[0].properties[1].entityValue == duplicateRoot &&
                    duplicateChild->scripts[0].properties[2].booleanValue &&

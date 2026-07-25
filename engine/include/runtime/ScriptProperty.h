@@ -16,6 +16,7 @@ enum class ScriptPropertyType : uint32_t {
     String = 5,
     AnimationClip = 6,
     InputAction = 7,
+    Scene = 8,
 };
 
 enum class ScriptInputActionKind : uint32_t {
