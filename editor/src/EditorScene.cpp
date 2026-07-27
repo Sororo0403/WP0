@@ -4079,10 +4079,12 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
     } else if (preset == UiEntityPreset::Image) {
         entity->image = ImageComponent{};
         entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
         entity->image->size = {200.0f, 100.0f};
     } else {
         entity->image = ImageComponent{};
         entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
         entity->image->size = {240.0f, 64.0f};
         entity->image->color = {0.22f, 0.38f, 0.65f, 1.0f};
         entity->button = ButtonComponent{};
@@ -5983,6 +5985,20 @@ void EditorScene::DrawInspectorPanel() {
             }
             ImGui::TextDisabled(
                 "Position is an offset from the selected anchor.");
+            if (ImGui::DragFloat2("Pivot##Image", &image.pivot.x, 0.01f,
+                                  0.0f, 1.0f, "%.2f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Image pivot.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Image Pivot");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            ImGui::TextDisabled(
+                "Pivot (0,0) is top-left; (1,1) is bottom-right.");
 
             const std::string textureLabel =
                 image.texturePath.empty() ? "None (solid color)"
@@ -8521,12 +8537,12 @@ bool EditorScene::DrawGameUi(int width, int height,
             const float left =
                 origin.x +
                 (referenceResolution.x * anchor.x + image.position.x -
-                 image.size.x * anchor.x) *
+                 image.size.x * image.pivot.x) *
                     scale;
             const float top =
                 origin.y +
                 (referenceResolution.y * anchor.y + image.position.y -
-                 image.size.y * anchor.y) *
+                 image.size.y * image.pivot.y) *
                     scale;
             const float right = left + image.size.x * scale;
             const float bottom = top + image.size.y * scale;
@@ -8642,11 +8658,11 @@ bool EditorScene::DrawGameUi(int width, int height,
             sprite.position = {
                 canvasOrigin.x +
                     (referenceResolution.x * anchor.x + image.position.x -
-                     image.size.x * anchor.x) *
+                     image.size.x * image.pivot.x) *
                         scale,
                 canvasOrigin.y +
                     (referenceResolution.y * anchor.y + image.position.y -
-                     image.size.y * anchor.y) *
+                     image.size.y * image.pivot.y) *
                         scale,
             };
             sprite.size = {
@@ -8801,11 +8817,11 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 const ImVec2 rectMin{
                     origin.x +
                         (referenceResolution.x * anchor.x +
-                         image.position.x - image.size.x * anchor.x) *
+                         image.position.x - image.size.x * image.pivot.x) *
                             scale,
                     origin.y +
                         (referenceResolution.y * anchor.y +
-                         image.position.y - image.size.y * anchor.y) *
+                         image.position.y - image.size.y * image.pivot.y) *
                             scale,
                 };
                 includeRect(
@@ -8866,11 +8882,11 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
             minimum = {
                 origin.x +
                     (referenceResolution.x * anchor.x +
-                     image.position.x - image.size.x * anchor.x) *
+                     image.position.x - image.size.x * image.pivot.x) *
                         scale,
                 origin.y +
                     (referenceResolution.y * anchor.y +
-                     image.position.y - image.size.y * anchor.y) *
+                     image.position.y - image.size.y * image.pivot.y) *
                         scale,
             };
             maximum = {
@@ -8959,8 +8975,6 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 scale > 0.0f) {
                 const ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
                 ImageComponent& image = *entity->image;
-                const DirectX::XMFLOAT2 anchor =
-                    GetUiAnchorChoice(image.anchor).factor;
                 const DirectX::XMFLOAT2 previousSize = image.size;
                 const float horizontalDelta = mouseDelta.x / scale;
                 const float verticalDelta = mouseDelta.y / scale;
@@ -8988,8 +9002,8 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                     resizesTop ? -sizeDelta.y : 0.0f,
                 };
                 const DirectX::XMFLOAT2 positionDelta{
-                    minimumDelta.x + sizeDelta.x * anchor.x,
-                    minimumDelta.y + sizeDelta.y * anchor.y,
+                    minimumDelta.x + sizeDelta.x * image.pivot.x,
+                    minimumDelta.y + sizeDelta.y * image.pivot.y,
                 };
                 image.position.x = std::clamp(
                     image.position.x + positionDelta.x, -1000000.0f,

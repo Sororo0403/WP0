@@ -1040,6 +1040,7 @@ int main() {
     childEntity->image->size = {320.0f, 48.0f};
     childEntity->image->color = {0.1f, 0.8f, 0.25f, 0.75f};
     childEntity->image->anchor = UiAnchor::BottomRight;
+    childEntity->image->pivot = {0.25f, 0.75f};
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
@@ -1186,6 +1187,9 @@ int main() {
         if (entity["components"].contains("Button")) {
             entity["components"]["Button"].erase("disabledColor");
         }
+        if (entity["components"].contains("Image")) {
+            entity["components"]["Image"].erase("pivot");
+        }
     }
     World legacyButtonWorld;
     if (!Check(WorldSerializer::Deserialize(legacyButtonScene.dump(),
@@ -1193,8 +1197,11 @@ int main() {
                    legacyButtonWorld.Find(child) != nullptr &&
                    legacyButtonWorld.Find(child)->button &&
                    legacyButtonWorld.Find(child)->button->disabledColor.x ==
-                       0.5f,
-               "A legacy Button without disabledColor did not use the default.")) {
+                       0.5f &&
+                   legacyButtonWorld.Find(child)->image &&
+                   legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
+                   legacyButtonWorld.Find(child)->image->pivot.y == 1.0f,
+               "Legacy Button/Image defaults were not restored.")) {
         return 250;
     }
     const WorldEntity* restoredChild = restored.Find(child);
@@ -1340,6 +1347,8 @@ int main() {
                    restoredChild->image->color.y == 0.8f &&
                    restoredChild->image->color.w == 0.75f &&
                    restoredChild->image->anchor == UiAnchor::BottomRight &&
+                   restoredChild->image->pivot.x == 0.25f &&
+                   restoredChild->image->pivot.y == 0.75f &&
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
                    restoredChild->button->normalColor.x == 0.9f &&
@@ -1491,6 +1500,8 @@ int main() {
                        "asset://textures/hud.png" &&
                    duplicateChild->image->size.x == 320.0f &&
                    duplicateChild->image->anchor == UiAnchor::BottomRight &&
+                   duplicateChild->image->pivot.x == 0.25f &&
+                   duplicateChild->image->pivot.y == 0.75f &&
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&

@@ -198,6 +198,7 @@ struct ImageComponent {
     DirectX::XMFLOAT2 size{100.0f, 100.0f};
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
     UiAnchor anchor = UiAnchor::TopLeft;
+    DirectX::XMFLOAT2 pivot{0.0f, 0.0f};
 };
 
 struct ButtonComponent {

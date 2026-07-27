@@ -651,10 +651,13 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             if (image.texturePath.size() > 1024u ||
                 image.texturePath.find('\0') != std::string::npos ||
                 !IsFinite(image.position) || !IsFinite(image.size) ||
+                !IsFinite(image.pivot) ||
                 image.size.x < 0.0f || image.size.y < 0.0f ||
                 image.size.x > 1000000.0f || image.size.y > 1000000.0f ||
                 std::abs(image.position.x) > 1000000.0f ||
                 std::abs(image.position.y) > 1000000.0f ||
+                image.pivot.x < 0.0f || image.pivot.x > 1.0f ||
+                image.pivot.y < 0.0f || image.pivot.y > 1.0f ||
                 !IsFinite(image.color) || image.color.x < 0.0f ||
                 image.color.x > 1.0f || image.color.y < 0.0f ||
                 image.color.y > 1.0f || image.color.z < 0.0f ||
