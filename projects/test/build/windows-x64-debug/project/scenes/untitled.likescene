@@ -608,13 +608,14 @@
             1.0
           ],
           "enabled": true,
+          "fadeDuration": 0.10000000149011612,
           "hoveredColor": [
             0.8500000238418579,
             0.8999999761581421,
             1.0,
             1.0
           ],
-          "interactable": true,
+          "interactable": false,
           "normalColor": [
             1.0,
             1.0,
@@ -650,8 +651,8 @@
           ],
           "preserveAspect": false,
           "size": [
-            400.0,
-            100.0
+            512.0,
+            512.0
           ],
           "texture": "asset://LockPBR/Rock051.png",
           "type": "Simple"
@@ -690,6 +691,7 @@
             1.0
           ],
           "enabled": true,
+          "fadeDuration": 0.10000000149011612,
           "hoveredColor": [
             0.8500000238418579,
             0.8999999761581421,
@@ -899,6 +901,7 @@
             1.0
           ],
           "enabled": true,
+          "fadeDuration": 0.10000000149011612,
           "hoveredColor": [
             0.8500000238418579,
             0.8999999761581421,
@@ -981,6 +984,7 @@
             1.0
           ],
           "enabled": true,
+          "fadeDuration": 0.10000000149011612,
           "hoveredColor": [
             0.8500000238418579,
             0.8999999761581421,

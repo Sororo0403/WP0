@@ -227,6 +227,7 @@ struct ButtonComponent {
     DirectX::XMFLOAT4 hoveredColor{0.85f, 0.9f, 1.0f, 1.0f};
     DirectX::XMFLOAT4 pressedColor{0.7f, 0.8f, 1.0f, 1.0f};
     DirectX::XMFLOAT4 disabledColor{0.5f, 0.5f, 0.5f, 1.0f};
+    float fadeDuration = 0.1f;
 };
 
 struct ScriptPropertyValue {

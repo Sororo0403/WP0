@@ -338,6 +338,15 @@ private:
     EntityId focusedButton_{};
     EntityId pressedButton_{};
     std::vector<EntityId> pendingButtonClicks_;
+    struct ButtonColorTransition {
+        DirectX::XMFLOAT4 current{1.0f, 1.0f, 1.0f, 1.0f};
+        DirectX::XMFLOAT4 start{1.0f, 1.0f, 1.0f, 1.0f};
+        DirectX::XMFLOAT4 target{1.0f, 1.0f, 1.0f, 1.0f};
+        float elapsed = 0.0f;
+        bool initialized = false;
+    };
+    std::unordered_map<EntityId, ButtonColorTransition, EntityIdHash>
+        buttonColorTransitions_;
     struct RuntimeAudioSource {
         EntityId entity{};
         uint32_t soundId = kInvalidResourceId;

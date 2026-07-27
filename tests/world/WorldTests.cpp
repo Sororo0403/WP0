@@ -1055,6 +1055,7 @@ int main() {
     childEntity->button->hoveredColor = {0.8f, 0.7f, 0.6f, 1.0f};
     childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
     childEntity->button->disabledColor = {0.4f, 0.3f, 0.2f, 0.8f};
+    childEntity->button->fadeDuration = 0.25f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1195,6 +1196,7 @@ int main() {
     for (nlohmann::json& entity : legacyButtonScene["entities"]) {
         if (entity["components"].contains("Button")) {
             entity["components"]["Button"].erase("disabledColor");
+            entity["components"]["Button"].erase("fadeDuration");
         }
         if (entity["components"].contains("Text")) {
             entity["components"]["Text"].erase("font");
@@ -1220,6 +1222,8 @@ int main() {
                    legacyButtonWorld.Find(child)->button &&
                    legacyButtonWorld.Find(child)->button->disabledColor.x ==
                        0.5f &&
+                   legacyButtonWorld.Find(child)->button->fadeDuration ==
+                       0.1f &&
                    legacyButtonWorld.Find(child)->image &&
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
@@ -1248,6 +1252,18 @@ int main() {
                                              invalidCanvasWorld, &error),
                "An out-of-range Canvas sorting order was accepted.")) {
         return 251;
+    }
+    nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidButtonScene["entities"]) {
+        if (entity["components"].contains("Button")) {
+            entity["components"]["Button"]["fadeDuration"] = 10.01f;
+        }
+    }
+    World invalidButtonWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidButtonScene.dump(),
+                                             invalidButtonWorld, &error),
+               "An out-of-range Button fade duration was accepted.")) {
+        return 257;
     }
     nlohmann::json invalidImageScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidImageScene["entities"]) {
@@ -1460,6 +1476,7 @@ int main() {
                    restoredChild->button->pressedColor.z == 0.5f &&
                    restoredChild->button->disabledColor.x == 0.4f &&
                    restoredChild->button->disabledColor.w == 0.8f &&
+                   restoredChild->button->fadeDuration == 0.25f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1621,6 +1638,7 @@ int main() {
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
                    duplicateChild->button->disabledColor.y == 0.3f &&
+                   duplicateChild->button->fadeDuration == 0.25f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

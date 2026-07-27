@@ -695,7 +695,10 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             if (!validColor(button.normalColor) ||
                 !validColor(button.hoveredColor) ||
                 !validColor(button.pressedColor) ||
-                !validColor(button.disabledColor)) {
+                !validColor(button.disabledColor) ||
+                !std::isfinite(button.fadeDuration) ||
+                button.fadeDuration < 0.0f ||
+                button.fadeDuration > 10.0f) {
                 SetError(error, "Scene contains an invalid Button component.");
                 return false;
             }

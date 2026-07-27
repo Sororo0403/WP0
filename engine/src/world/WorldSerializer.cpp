@@ -390,6 +390,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedButton["hoveredColor"] = EncodeFloat4(button.hoveredColor);
             encodedButton["pressedColor"] = EncodeFloat4(button.pressedColor);
             encodedButton["disabledColor"] = EncodeFloat4(button.disabledColor);
+            encodedButton["fadeDuration"] = button.fadeDuration;
             encoded["components"]["Button"] = std::move(encodedButton);
         }
         if (!entity.scripts.empty()) {
@@ -1115,6 +1116,14 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 SetError(error, "Scene Button component is invalid.");
                 return false;
             }
+            if (encodedButton.contains("fadeDuration")) {
+                if (!encodedButton["fadeDuration"].is_number()) {
+                    SetError(error, "Scene Button component is invalid.");
+                    return false;
+                }
+                component.fadeDuration =
+                    encodedButton["fadeDuration"].get<float>();
+            }
             component.enabled = encodedButton["enabled"].get<bool>();
             component.interactable =
                 encodedButton["interactable"].get<bool>();
@@ -1127,7 +1136,10 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             if (!validColor(component.normalColor) ||
                 !validColor(component.hoveredColor) ||
                 !validColor(component.pressedColor) ||
-                !validColor(component.disabledColor)) {
+                !validColor(component.disabledColor) ||
+                !std::isfinite(component.fadeDuration) ||
+                component.fadeDuration < 0.0f ||
+                component.fadeDuration > 10.0f) {
                 SetError(error, "Scene Button settings are invalid.");
                 return false;
             }

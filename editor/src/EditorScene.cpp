@@ -6423,6 +6423,20 @@ void EditorScene::DrawInspectorPanel() {
             editButtonColor("Hovered Color##Button", button.hoveredColor);
             editButtonColor("Pressed Color##Button", button.pressedColor);
             editButtonColor("Disabled Color##Button", button.disabledColor);
+            if (ImGui::DragFloat("Fade Duration##Button",
+                                 &button.fadeDuration, 0.01f, 0.0f, 10.0f,
+                                 "%.2f s")) {
+                button.fadeDuration =
+                    std::clamp(button.fadeDuration, 0.0f, 10.0f);
+                RefreshDirty();
+                status_ = "Modified Button fade duration.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Button Fade Duration");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
             if (!entity->image) {
                 ImGui::TextColored(
                     {1.0f, 0.72f, 0.25f, 1.0f},
@@ -8830,6 +8844,15 @@ bool EditorScene::DrawGameUi(int width, int height,
     };
     const std::vector<OrderedUiEntity> orderedUiEntities =
         GetOrderedUiEntities(world_);
+    for (auto transition = buttonColorTransitions_.begin();
+         transition != buttonColorTransitions_.end();) {
+        const WorldEntity* entity = world_.Find(transition->first);
+        if (entity == nullptr || !entity->button || !entity->image) {
+            transition = buttonColorTransitions_.erase(transition);
+        } else {
+            ++transition;
+        }
+    }
 
     const ImVec2 imageScreenMin = ImGui::GetCursorScreenPos();
     const ImVec2 mouse = ImGui::GetMousePos();
@@ -9064,19 +9087,58 @@ bool EditorScene::DrawGameUi(int width, int height,
             DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
             if (entity.button && entity.button->enabled) {
                 const ButtonComponent& button = *entity.button;
-                stateColor = button.interactable
-                                 ? button.normalColor
-                                 : button.disabledColor;
+                DirectX::XMFLOAT4 targetColor =
+                    button.interactable ? button.normalColor
+                                        : button.disabledColor;
                 if (button.interactable &&
                     (entity.id == hoveredButton ||
                      entity.id == focusedButton_)) {
-                    stateColor =
+                    targetColor =
                         entity.id == hoveredButton &&
                                 entity.id == pressedButton_ &&
                                 ImGui::IsMouseDown(ImGuiMouseButton_Left)
                             ? button.pressedColor
                             : button.hoveredColor;
                 }
+                ButtonColorTransition& transition =
+                    buttonColorTransitions_[entity.id];
+                const auto colorsEqual =
+                    [](const DirectX::XMFLOAT4& lhs,
+                       const DirectX::XMFLOAT4& rhs) {
+                        return lhs.x == rhs.x && lhs.y == rhs.y &&
+                               lhs.z == rhs.z && lhs.w == rhs.w;
+                    };
+                if (!transition.initialized) {
+                    transition.current = targetColor;
+                    transition.start = targetColor;
+                    transition.target = targetColor;
+                    transition.initialized = true;
+                } else if (!colorsEqual(transition.target, targetColor)) {
+                    transition.start = transition.current;
+                    transition.target = targetColor;
+                    transition.elapsed = 0.0f;
+                }
+                if (button.fadeDuration <= 0.0f) {
+                    transition.current = targetColor;
+                } else if (!colorsEqual(transition.current,
+                                        transition.target)) {
+                    const float deltaTime =
+                        std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.1f);
+                    transition.elapsed += deltaTime;
+                    const float amount = std::clamp(
+                        transition.elapsed / button.fadeDuration, 0.0f, 1.0f);
+                    transition.current = {
+                        std::lerp(transition.start.x, transition.target.x,
+                                  amount),
+                        std::lerp(transition.start.y, transition.target.y,
+                                  amount),
+                        std::lerp(transition.start.z, transition.target.z,
+                                  amount),
+                        std::lerp(transition.start.w, transition.target.w,
+                                  amount),
+                    };
+                }
+                stateColor = transition.current;
             }
             sprite.color = {
                 image.color.x * stateColor.x,
@@ -10162,6 +10224,7 @@ void EditorScene::EndRuntimeWorld() {
     focusedButton_ = {};
     pressedButton_ = {};
     pendingButtonClicks_.clear();
+    buttonColorTransitions_.clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
 }
