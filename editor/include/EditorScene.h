@@ -331,6 +331,7 @@ private:
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
     TriggerSystem runtimeTriggers_;
+    EntityId pressedButton_{};
     std::vector<EntityId> pendingButtonClicks_;
     struct RuntimeAudioSource {
         EntityId entity{};

@@ -8510,6 +8510,24 @@ bool EditorScene::DrawGameUi(int width, int height) {
         }
     }
 
+    const WorldEntity* hoveredEntity = world_.Find(hoveredButton);
+    const bool hoveredButtonInteractable =
+        hoveredEntity != nullptr && hoveredEntity->button &&
+        hoveredEntity->button->enabled &&
+        hoveredEntity->button->interactable;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        pressedButton_ =
+            hoveredButtonInteractable ? hoveredButton : EntityId{};
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        if (pressedButton_.IsValid() &&
+            pressedButton_ == hoveredButton &&
+            hoveredButtonInteractable) {
+            pendingButtonClicks_.push_back(pressedButton_);
+        }
+        pressedButton_ = {};
+    }
+
     spriteRenderer.UpdateProjection(width, height);
     spriteRenderer.PreDraw(true);
     for (const WorldEntity& entity : world_.Entities()) {
@@ -8552,7 +8570,8 @@ bool EditorScene::DrawGameUi(int width, int height) {
                 stateColor = button.normalColor;
                 if (button.interactable && entity.id == hoveredButton) {
                     stateColor =
-                        ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                        entity.id == pressedButton_ &&
+                                ImGui::IsMouseDown(ImGuiMouseButton_Left)
                             ? button.pressedColor
                             : button.hoveredColor;
                 }
@@ -8606,12 +8625,6 @@ bool EditorScene::DrawGameUi(int width, int height) {
                                         ctx_->systems.winApp->GetHeight());
     }
 
-    const WorldEntity* hoveredEntity = world_.Find(hoveredButton);
-    if (hoveredEntity != nullptr && hoveredEntity->button &&
-        hoveredEntity->button->interactable &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        pendingButtonClicks_.push_back(hoveredButton);
-    }
     return hoveredButton.IsValid();
 }
 
@@ -9638,6 +9651,7 @@ void EditorScene::EndRuntimeWorld() {
     EndRuntimeAudio();
     runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
+    pressedButton_ = {};
     pendingButtonClicks_.clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
