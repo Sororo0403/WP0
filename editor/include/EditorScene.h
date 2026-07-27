@@ -210,6 +210,8 @@ private:
     void BuildRenderScene();
     void BuildEditorOverlayScene();
     [[nodiscard]] bool DrawGameUi(int width, int height);
+    void HandleGameUiEditing(const ImVec2& imageMin,
+                             const ImVec2& imageMax);
     void UpdateAssetPreview();
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
@@ -294,6 +296,7 @@ private:
     bool playModeDirtySnapshot_ = false;
     bool focusGamePanelRequested_ = false;
     bool gameInputCaptured_ = false;
+    EntityId gameUiDragEntity_{};
     int gameInputCursorRestoreX_ = 0;
     int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;

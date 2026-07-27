@@ -1541,6 +1541,9 @@ void EditorScene::DrawPanels() {
                 const ImVec2 gameImageMin = ImGui::GetItemRectMin();
                 const ImVec2 gameImageMax = ImGui::GetItemRectMax();
                 const bool gameImageHovered = ImGui::IsItemHovered();
+                if (playModeState_ == PlayModeState::Edit) {
+                    HandleGameUiEditing(gameImageMin, gameImageMax);
+                }
                 if (playModeState_ == PlayModeState::Playing && gameImageHovered &&
                     !gameUiHovered &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
@@ -8610,6 +8613,210 @@ bool EditorScene::DrawGameUi(int width, int height) {
         pendingButtonClicks_.push_back(hoveredButton);
     }
     return hoveredButton.IsValid();
+}
+
+void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
+                                      const ImVec2& imageMax) {
+    if (playModeState_ != PlayModeState::Edit || ctx_ == nullptr ||
+        imageMax.x <= imageMin.x || imageMax.y <= imageMin.y) {
+        gameUiDragEntity_ = {};
+        return;
+    }
+
+    TextRenderer* textRenderer = ctx_->rendering.text;
+    const auto resolveCanvasLayout =
+        [&](const WorldEntity& entity, float& scale,
+            DirectX::XMFLOAT2& origin,
+            DirectX::XMFLOAT2& referenceResolution) {
+            const CanvasComponent* canvas = nullptr;
+            const WorldEntity* canvasEntity = &entity;
+            while (canvasEntity != nullptr) {
+                if (canvasEntity->canvas) {
+                    if (canvasEntity->canvas->enabled) {
+                        canvas = &*canvasEntity->canvas;
+                    }
+                    break;
+                }
+                canvasEntity = canvasEntity->parent.IsValid()
+                                   ? world_.Find(canvasEntity->parent)
+                                   : nullptr;
+            }
+            if (canvas == nullptr) {
+                return false;
+            }
+            referenceResolution = canvas->referenceResolution;
+            const float width = imageMax.x - imageMin.x;
+            const float height = imageMax.y - imageMin.y;
+            scale = (std::min)(width / referenceResolution.x,
+                               height / referenceResolution.y);
+            origin = {
+                imageMin.x +
+                    (width - referenceResolution.x * scale) * 0.5f,
+                imageMin.y +
+                    (height - referenceResolution.y * scale) * 0.5f,
+            };
+            return true;
+        };
+
+    const auto calculateRect =
+        [&](const WorldEntity& entity, ImVec2& minimum,
+            ImVec2& maximum) {
+            if (!world_.IsActiveInHierarchy(entity.id)) {
+                return false;
+            }
+            float scale = 1.0f;
+            DirectX::XMFLOAT2 origin{};
+            DirectX::XMFLOAT2 referenceResolution{};
+            if (!resolveCanvasLayout(entity, scale, origin,
+                                     referenceResolution)) {
+                return false;
+            }
+            bool hasRect = false;
+            const auto includeRect = [&](const ImVec2& rectMin,
+                                         const ImVec2& rectMax) {
+                if (!hasRect) {
+                    minimum = rectMin;
+                    maximum = rectMax;
+                    hasRect = true;
+                    return;
+                }
+                minimum.x = (std::min)(minimum.x, rectMin.x);
+                minimum.y = (std::min)(minimum.y, rectMin.y);
+                maximum.x = (std::max)(maximum.x, rectMax.x);
+                maximum.y = (std::max)(maximum.y, rectMax.y);
+            };
+            if (entity.image && entity.image->enabled) {
+                const ImageComponent& image = *entity.image;
+                const DirectX::XMFLOAT2 anchor =
+                    GetUiAnchorChoice(image.anchor).factor;
+                const ImVec2 rectMin{
+                    origin.x +
+                        (referenceResolution.x * anchor.x +
+                         image.position.x - image.size.x * anchor.x) *
+                            scale,
+                    origin.y +
+                        (referenceResolution.y * anchor.y +
+                         image.position.y - image.size.y * anchor.y) *
+                            scale,
+                };
+                includeRect(
+                    rectMin,
+                    {rectMin.x + image.size.x * scale,
+                     rectMin.y + image.size.y * scale});
+            }
+            if (entity.text && entity.text->enabled &&
+                textRenderer != nullptr && textRenderer->IsReady()) {
+                const TextComponent& text = *entity.text;
+                TextStyle style{};
+                style.pixelSize = text.fontSize * scale;
+                const TextLayoutMetrics metrics =
+                    textRenderer->MeasureText(text.text, style);
+                const DirectX::XMFLOAT2 anchor =
+                    GetUiAnchorChoice(text.anchor).factor;
+                ImVec2 rectMin{
+                    origin.x +
+                        (referenceResolution.x * anchor.x +
+                         text.position.x) *
+                            scale,
+                    origin.y +
+                        (referenceResolution.y * anchor.y +
+                         text.position.y) *
+                            scale -
+                        metrics.size.y * anchor.y,
+                };
+                if (text.alignment == TextAlignment::Center) {
+                    rectMin.x -= metrics.size.x * 0.5f;
+                } else if (text.alignment == TextAlignment::Right) {
+                    rectMin.x -= metrics.size.x;
+                }
+                includeRect(
+                    rectMin,
+                    {rectMin.x + metrics.size.x,
+                     rectMin.y + metrics.size.y});
+            }
+            return hasRect;
+        };
+
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const bool imageHovered = ImGui::IsItemHovered();
+    EntityId hovered{};
+    if (imageHovered) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            ImVec2 minimum{};
+            ImVec2 maximum{};
+            if (calculateRect(entity, minimum, maximum) &&
+                mouse.x >= minimum.x && mouse.x <= maximum.x &&
+                mouse.y >= minimum.y && mouse.y <= maximum.y) {
+                hovered = entity.id;
+            }
+        }
+    }
+
+    if (imageHovered &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (hovered.IsValid()) {
+            SelectHierarchyEntity(hovered, false, false);
+            gameUiDragEntity_ = hovered;
+            BeginHistoryEdit("Move UI Element");
+        } else {
+            ClearHierarchySelection();
+            gameUiDragEntity_ = {};
+        }
+    }
+
+    if (gameUiDragEntity_.IsValid() &&
+        ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        WorldEntity* entity = world_.Find(gameUiDragEntity_);
+        if (entity != nullptr &&
+            ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
+            float scale = 1.0f;
+            DirectX::XMFLOAT2 origin{};
+            DirectX::XMFLOAT2 referenceResolution{};
+            if (resolveCanvasLayout(*entity, scale, origin,
+                                    referenceResolution) &&
+                scale > 0.0f) {
+                const ImVec2 delta = ImGui::GetIO().MouseDelta;
+                if (entity->image) {
+                    entity->image->position.x = std::clamp(
+                        entity->image->position.x + delta.x / scale,
+                        -1000000.0f, 1000000.0f);
+                    entity->image->position.y = std::clamp(
+                        entity->image->position.y + delta.y / scale,
+                        -1000000.0f, 1000000.0f);
+                }
+                if (entity->text) {
+                    entity->text->position.x = std::clamp(
+                        entity->text->position.x + delta.x / scale,
+                        -1000000.0f, 1000000.0f);
+                    entity->text->position.y = std::clamp(
+                        entity->text->position.y + delta.y / scale,
+                        -1000000.0f, 1000000.0f);
+                }
+                RefreshDirty();
+                status_ = "Moved UI element in the Game View.";
+            }
+        }
+    } else if (gameUiDragEntity_.IsValid()) {
+        CommitHistoryEdit();
+        gameUiDragEntity_ = {};
+    }
+
+    const WorldEntity* selected = world_.Find(selection_);
+    ImVec2 selectedMin{};
+    ImVec2 selectedMax{};
+    if (selected != nullptr &&
+        calculateRect(*selected, selectedMin, selectedMax)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->PushClipRect(imageMin, imageMax, true);
+        drawList->AddRect(selectedMin, selectedMax,
+                          IM_COL32(255, 190, 60, 255), 0.0f, 0, 2.0f);
+        drawList->PopClipRect();
+    }
+    if (gameUiDragEntity_.IsValid()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+    } else if (hovered.IsValid()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
 }
 
 void EditorScene::BuildRenderScene() {
