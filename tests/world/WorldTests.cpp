@@ -31,6 +31,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -1044,6 +1045,7 @@ int main() {
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
     childEntity->button->hoveredColor = {0.8f, 0.7f, 0.6f, 1.0f};
     childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
+    childEntity->button->disabledColor = {0.4f, 0.3f, 0.2f, 0.8f};
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1178,6 +1180,22 @@ int main() {
     std::string error;
     if (!Check(WorldSerializer::Deserialize(serialized, restored, &error), error.c_str())) {
         return 6;
+    }
+    nlohmann::json legacyButtonScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : legacyButtonScene["entities"]) {
+        if (entity["components"].contains("Button")) {
+            entity["components"]["Button"].erase("disabledColor");
+        }
+    }
+    World legacyButtonWorld;
+    if (!Check(WorldSerializer::Deserialize(legacyButtonScene.dump(),
+                                            legacyButtonWorld, &error) &&
+                   legacyButtonWorld.Find(child) != nullptr &&
+                   legacyButtonWorld.Find(child)->button &&
+                   legacyButtonWorld.Find(child)->button->disabledColor.x ==
+                       0.5f,
+               "A legacy Button without disabledColor did not use the default.")) {
+        return 250;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1327,6 +1345,8 @@ int main() {
                    restoredChild->button->normalColor.x == 0.9f &&
                    restoredChild->button->hoveredColor.y == 0.7f &&
                    restoredChild->button->pressedColor.z == 0.5f &&
+                   restoredChild->button->disabledColor.x == 0.4f &&
+                   restoredChild->button->disabledColor.w == 0.8f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1474,6 +1494,7 @@ int main() {
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
+                   duplicateChild->button->disabledColor.y == 0.3f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

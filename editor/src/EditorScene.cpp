@@ -6115,6 +6115,7 @@ void EditorScene::DrawInspectorPanel() {
             editButtonColor("Normal Color##Button", button.normalColor);
             editButtonColor("Hovered Color##Button", button.hoveredColor);
             editButtonColor("Pressed Color##Button", button.pressedColor);
+            editButtonColor("Disabled Color##Button", button.disabledColor);
             if (!entity->image) {
                 ImGui::TextColored(
                     {1.0f, 0.72f, 0.25f, 1.0f},
@@ -8567,7 +8568,9 @@ bool EditorScene::DrawGameUi(int width, int height) {
             DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
             if (entity.button && entity.button->enabled) {
                 const ButtonComponent& button = *entity.button;
-                stateColor = button.normalColor;
+                stateColor = button.interactable
+                                 ? button.normalColor
+                                 : button.disabledColor;
                 if (button.interactable && entity.id == hoveredButton) {
                     stateColor =
                         entity.id == pressedButton_ &&

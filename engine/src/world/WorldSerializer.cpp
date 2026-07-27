@@ -315,6 +315,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedButton["normalColor"] = EncodeFloat4(button.normalColor);
             encodedButton["hoveredColor"] = EncodeFloat4(button.hoveredColor);
             encodedButton["pressedColor"] = EncodeFloat4(button.pressedColor);
+            encodedButton["disabledColor"] = EncodeFloat4(button.disabledColor);
             encoded["components"]["Button"] = std::move(encodedButton);
         }
         if (!entity.scripts.empty()) {
@@ -929,6 +930,12 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 SetError(error, "Scene Button component is invalid.");
                 return false;
             }
+            if (encodedButton.contains("disabledColor") &&
+                !DecodeFloat4(encodedButton["disabledColor"],
+                              component.disabledColor)) {
+                SetError(error, "Scene Button component is invalid.");
+                return false;
+            }
             component.enabled = encodedButton["enabled"].get<bool>();
             component.interactable =
                 encodedButton["interactable"].get<bool>();
@@ -940,7 +947,8 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             };
             if (!validColor(component.normalColor) ||
                 !validColor(component.hoveredColor) ||
-                !validColor(component.pressedColor)) {
+                !validColor(component.pressedColor) ||
+                !validColor(component.disabledColor)) {
                 SetError(error, "Scene Button settings are invalid.");
                 return false;
             }

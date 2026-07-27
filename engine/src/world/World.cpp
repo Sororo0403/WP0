@@ -676,7 +676,8 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             };
             if (!validColor(button.normalColor) ||
                 !validColor(button.hoveredColor) ||
-                !validColor(button.pressedColor)) {
+                !validColor(button.pressedColor) ||
+                !validColor(button.disabledColor)) {
                 SetError(error, "Scene contains an invalid Button component.");
                 return false;
             }

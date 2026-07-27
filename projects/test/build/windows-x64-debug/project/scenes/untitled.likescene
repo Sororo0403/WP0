@@ -297,12 +297,12 @@
         "MaterialOverride": {
           "alphaCutoff": 0.5,
           "baseColor": [
-            0.0,
-            0.0,
-            0.0,
+            0.6563706398010254,
+            0.4637676775455475,
+            0.4637676775455475,
             1.0
           ],
-          "baseColorTexture": "asset://LockPBR/Rock051_1K-JPG_Color.jpg",
+          "baseColorTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_Color.jpg",
           "blendMode": "Opaque",
           "cullMode": "Back",
           "depthWrite": true,
@@ -310,7 +310,7 @@
           "metallic": 1.0,
           "metallicTexture": "asset://LockPBR/Rock051_1K-JPG_Metalness.jpg",
           "normalStrength": 4.0,
-          "normalTexture": "asset://LockPBR/Rock051_1K-JPG_NormalDX.jpg",
+          "normalTexture": "asset://PBR/ScatteredLeaves009_1K-JPG_NormalDX.jpg",
           "pbrTexturePacking": "Separate",
           "roughness": 1.0,
           "roughnessTexture": "asset://LockPBR/Rock051_1K-JPG_Roughness.jpg"
@@ -532,6 +532,27 @@
     {
       "active": true,
       "components": {
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "",
+          "blendMode": "Cutout",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 1.0,
+          "normalTexture": "",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": ""
+        },
         "Text": {
           "alignment": "Center",
           "anchor": "TopCenter",
@@ -544,8 +565,8 @@
           "enabled": true,
           "fontSize": 179.5,
           "position": [
-            -152.29086303710938,
-            210.21817016601563
+            -19.636335372924805,
+            247.45449829101563
           ],
           "text": "Hello LikeEngine!"
         },
@@ -700,8 +721,8 @@
           ],
           "enabled": true,
           "position": [
-            -14.132034301757813,
-            63.500186920166016
+            97.57707214355469,
+            286.9183349609375
           ],
           "size": [
             630.1510009765625,
