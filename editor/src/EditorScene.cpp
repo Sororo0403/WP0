@@ -114,7 +114,15 @@ const CanvasComponent* FindEnabledCanvas(const World& world,
 
 void CalculateCanvasLayout(const CanvasComponent& canvas, float width,
                            float height, float offsetX, float offsetY,
-                           float& scale, DirectX::XMFLOAT2& origin) {
+                           float& scale, DirectX::XMFLOAT2& origin,
+                           DirectX::XMFLOAT2& layoutResolution) {
+    if (canvas.scaleMode == CanvasScaleMode::ConstantPixelSize) {
+        scale = 1.0f;
+        origin = {offsetX, offsetY};
+        layoutResolution = {width, height};
+        return;
+    }
+    layoutResolution = canvas.referenceResolution;
     const float widthScale = width / canvas.referenceResolution.x;
     const float heightScale = height / canvas.referenceResolution.y;
     switch (canvas.screenMatchMode) {
@@ -5927,71 +5935,106 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Toggle Canvas", std::move(before),
                                     selectionBefore);
             }
-            float resolution[2]{
-                canvas.referenceResolution.x,
-                canvas.referenceResolution.y,
-            };
-            if (ImGui::DragFloat2("Reference Resolution##Canvas", resolution,
-                                  1.0f, 1.0f, 16384.0f, "%.0f",
-                                  ImGuiSliderFlags_AlwaysClamp)) {
-                canvas.referenceResolution = {resolution[0], resolution[1]};
-                RefreshDirty();
-                status_ = "Modified Canvas reference resolution.";
-            }
-            if (ImGui::IsItemActivated()) {
-                BeginHistoryEdit("Modify Canvas");
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                CommitHistoryEdit();
-            }
-            const char* screenMatchMode =
-                canvas.screenMatchMode ==
-                        CanvasScreenMatchMode::MatchWidthOrHeight
-                    ? "Match Width Or Height"
-                    : canvas.screenMatchMode ==
-                              CanvasScreenMatchMode::Shrink
-                          ? "Shrink"
-                          : "Expand";
-            if (ImGui::BeginCombo("Screen Match Mode##Canvas",
-                                  screenMatchMode)) {
-                const auto selectScreenMatchMode =
-                    [&](CanvasScreenMatchMode value,
-                        const char* label) {
-                        if (ImGui::Selectable(
-                                label, canvas.screenMatchMode == value)) {
+            const char* scaleMode =
+                canvas.scaleMode == CanvasScaleMode::ConstantPixelSize
+                    ? "Constant Pixel Size"
+                    : "Scale With Screen Size";
+            if (ImGui::BeginCombo("UI Scale Mode##Canvas", scaleMode)) {
+                const auto selectScaleMode =
+                    [&](CanvasScaleMode value, const char* label) {
+                        if (ImGui::Selectable(label,
+                                              canvas.scaleMode == value)) {
                             const std::string modeBefore =
                                 WorldSerializer::Serialize(world_);
-                            canvas.screenMatchMode = value;
+                            canvas.scaleMode = value;
                             RecordImmediateEdit(
-                                "Change Canvas Screen Match Mode",
+                                "Change Canvas Scale Mode",
                                 std::move(modeBefore), selectionBefore);
-                            status_ = "Changed Canvas screen match mode.";
+                            status_ = "Changed Canvas scale mode.";
                         }
                     };
-                selectScreenMatchMode(
-                    CanvasScreenMatchMode::MatchWidthOrHeight,
-                    "Match Width Or Height");
-                selectScreenMatchMode(CanvasScreenMatchMode::Expand,
-                                      "Expand");
-                selectScreenMatchMode(CanvasScreenMatchMode::Shrink,
-                                      "Shrink");
+                selectScaleMode(CanvasScaleMode::ConstantPixelSize,
+                                "Constant Pixel Size");
+                selectScaleMode(CanvasScaleMode::ScaleWithScreenSize,
+                                "Scale With Screen Size");
                 ImGui::EndCombo();
             }
-            if (canvas.screenMatchMode ==
-                CanvasScreenMatchMode::MatchWidthOrHeight) {
-                if (ImGui::SliderFloat("Match##Canvas",
-                                       &canvas.matchWidthOrHeight, 0.0f,
-                                       1.0f, "%.2f")) {
+            if (canvas.scaleMode ==
+                CanvasScaleMode::ScaleWithScreenSize) {
+                float resolution[2]{
+                    canvas.referenceResolution.x,
+                    canvas.referenceResolution.y,
+                };
+                if (ImGui::DragFloat2(
+                        "Reference Resolution##Canvas", resolution, 1.0f,
+                        1.0f, 16384.0f, "%.0f",
+                        ImGuiSliderFlags_AlwaysClamp)) {
+                    canvas.referenceResolution = {resolution[0],
+                                                  resolution[1]};
                     RefreshDirty();
-                    status_ = "Modified Canvas screen match value.";
+                    status_ = "Modified Canvas reference resolution.";
                 }
                 if (ImGui::IsItemActivated()) {
-                    BeginHistoryEdit("Modify Canvas Screen Match");
+                    BeginHistoryEdit("Modify Canvas");
                 }
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                     CommitHistoryEdit();
                 }
-                ImGui::TextDisabled("0 = Width, 1 = Height");
+                const char* screenMatchMode =
+                    canvas.screenMatchMode ==
+                            CanvasScreenMatchMode::MatchWidthOrHeight
+                        ? "Match Width Or Height"
+                        : canvas.screenMatchMode ==
+                                  CanvasScreenMatchMode::Shrink
+                              ? "Shrink"
+                              : "Expand";
+                if (ImGui::BeginCombo("Screen Match Mode##Canvas",
+                                      screenMatchMode)) {
+                    const auto selectScreenMatchMode =
+                        [&](CanvasScreenMatchMode value,
+                            const char* label) {
+                            if (ImGui::Selectable(
+                                    label,
+                                    canvas.screenMatchMode == value)) {
+                                const std::string modeBefore =
+                                    WorldSerializer::Serialize(world_);
+                                canvas.screenMatchMode = value;
+                                RecordImmediateEdit(
+                                    "Change Canvas Screen Match Mode",
+                                    std::move(modeBefore),
+                                    selectionBefore);
+                                status_ =
+                                    "Changed Canvas screen match mode.";
+                            }
+                        };
+                    selectScreenMatchMode(
+                        CanvasScreenMatchMode::MatchWidthOrHeight,
+                        "Match Width Or Height");
+                    selectScreenMatchMode(
+                        CanvasScreenMatchMode::Expand, "Expand");
+                    selectScreenMatchMode(
+                        CanvasScreenMatchMode::Shrink, "Shrink");
+                    ImGui::EndCombo();
+                }
+                if (canvas.screenMatchMode ==
+                    CanvasScreenMatchMode::MatchWidthOrHeight) {
+                    if (ImGui::SliderFloat(
+                            "Match##Canvas",
+                            &canvas.matchWidthOrHeight, 0.0f, 1.0f,
+                            "%.2f")) {
+                        RefreshDirty();
+                        status_ =
+                            "Modified Canvas screen match value.";
+                    }
+                    if (ImGui::IsItemActivated()) {
+                        BeginHistoryEdit(
+                            "Modify Canvas Screen Match");
+                    }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        CommitHistoryEdit();
+                    }
+                    ImGui::TextDisabled("0 = Width, 1 = Height");
+                }
             }
             if (ImGui::DragInt("Sorting Order##Canvas",
                                &canvas.sortingOrder, 1.0f, -1000000, 1000000,
@@ -9010,10 +9053,10 @@ bool EditorScene::DrawGameUi(int width, int height,
             if (canvas == nullptr) {
                 return false;
             }
-            referenceResolution = canvas->referenceResolution;
             CalculateCanvasLayout(
                 *canvas, static_cast<float>(width),
-                static_cast<float>(height), 0.0f, 0.0f, scale, origin);
+                static_cast<float>(height), 0.0f, 0.0f, scale, origin,
+                referenceResolution);
             return true;
     };
     const std::vector<OrderedUiEntity> orderedUiEntities =
@@ -9428,11 +9471,11 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
             if (canvas == nullptr) {
                 return false;
             }
-            referenceResolution = canvas->referenceResolution;
             const float width = imageMax.x - imageMin.x;
             const float height = imageMax.y - imageMin.y;
             CalculateCanvasLayout(*canvas, width, height, imageMin.x,
-                                  imageMin.y, scale, origin);
+                                  imageMin.y, scale, origin,
+                                  referenceResolution);
             return true;
         };
 

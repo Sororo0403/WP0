@@ -164,9 +164,15 @@ enum class CanvasScreenMatchMode : uint8_t {
     Shrink,
 };
 
+enum class CanvasScaleMode : uint8_t {
+    ConstantPixelSize,
+    ScaleWithScreenSize,
+};
+
 struct CanvasComponent {
     bool enabled = true;
     DirectX::XMFLOAT2 referenceResolution{1920.0f, 1080.0f};
+    CanvasScaleMode scaleMode = CanvasScaleMode::ScaleWithScreenSize;
     CanvasScreenMatchMode screenMatchMode = CanvasScreenMatchMode::Expand;
     float matchWidthOrHeight = 0.5f;
     int32_t sortingOrder = 0;

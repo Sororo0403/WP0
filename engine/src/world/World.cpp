@@ -623,6 +623,8 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 canvas.referenceResolution.y < 1.0f ||
                 canvas.referenceResolution.x > 16384.0f ||
                 canvas.referenceResolution.y > 16384.0f ||
+                canvas.scaleMode < CanvasScaleMode::ConstantPixelSize ||
+                canvas.scaleMode > CanvasScaleMode::ScaleWithScreenSize ||
                 canvas.screenMatchMode <
                     CanvasScreenMatchMode::MatchWidthOrHeight ||
                 canvas.screenMatchMode > CanvasScreenMatchMode::Shrink ||

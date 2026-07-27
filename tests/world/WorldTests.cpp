@@ -1093,6 +1093,8 @@ int main() {
         rootEntity->audioListener = AudioListenerComponent{};
         rootEntity->canvas = CanvasComponent{};
         rootEntity->canvas->referenceResolution = {1280.0f, 720.0f};
+        rootEntity->canvas->scaleMode =
+            CanvasScaleMode::ConstantPixelSize;
         rootEntity->canvas->screenMatchMode =
             CanvasScreenMatchMode::MatchWidthOrHeight;
         rootEntity->canvas->matchWidthOrHeight = 0.75f;
@@ -1246,6 +1248,7 @@ int main() {
         }
         if (entity["components"].contains("Canvas")) {
             entity["components"]["Canvas"].erase("sortingOrder");
+            entity["components"]["Canvas"].erase("scaleMode");
             entity["components"]["Canvas"].erase("screenMatchMode");
             entity["components"]["Canvas"].erase("matchWidthOrHeight");
         }
@@ -1275,6 +1278,8 @@ int main() {
                    !legacyButtonWorld.Find(child)->image->preserveAspect &&
                    legacyButtonWorld.Find(root)->canvas &&
                    legacyButtonWorld.Find(root)->canvas->sortingOrder == 0 &&
+                   legacyButtonWorld.Find(root)->canvas->scaleMode ==
+                       CanvasScaleMode::ScaleWithScreenSize &&
                    legacyButtonWorld.Find(root)->canvas->screenMatchMode ==
                        CanvasScreenMatchMode::Expand &&
                    legacyButtonWorld.Find(root)
@@ -1321,6 +1326,20 @@ int main() {
                    invalidCanvasMatchModeWorld, &error),
                "An invalid Canvas screen match mode was accepted.")) {
         return 261;
+    }
+    nlohmann::json invalidCanvasScaleModeScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidCanvasScaleModeScene["entities"]) {
+        if (entity["components"].contains("Canvas")) {
+            entity["components"]["Canvas"]["scaleMode"] = "WorldSpace";
+        }
+    }
+    World invalidCanvasScaleModeWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidCanvasScaleModeScene.dump(),
+                   invalidCanvasScaleModeWorld, &error),
+               "An invalid Canvas scale mode was accepted.")) {
+        return 262;
     }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
@@ -1584,6 +1603,8 @@ int main() {
                    restored.Find(root)->canvas &&
                    restored.Find(root)->canvas->referenceResolution.x == 1280.0f &&
                    restored.Find(root)->canvas->referenceResolution.y == 720.0f &&
+                   restored.Find(root)->canvas->scaleMode ==
+                       CanvasScaleMode::ConstantPixelSize &&
                    restored.Find(root)->canvas->screenMatchMode ==
                        CanvasScreenMatchMode::MatchWidthOrHeight &&
                    restored.Find(root)->canvas->matchWidthOrHeight == 0.75f &&
@@ -1753,6 +1774,8 @@ int main() {
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&
                    duplicateRootEntity->canvas->referenceResolution.x == 1280.0f &&
+                   duplicateRootEntity->canvas->scaleMode ==
+                       CanvasScaleMode::ConstantPixelSize &&
                    duplicateRootEntity->canvas->screenMatchMode ==
                        CanvasScreenMatchMode::MatchWidthOrHeight &&
                    duplicateRootEntity->canvas->matchWidthOrHeight == 0.75f &&

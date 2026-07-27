@@ -230,6 +230,27 @@ bool DecodeCanvasScreenMatchMode(const Json& value,
     return true;
 }
 
+const char* EncodeCanvasScaleMode(CanvasScaleMode mode) {
+    return mode == CanvasScaleMode::ConstantPixelSize
+               ? "ConstantPixelSize"
+               : "ScaleWithScreenSize";
+}
+
+bool DecodeCanvasScaleMode(const Json& value, CanvasScaleMode& mode) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "ConstantPixelSize") {
+        mode = CanvasScaleMode::ConstantPixelSize;
+    } else if (encoded == "ScaleWithScreenSize") {
+        mode = CanvasScaleMode::ScaleWithScreenSize;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SetError(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -385,6 +406,8 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedCanvas["enabled"] = entity.canvas->enabled;
             encodedCanvas["referenceResolution"] =
                 EncodeFloat2(entity.canvas->referenceResolution);
+            encodedCanvas["scaleMode"] =
+                EncodeCanvasScaleMode(entity.canvas->scaleMode);
             encodedCanvas["screenMatchMode"] =
                 EncodeCanvasScreenMatchMode(entity.canvas->screenMatchMode);
             encodedCanvas["matchWidthOrHeight"] =
@@ -954,6 +977,12 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             component.enabled = canvas["enabled"].get<bool>();
+            if (canvas.contains("scaleMode") &&
+                !DecodeCanvasScaleMode(canvas["scaleMode"],
+                                       component.scaleMode)) {
+                SetError(error, "Scene Canvas scale mode is invalid.");
+                return false;
+            }
             if (canvas.contains("screenMatchMode") &&
                 !DecodeCanvasScreenMatchMode(canvas["screenMatchMode"],
                                              component.screenMatchMode)) {

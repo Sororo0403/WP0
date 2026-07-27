@@ -501,11 +501,13 @@
       "components": {
         "Canvas": {
           "enabled": true,
+          "matchWidthOrHeight": 1.0,
           "referenceResolution": [
-            1920.0,
+            2211.0,
             1080.0
           ],
-          "sortingOrder": 0
+          "screenMatchMode": "Shrink",
+          "sortingOrder": -148
         },
         "Transform": {
           "position": [
@@ -796,10 +798,12 @@
       "components": {
         "Canvas": {
           "enabled": true,
+          "matchWidthOrHeight": 0.5,
           "referenceResolution": [
             1920.0,
             1080.0
           ],
+          "screenMatchMode": "Expand",
           "sortingOrder": -46
         },
         "Transform": {
