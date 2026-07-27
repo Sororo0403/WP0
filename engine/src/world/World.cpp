@@ -666,7 +666,13 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 image.color.z > 1.0f || image.color.w < 0.0f ||
                 image.color.w > 1.0f ||
                 image.anchor < UiAnchor::TopLeft ||
-                image.anchor > UiAnchor::BottomRight) {
+                image.anchor > UiAnchor::BottomRight ||
+                image.type < ImageType::Simple ||
+                image.type > ImageType::Filled ||
+                image.fillMethod < ImageFillMethod::Horizontal ||
+                image.fillMethod > ImageFillMethod::Vertical ||
+                !std::isfinite(image.fillAmount) ||
+                image.fillAmount < 0.0f || image.fillAmount > 1.0f) {
                 SetError(error, "Scene contains an invalid Image component.");
                 return false;
             }

@@ -6017,6 +6017,84 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Toggle Image", std::move(before),
                                     selectionBefore);
             }
+            const char* imageType =
+                image.type == ImageType::Filled ? "Filled" : "Simple";
+            if (ImGui::BeginCombo("Type##Image", imageType)) {
+                if (ImGui::Selectable("Simple",
+                                      image.type == ImageType::Simple)) {
+                    const std::string typeBefore =
+                        WorldSerializer::Serialize(world_);
+                    image.type = ImageType::Simple;
+                    RecordImmediateEdit("Modify Image Type", typeBefore,
+                                        selectionBefore);
+                    status_ = "Modified Image type.";
+                }
+                if (ImGui::Selectable("Filled",
+                                      image.type == ImageType::Filled)) {
+                    const std::string typeBefore =
+                        WorldSerializer::Serialize(world_);
+                    image.type = ImageType::Filled;
+                    RecordImmediateEdit("Modify Image Type", typeBefore,
+                                        selectionBefore);
+                    status_ = "Modified Image type.";
+                }
+                ImGui::EndCombo();
+            }
+            if (image.type == ImageType::Filled) {
+                const char* fillMethod =
+                    image.fillMethod == ImageFillMethod::Vertical
+                        ? "Vertical"
+                        : "Horizontal";
+                if (ImGui::BeginCombo("Fill Method##Image", fillMethod)) {
+                    if (ImGui::Selectable(
+                            "Horizontal",
+                            image.fillMethod ==
+                                ImageFillMethod::Horizontal)) {
+                        const std::string methodBefore =
+                            WorldSerializer::Serialize(world_);
+                        image.fillMethod = ImageFillMethod::Horizontal;
+                        RecordImmediateEdit("Modify Image Fill Method",
+                                            methodBefore, selectionBefore);
+                        status_ = "Modified Image fill method.";
+                    }
+                    if (ImGui::Selectable(
+                            "Vertical",
+                            image.fillMethod == ImageFillMethod::Vertical)) {
+                        const std::string methodBefore =
+                            WorldSerializer::Serialize(world_);
+                        image.fillMethod = ImageFillMethod::Vertical;
+                        RecordImmediateEdit("Modify Image Fill Method",
+                                            methodBefore, selectionBefore);
+                        status_ = "Modified Image fill method.";
+                    }
+                    ImGui::EndCombo();
+                }
+                if (ImGui::DragFloat("Fill Amount##Image",
+                                     &image.fillAmount, 0.01f, 0.0f, 1.0f,
+                                     "%.2f",
+                                     ImGuiSliderFlags_AlwaysClamp)) {
+                    RefreshDirty();
+                    status_ = "Modified Image fill amount.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit("Modify Image Fill Amount");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+                const std::string reverseBefore =
+                    WorldSerializer::Serialize(world_);
+                if (ImGui::Checkbox("Reverse Fill##Image",
+                                    &image.fillReverse)) {
+                    RecordImmediateEdit("Toggle Image Reverse Fill",
+                                        reverseBefore, selectionBefore);
+                    status_ = "Modified Image fill direction.";
+                }
+                ImGui::TextDisabled(
+                    image.fillMethod == ImageFillMethod::Horizontal
+                        ? "Fills left-to-right; Reverse fills right-to-left."
+                        : "Fills bottom-to-top; Reverse fills top-to-bottom.");
+            }
             const UiAnchorChoice& imageAnchor =
                 GetUiAnchorChoice(image.anchor);
             if (ImGui::BeginCombo("Anchor##Image", imageAnchor.label)) {
@@ -8710,6 +8788,33 @@ bool EditorScene::DrawGameUi(int width, int height,
                 image.size.x * scale,
                 image.size.y * scale,
             };
+            if (image.type == ImageType::Filled) {
+                const float fillAmount =
+                    std::clamp(image.fillAmount, 0.0f, 1.0f);
+                if (image.fillMethod == ImageFillMethod::Horizontal) {
+                    const float fullWidth = sprite.size.x;
+                    const float fullUvWidth = sprite.uvSize.x;
+                    sprite.size.x = fullWidth * fillAmount;
+                    sprite.uvSize.x = fullUvWidth * fillAmount;
+                    if (image.fillReverse) {
+                        sprite.position.x +=
+                            fullWidth * (1.0f - fillAmount);
+                        sprite.uvLeftTop.x +=
+                            fullUvWidth * (1.0f - fillAmount);
+                    }
+                } else {
+                    const float fullHeight = sprite.size.y;
+                    const float fullUvHeight = sprite.uvSize.y;
+                    sprite.size.y = fullHeight * fillAmount;
+                    sprite.uvSize.y = fullUvHeight * fillAmount;
+                    if (!image.fillReverse) {
+                        sprite.position.y +=
+                            fullHeight * (1.0f - fillAmount);
+                        sprite.uvLeftTop.y +=
+                            fullUvHeight * (1.0f - fillAmount);
+                    }
+                }
+            }
             DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
             if (entity.button && entity.button->enabled) {
                 const ButtonComponent& button = *entity.button;

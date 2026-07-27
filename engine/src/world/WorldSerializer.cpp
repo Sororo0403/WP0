@@ -141,6 +141,45 @@ DirectX::XMFLOAT2 UiAnchorFactor(UiAnchor anchor) {
     return {0.0f, 0.0f};
 }
 
+const char* EncodeImageType(ImageType type) {
+    return type == ImageType::Filled ? "Filled" : "Simple";
+}
+
+bool DecodeImageType(const Json& value, ImageType& type) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "Simple") {
+        type = ImageType::Simple;
+    } else if (encoded == "Filled") {
+        type = ImageType::Filled;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+const char* EncodeImageFillMethod(ImageFillMethod method) {
+    return method == ImageFillMethod::Vertical ? "Vertical"
+                                               : "Horizontal";
+}
+
+bool DecodeImageFillMethod(const Json& value, ImageFillMethod& method) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "Horizontal") {
+        method = ImageFillMethod::Horizontal;
+    } else if (encoded == "Vertical") {
+        method = ImageFillMethod::Vertical;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SetError(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -331,6 +370,11 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedImage["color"] = EncodeFloat4(image.color);
             encodedImage["anchor"] = EncodeUiAnchor(image.anchor);
             encodedImage["pivot"] = EncodeFloat2(image.pivot);
+            encodedImage["type"] = EncodeImageType(image.type);
+            encodedImage["fillMethod"] =
+                EncodeImageFillMethod(image.fillMethod);
+            encodedImage["fillAmount"] = image.fillAmount;
+            encodedImage["fillReverse"] = image.fillReverse;
             encoded["components"]["Image"] = std::move(encodedImage);
         }
         if (entity.button) {
@@ -954,6 +998,33 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             } else {
                 component.pivot = UiAnchorFactor(component.anchor);
             }
+            if (encodedImage.contains("type") &&
+                !DecodeImageType(encodedImage["type"], component.type)) {
+                SetError(error, "Scene Image type is invalid.");
+                return false;
+            }
+            if (encodedImage.contains("fillMethod") &&
+                !DecodeImageFillMethod(encodedImage["fillMethod"],
+                                       component.fillMethod)) {
+                SetError(error, "Scene Image fill method is invalid.");
+                return false;
+            }
+            if (encodedImage.contains("fillAmount")) {
+                if (!encodedImage["fillAmount"].is_number()) {
+                    SetError(error, "Scene Image fill amount is invalid.");
+                    return false;
+                }
+                component.fillAmount =
+                    encodedImage["fillAmount"].get<float>();
+            }
+            if (encodedImage.contains("fillReverse")) {
+                if (!encodedImage["fillReverse"].is_boolean()) {
+                    SetError(error, "Scene Image fill direction is invalid.");
+                    return false;
+                }
+                component.fillReverse =
+                    encodedImage["fillReverse"].get<bool>();
+            }
             if (component.texturePath.size() > 1024u ||
                 component.texturePath.find('\0') != std::string::npos ||
                 component.size.x < 0.0f || component.size.y < 0.0f ||
@@ -963,6 +1034,9 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 std::abs(component.position.y) > 1000000.0f ||
                 component.pivot.x < 0.0f || component.pivot.x > 1.0f ||
                 component.pivot.y < 0.0f || component.pivot.y > 1.0f ||
+                !std::isfinite(component.fillAmount) ||
+                component.fillAmount < 0.0f ||
+                component.fillAmount > 1.0f ||
                 component.color.x < 0.0f || component.color.x > 1.0f ||
                 component.color.y < 0.0f || component.color.y > 1.0f ||
                 component.color.z < 0.0f || component.color.z > 1.0f ||

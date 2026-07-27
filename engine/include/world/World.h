@@ -182,6 +182,16 @@ enum class UiAnchor : uint8_t {
     BottomRight = 8,
 };
 
+enum class ImageType : uint8_t {
+    Simple = 0,
+    Filled = 1,
+};
+
+enum class ImageFillMethod : uint8_t {
+    Horizontal = 0,
+    Vertical = 1,
+};
+
 struct TextComponent {
     bool enabled = true;
     std::string text = "Text";
@@ -200,6 +210,10 @@ struct ImageComponent {
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
     UiAnchor anchor = UiAnchor::TopLeft;
     DirectX::XMFLOAT2 pivot{0.0f, 0.0f};
+    ImageType type = ImageType::Simple;
+    ImageFillMethod fillMethod = ImageFillMethod::Horizontal;
+    float fillAmount = 1.0f;
+    bool fillReverse = false;
 };
 
 struct ButtonComponent {

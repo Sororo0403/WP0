@@ -1041,6 +1041,10 @@ int main() {
     childEntity->image->color = {0.1f, 0.8f, 0.25f, 0.75f};
     childEntity->image->anchor = UiAnchor::BottomRight;
     childEntity->image->pivot = {0.25f, 0.75f};
+    childEntity->image->type = ImageType::Filled;
+    childEntity->image->fillMethod = ImageFillMethod::Vertical;
+    childEntity->image->fillAmount = 0.65f;
+    childEntity->image->fillReverse = true;
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
@@ -1190,6 +1194,10 @@ int main() {
         }
         if (entity["components"].contains("Image")) {
             entity["components"]["Image"].erase("pivot");
+            entity["components"]["Image"].erase("type");
+            entity["components"]["Image"].erase("fillMethod");
+            entity["components"]["Image"].erase("fillAmount");
+            entity["components"]["Image"].erase("fillReverse");
         }
         if (entity["components"].contains("Canvas")) {
             entity["components"]["Canvas"].erase("sortingOrder");
@@ -1205,6 +1213,10 @@ int main() {
                    legacyButtonWorld.Find(child)->image &&
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
+                   legacyButtonWorld.Find(child)->image->type ==
+                       ImageType::Simple &&
+                   legacyButtonWorld.Find(child)->image->fillAmount == 1.0f &&
+                   !legacyButtonWorld.Find(child)->image->fillReverse &&
                    legacyButtonWorld.Find(root)->canvas &&
                    legacyButtonWorld.Find(root)->canvas->sortingOrder == 0,
                "Legacy Canvas/Button/Image defaults were not restored.")) {
@@ -1221,6 +1233,18 @@ int main() {
                                              invalidCanvasWorld, &error),
                "An out-of-range Canvas sorting order was accepted.")) {
         return 251;
+    }
+    nlohmann::json invalidImageScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidImageScene["entities"]) {
+        if (entity["components"].contains("Image")) {
+            entity["components"]["Image"]["fillAmount"] = 1.01f;
+        }
+    }
+    World invalidImageWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidImageScene.dump(),
+                                             invalidImageWorld, &error),
+               "An out-of-range Image fill amount was accepted.")) {
+        return 252;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1367,6 +1391,11 @@ int main() {
                    restoredChild->image->anchor == UiAnchor::BottomRight &&
                    restoredChild->image->pivot.x == 0.25f &&
                    restoredChild->image->pivot.y == 0.75f &&
+                   restoredChild->image->type == ImageType::Filled &&
+                   restoredChild->image->fillMethod ==
+                       ImageFillMethod::Vertical &&
+                   restoredChild->image->fillAmount == 0.65f &&
+                   restoredChild->image->fillReverse &&
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
                    restoredChild->button->normalColor.x == 0.9f &&
@@ -1521,6 +1550,11 @@ int main() {
                    duplicateChild->image->anchor == UiAnchor::BottomRight &&
                    duplicateChild->image->pivot.x == 0.25f &&
                    duplicateChild->image->pivot.y == 0.75f &&
+                   duplicateChild->image->type == ImageType::Filled &&
+                   duplicateChild->image->fillMethod ==
+                       ImageFillMethod::Vertical &&
+                   duplicateChild->image->fillAmount == 0.65f &&
+                   duplicateChild->image->fillReverse &&
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
