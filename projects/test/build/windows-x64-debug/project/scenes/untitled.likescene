@@ -570,7 +570,8 @@
             -17.309062957763672,
             247.45449829101563
           ],
-          "text": "Hello LikeEngine!\naaafewfafewafwae"
+          "text": "Hello LikeEngine!\naaafewfafewafwae",
+          "wrapWidth": 997.0
         },
         "Transform": {
           "position": [
@@ -859,7 +860,8 @@
             -17.309062957763672,
             247.45449829101563
           ],
-          "text": "Hello LikeEngine!"
+          "text": "Hello LikeEngine!",
+          "wrapWidth": 0.0
         },
         "Transform": {
           "position": [

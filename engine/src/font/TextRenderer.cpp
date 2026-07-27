@@ -185,6 +185,10 @@ float ResolveLineSpacing(float lineSpacing) {
     return std::isfinite(lineSpacing) ? lineSpacing : 0.0f;
 }
 
+float ResolveWrapWidth(float wrapWidth) {
+    return std::isfinite(wrapWidth) && wrapWidth > 0.0f ? wrapWidth : 0.0f;
+}
+
 FontHandle ResolveStyleFont(const FontManager& fontManager, const TextStyle& style) {
     return style.font.IsValid() ? style.font : fontManager.GetDefaultFont();
 }
@@ -205,6 +209,7 @@ TextLayoutMetrics MeasureCodepoints(FontManager& fontManager,
     fontManager.PrepareGlyphs(font, style.pixelSize, codepoints);
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
+    const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
 
     float currentWidth = 0.0f;
     float maxWidth = 0.0f;
@@ -222,6 +227,12 @@ TextLayoutMetrics MeasureCodepoints(FontManager& fontManager,
 
         const FontGlyph* glyph = fontManager.GetGlyph(font, style.pixelSize, codepoint);
         if (glyph != nullptr) {
+            if (wrapWidth > 0.0f && currentWidth > 0.0f &&
+                currentWidth + glyph->advanceX > wrapWidth) {
+                maxWidth = (std::max)(maxWidth, currentWidth);
+                currentWidth = 0.0f;
+                ++lineCount;
+            }
             currentWidth += glyph->advanceX;
         }
     }
@@ -251,9 +262,11 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
     fontManager.PrepareGlyphs(font, style.pixelSize, codepoints);
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
+    const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
 
     float cursorX = position.x;
     float baselineY = position.y + fontMetrics.ascent;
+    float currentWidth = 0.0f;
     for (char32_t codepoint : codepoints) {
         if (codepoint == U'\r') {
             continue;
@@ -261,12 +274,20 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
         if (codepoint == U'\n') {
             cursorX = position.x;
             baselineY += lineAdvance;
+            currentWidth = 0.0f;
             continue;
         }
 
         const FontGlyph* glyph = fontManager.GetGlyph(font, style.pixelSize, codepoint);
         if (glyph == nullptr) {
             continue;
+        }
+
+        if (wrapWidth > 0.0f && currentWidth > 0.0f &&
+            currentWidth + glyph->advanceX > wrapWidth) {
+            cursorX = position.x;
+            baselineY += lineAdvance;
+            currentWidth = 0.0f;
         }
 
         if (glyph->visible && IsValidResourceId(glyph->textureId)) {
@@ -283,6 +304,7 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
         }
 
         cursorX += glyph->advanceX;
+        currentWidth += glyph->advanceX;
     }
 }
 

@@ -1032,6 +1032,7 @@ int main() {
     childEntity->text->position = {48.0f, 32.0f};
     childEntity->text->fontSize = 40.0f;
     childEntity->text->lineSpacing = 12.0f;
+    childEntity->text->wrapWidth = 360.0f;
     childEntity->text->color = {1.0f, 0.25f, 0.2f, 0.9f};
     childEntity->text->alignment = TextAlignment::Center;
     childEntity->text->anchor = UiAnchor::TopCenter;
@@ -1196,6 +1197,7 @@ int main() {
         }
         if (entity["components"].contains("Text")) {
             entity["components"]["Text"].erase("lineSpacing");
+            entity["components"]["Text"].erase("wrapWidth");
         }
         if (entity["components"].contains("Image")) {
             entity["components"]["Image"].erase("pivot");
@@ -1221,6 +1223,7 @@ int main() {
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
                    legacyButtonWorld.Find(child)->text &&
                    legacyButtonWorld.Find(child)->text->lineSpacing == 0.0f &&
+                   legacyButtonWorld.Find(child)->text->wrapWidth == 0.0f &&
                    legacyButtonWorld.Find(child)->image->type ==
                        ImageType::Simple &&
                    legacyButtonWorld.Find(child)->image->fillAmount == 1.0f &&
@@ -1266,6 +1269,18 @@ int main() {
                                              invalidTextWorld, &error),
                "An out-of-range Text line spacing was accepted.")) {
         return 253;
+    }
+    nlohmann::json invalidTextWrapScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidTextWrapScene["entities"]) {
+        if (entity["components"].contains("Text")) {
+            entity["components"]["Text"]["wrapWidth"] = 16384.1f;
+        }
+    }
+    World invalidTextWrapWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidTextWrapScene.dump(),
+                                             invalidTextWrapWorld, &error),
+               "An out-of-range Text wrap width was accepted.")) {
+        return 254;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1397,6 +1412,7 @@ int main() {
                    restoredChild->text->position.y == 32.0f &&
                    restoredChild->text->fontSize == 40.0f &&
                    restoredChild->text->lineSpacing == 12.0f &&
+                   restoredChild->text->wrapWidth == 360.0f &&
                    restoredChild->text->color.y == 0.25f &&
                    restoredChild->text->color.w == 0.9f &&
                    restoredChild->text->alignment == TextAlignment::Center &&
@@ -1565,6 +1581,7 @@ int main() {
                    duplicateChild->text &&
                    duplicateChild->text->text == "HP: 100" &&
                    duplicateChild->text->lineSpacing == 12.0f &&
+                   duplicateChild->text->wrapWidth == 360.0f &&
                    duplicateChild->text->alignment == TextAlignment::Center &&
                    duplicateChild->text->anchor == UiAnchor::TopCenter &&
                    duplicateChild->image &&

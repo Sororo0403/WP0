@@ -17,6 +17,7 @@ struct TextStyle {
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
     float zOrder = 0.0f;
     float lineSpacing = 0.0f;
+    float wrapWidth = 0.0f;
 };
 
 struct TextLayoutMetrics {

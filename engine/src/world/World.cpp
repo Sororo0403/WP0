@@ -638,6 +638,8 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 text.fontSize > 512.0f ||
                 !std::isfinite(text.lineSpacing) ||
                 text.lineSpacing < 0.0f || text.lineSpacing > 512.0f ||
+                !std::isfinite(text.wrapWidth) ||
+                text.wrapWidth < 0.0f || text.wrapWidth > 16384.0f ||
                 !IsFinite(text.color) ||
                 text.color.x < 0.0f || text.color.x > 1.0f ||
                 text.color.y < 0.0f || text.color.y > 1.0f ||

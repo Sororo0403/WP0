@@ -5966,6 +5966,20 @@ void EditorScene::DrawInspectorPanel() {
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
             }
+            if (ImGui::DragFloat("Wrap Width##Text",
+                                 &text.wrapWidth, 1.0f, 0.0f, 16384.0f,
+                                 "%.1f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Text wrap width.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text Wrap Width");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            ImGui::TextDisabled("0 disables automatic wrapping.");
             if (ImGui::ColorEdit4("Color##Text", &text.color.x)) {
                 RefreshDirty();
                 status_ = "Modified Text color.";
@@ -8920,6 +8934,7 @@ bool EditorScene::DrawGameUi(int width, int height,
         TextStyle style{};
         style.pixelSize = text.fontSize * scale;
         style.lineSpacing = text.lineSpacing * scale;
+        style.wrapWidth = text.wrapWidth * scale;
         style.color = text.color;
         const DirectX::XMFLOAT2 anchor =
             GetUiAnchorChoice(text.anchor).factor;
@@ -9039,6 +9054,7 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 TextStyle style{};
                 style.pixelSize = text.fontSize * scale;
                 style.lineSpacing = text.lineSpacing * scale;
+                style.wrapWidth = text.wrapWidth * scale;
                 const TextLayoutMetrics metrics =
                     textRenderer->MeasureText(text.text, style);
                 const DirectX::XMFLOAT2 anchor =

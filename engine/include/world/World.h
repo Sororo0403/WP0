@@ -198,6 +198,7 @@ struct TextComponent {
     DirectX::XMFLOAT2 position{0.0f, 0.0f};
     float fontSize = 32.0f;
     float lineSpacing = 0.0f;
+    float wrapWidth = 0.0f;
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
     TextAlignment alignment = TextAlignment::Left;
     UiAnchor anchor = UiAnchor::TopLeft;
