@@ -298,6 +298,14 @@ private:
     bool gameInputCaptured_ = false;
     EntityId gameUiDragEntity_{};
     EntityId gameUiResizeEntity_{};
+    enum class UiResizeHandle : uint8_t {
+        None,
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+    };
+    UiResizeHandle gameUiResizeHandle_ = UiResizeHandle::None;
     int gameInputCursorRestoreX_ = 0;
     int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;

@@ -8621,6 +8621,7 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         imageMax.x <= imageMin.x || imageMax.y <= imageMin.y) {
         gameUiDragEntity_ = {};
         gameUiResizeEntity_ = {};
+        gameUiResizeHandle_ = UiResizeHandle::None;
         return;
     }
 
@@ -8799,26 +8800,43 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                            selectedImageMax);
     constexpr float kResizeHandleRadius = 6.0f;
     constexpr float kResizeHitRadius = 9.0f;
-    const bool resizeHandleHovered =
-        imageHovered && selectedHasImage &&
-        std::abs(mouse.x - selectedImageMax.x) <= kResizeHitRadius &&
-        std::abs(mouse.y - selectedImageMax.y) <= kResizeHitRadius;
+    UiResizeHandle hoveredResizeHandle = UiResizeHandle::None;
+    if (imageHovered && selectedHasImage) {
+        const auto hitHandle = [&](const ImVec2& position) {
+            return std::abs(mouse.x - position.x) <= kResizeHitRadius &&
+                   std::abs(mouse.y - position.y) <= kResizeHitRadius;
+        };
+        if (hitHandle(selectedImageMin)) {
+            hoveredResizeHandle = UiResizeHandle::TopLeft;
+        } else if (hitHandle(
+                       {selectedImageMax.x, selectedImageMin.y})) {
+            hoveredResizeHandle = UiResizeHandle::TopRight;
+        } else if (hitHandle(
+                       {selectedImageMin.x, selectedImageMax.y})) {
+            hoveredResizeHandle = UiResizeHandle::BottomLeft;
+        } else if (hitHandle(selectedImageMax)) {
+            hoveredResizeHandle = UiResizeHandle::BottomRight;
+        }
+    }
 
     if (imageHovered &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (resizeHandleHovered) {
+        if (hoveredResizeHandle != UiResizeHandle::None) {
             gameUiResizeEntity_ = selection_;
+            gameUiResizeHandle_ = hoveredResizeHandle;
             gameUiDragEntity_ = {};
             BeginHistoryEdit("Resize UI Image");
         } else if (hovered.IsValid()) {
             SelectHierarchyEntity(hovered, false, false);
             gameUiDragEntity_ = hovered;
             gameUiResizeEntity_ = {};
+            gameUiResizeHandle_ = UiResizeHandle::None;
             BeginHistoryEdit("Move UI Element");
         } else {
             ClearHierarchySelection();
             gameUiDragEntity_ = {};
             gameUiResizeEntity_ = {};
+            gameUiResizeHandle_ = UiResizeHandle::None;
         }
     }
 
@@ -8837,19 +8855,34 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 const DirectX::XMFLOAT2 anchor =
                     GetUiAnchorChoice(image.anchor).factor;
                 const DirectX::XMFLOAT2 previousSize = image.size;
+                const float horizontalDelta = mouseDelta.x / scale;
+                const float verticalDelta = mouseDelta.y / scale;
+                const bool resizesLeft =
+                    gameUiResizeHandle_ == UiResizeHandle::TopLeft ||
+                    gameUiResizeHandle_ == UiResizeHandle::BottomLeft;
+                const bool resizesTop =
+                    gameUiResizeHandle_ == UiResizeHandle::TopLeft ||
+                    gameUiResizeHandle_ == UiResizeHandle::TopRight;
                 image.size.x = std::clamp(
-                    image.size.x + mouseDelta.x / scale, 1.0f,
-                    1000000.0f);
+                    image.size.x +
+                        (resizesLeft ? -horizontalDelta
+                                     : horizontalDelta),
+                    1.0f, 1000000.0f);
                 image.size.y = std::clamp(
-                    image.size.y + mouseDelta.y / scale, 1.0f,
-                    1000000.0f);
+                    image.size.y +
+                        (resizesTop ? -verticalDelta : verticalDelta),
+                    1.0f, 1000000.0f);
                 const DirectX::XMFLOAT2 sizeDelta{
                     image.size.x - previousSize.x,
                     image.size.y - previousSize.y,
                 };
+                const DirectX::XMFLOAT2 minimumDelta{
+                    resizesLeft ? -sizeDelta.x : 0.0f,
+                    resizesTop ? -sizeDelta.y : 0.0f,
+                };
                 const DirectX::XMFLOAT2 positionDelta{
-                    sizeDelta.x * anchor.x,
-                    sizeDelta.y * anchor.y,
+                    minimumDelta.x + sizeDelta.x * anchor.x,
+                    minimumDelta.y + sizeDelta.y * anchor.y,
                 };
                 image.position.x = std::clamp(
                     image.position.x + positionDelta.x, -1000000.0f,
@@ -8858,11 +8891,15 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                     image.position.y + positionDelta.y, -1000000.0f,
                     1000000.0f);
                 if (entity->text) {
+                    const DirectX::XMFLOAT2 centerDelta{
+                        minimumDelta.x + sizeDelta.x * 0.5f,
+                        minimumDelta.y + sizeDelta.y * 0.5f,
+                    };
                     entity->text->position.x = std::clamp(
-                        entity->text->position.x + positionDelta.x,
+                        entity->text->position.x + centerDelta.x,
                         -1000000.0f, 1000000.0f);
                     entity->text->position.y = std::clamp(
-                        entity->text->position.y + positionDelta.y,
+                        entity->text->position.y + centerDelta.y,
                         -1000000.0f, 1000000.0f);
                 }
                 RefreshDirty();
@@ -8872,6 +8909,7 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
     } else if (gameUiResizeEntity_.IsValid()) {
         CommitHistoryEdit();
         gameUiResizeEntity_ = {};
+        gameUiResizeHandle_ = UiResizeHandle::None;
     } else if (gameUiDragEntity_.IsValid() &&
         ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         WorldEntity* entity = world_.Find(gameUiDragEntity_);
@@ -8921,17 +8959,32 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         ImVec2 imageRectMin{};
         ImVec2 imageRectMax{};
         if (calculateImageRect(*selected, imageRectMin, imageRectMax)) {
-            drawList->AddRectFilled(
-                {imageRectMax.x - kResizeHandleRadius,
-                 imageRectMax.y - kResizeHandleRadius},
-                {imageRectMax.x + kResizeHandleRadius,
-                 imageRectMax.y + kResizeHandleRadius},
-                IM_COL32(255, 190, 60, 255));
+            const std::array<ImVec2, 4> handles{
+                imageRectMin,
+                ImVec2{imageRectMax.x, imageRectMin.y},
+                ImVec2{imageRectMin.x, imageRectMax.y},
+                imageRectMax,
+            };
+            for (const ImVec2& handle : handles) {
+                drawList->AddRectFilled(
+                    {handle.x - kResizeHandleRadius,
+                     handle.y - kResizeHandleRadius},
+                    {handle.x + kResizeHandleRadius,
+                     handle.y + kResizeHandleRadius},
+                    IM_COL32(255, 190, 60, 255));
+            }
         }
         drawList->PopClipRect();
     }
-    if (gameUiResizeEntity_.IsValid() || resizeHandleHovered) {
+    const UiResizeHandle cursorHandle =
+        gameUiResizeEntity_.IsValid() ? gameUiResizeHandle_
+                                      : hoveredResizeHandle;
+    if (cursorHandle == UiResizeHandle::TopLeft ||
+        cursorHandle == UiResizeHandle::BottomRight) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+    } else if (cursorHandle == UiResizeHandle::TopRight ||
+               cursorHandle == UiResizeHandle::BottomLeft) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW);
     } else if (gameUiDragEntity_.IsValid()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     } else if (hovered.IsValid()) {
