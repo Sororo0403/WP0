@@ -1031,6 +1031,7 @@ int main() {
     childEntity->text->text = "HP: 100";
     childEntity->text->position = {48.0f, 32.0f};
     childEntity->text->fontSize = 40.0f;
+    childEntity->text->lineSpacing = 12.0f;
     childEntity->text->color = {1.0f, 0.25f, 0.2f, 0.9f};
     childEntity->text->alignment = TextAlignment::Center;
     childEntity->text->anchor = UiAnchor::TopCenter;
@@ -1193,6 +1194,9 @@ int main() {
         if (entity["components"].contains("Button")) {
             entity["components"]["Button"].erase("disabledColor");
         }
+        if (entity["components"].contains("Text")) {
+            entity["components"]["Text"].erase("lineSpacing");
+        }
         if (entity["components"].contains("Image")) {
             entity["components"]["Image"].erase("pivot");
             entity["components"]["Image"].erase("type");
@@ -1215,6 +1219,8 @@ int main() {
                    legacyButtonWorld.Find(child)->image &&
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
+                   legacyButtonWorld.Find(child)->text &&
+                   legacyButtonWorld.Find(child)->text->lineSpacing == 0.0f &&
                    legacyButtonWorld.Find(child)->image->type ==
                        ImageType::Simple &&
                    legacyButtonWorld.Find(child)->image->fillAmount == 1.0f &&
@@ -1248,6 +1254,18 @@ int main() {
                                              invalidImageWorld, &error),
                "An out-of-range Image fill amount was accepted.")) {
         return 252;
+    }
+    nlohmann::json invalidTextScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidTextScene["entities"]) {
+        if (entity["components"].contains("Text")) {
+            entity["components"]["Text"]["lineSpacing"] = 512.1f;
+        }
+    }
+    World invalidTextWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidTextScene.dump(),
+                                             invalidTextWorld, &error),
+               "An out-of-range Text line spacing was accepted.")) {
+        return 253;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1378,6 +1396,7 @@ int main() {
                    restoredChild->text->position.x == 48.0f &&
                    restoredChild->text->position.y == 32.0f &&
                    restoredChild->text->fontSize == 40.0f &&
+                   restoredChild->text->lineSpacing == 12.0f &&
                    restoredChild->text->color.y == 0.25f &&
                    restoredChild->text->color.w == 0.9f &&
                    restoredChild->text->alignment == TextAlignment::Center &&
@@ -1545,6 +1564,7 @@ int main() {
                    duplicateChild->characterController->height == 1.8f &&
                    duplicateChild->text &&
                    duplicateChild->text->text == "HP: 100" &&
+                   duplicateChild->text->lineSpacing == 12.0f &&
                    duplicateChild->text->alignment == TextAlignment::Center &&
                    duplicateChild->text->anchor == UiAnchor::TopCenter &&
                    duplicateChild->image &&

@@ -565,11 +565,12 @@
           ],
           "enabled": true,
           "fontSize": 179.5,
+          "lineSpacing": 126.5,
           "position": [
             -17.309062957763672,
             247.45449829101563
           ],
-          "text": "Hello LikeEngine!"
+          "text": "Hello LikeEngine!\naaafewfafewafwae"
         },
         "Transform": {
           "position": [
@@ -645,6 +646,7 @@
             301.0,
             195.0
           ],
+          "preserveAspect": false,
           "size": [
             400.0,
             100.0
@@ -752,6 +754,7 @@
             809.2544555664063,
             421.66363525390625
           ],
+          "preserveAspect": false,
           "size": [
             630.1510009765625,
             520.6224365234375
@@ -851,6 +854,7 @@
           ],
           "enabled": true,
           "fontSize": 179.5,
+          "lineSpacing": 0.0,
           "position": [
             -17.309062957763672,
             247.45449829101563
@@ -931,6 +935,7 @@
             301.0,
             195.0
           ],
+          "preserveAspect": false,
           "size": [
             400.0,
             100.0
@@ -1035,15 +1040,16 @@
             0.9900000095367432
           ],
           "position": [
-            36.599998474121094,
-            202.89999389648438
+            29.200000762939453,
+            465.8817138671875
           ],
+          "preserveAspect": true,
           "size": [
             630.1510009765625,
             520.6224365234375
           ],
-          "texture": "",
-          "type": "Simple"
+          "texture": "asset://PBR/ScatteredLeaves009_1K-JPG_AmbientOcclusion.jpg",
+          "type": "Filled"
         },
         "Transform": {
           "position": [

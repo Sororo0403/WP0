@@ -5953,6 +5953,19 @@ void EditorScene::DrawInspectorPanel() {
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
             }
+            if (ImGui::DragFloat("Line Spacing##Text",
+                                 &text.lineSpacing, 0.5f, 0.0f, 512.0f,
+                                 "%.1f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Text line spacing.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text Line Spacing");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
             if (ImGui::ColorEdit4("Color##Text", &text.color.x)) {
                 RefreshDirty();
                 status_ = "Modified Text color.";
@@ -8906,6 +8919,7 @@ bool EditorScene::DrawGameUi(int width, int height,
         const TextComponent& text = *entity.text;
         TextStyle style{};
         style.pixelSize = text.fontSize * scale;
+        style.lineSpacing = text.lineSpacing * scale;
         style.color = text.color;
         const DirectX::XMFLOAT2 anchor =
             GetUiAnchorChoice(text.anchor).factor;
@@ -9024,6 +9038,7 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 const TextComponent& text = *entity.text;
                 TextStyle style{};
                 style.pixelSize = text.fontSize * scale;
+                style.lineSpacing = text.lineSpacing * scale;
                 const TextLayoutMetrics metrics =
                     textRenderer->MeasureText(text.text, style);
                 const DirectX::XMFLOAT2 anchor =

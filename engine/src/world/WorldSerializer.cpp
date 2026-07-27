@@ -345,6 +345,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedText["text"] = text.text;
             encodedText["position"] = EncodeFloat2(text.position);
             encodedText["fontSize"] = text.fontSize;
+            encodedText["lineSpacing"] = text.lineSpacing;
             encodedText["color"] = EncodeFloat4(text.color);
             encodedText["anchor"] = EncodeUiAnchor(text.anchor);
             switch (text.alignment) {
@@ -950,12 +951,24 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 SetError(error, "Scene Text anchor is invalid.");
                 return false;
             }
+            if (encodedText.contains("lineSpacing")) {
+                if (!encodedText["lineSpacing"].is_number()) {
+                    SetError(error, "Scene Text line spacing is invalid.");
+                    return false;
+                }
+                component.lineSpacing =
+                    encodedText["lineSpacing"].get<float>();
+            }
             if (component.text.size() > 4096u ||
                 component.text.find('\0') != std::string::npos ||
                 std::abs(component.position.x) > 1000000.0f ||
                 std::abs(component.position.y) > 1000000.0f ||
                 !std::isfinite(component.fontSize) || component.fontSize < 1.0f ||
-                component.fontSize > 512.0f || component.color.x < 0.0f ||
+                component.fontSize > 512.0f ||
+                !std::isfinite(component.lineSpacing) ||
+                component.lineSpacing < 0.0f ||
+                component.lineSpacing > 512.0f ||
+                component.color.x < 0.0f ||
                 component.color.x > 1.0f || component.color.y < 0.0f ||
                 component.color.y > 1.0f || component.color.z < 0.0f ||
                 component.color.z > 1.0f || component.color.w < 0.0f ||
