@@ -1093,6 +1093,9 @@ int main() {
         rootEntity->audioListener = AudioListenerComponent{};
         rootEntity->canvas = CanvasComponent{};
         rootEntity->canvas->referenceResolution = {1280.0f, 720.0f};
+        rootEntity->canvas->screenMatchMode =
+            CanvasScreenMatchMode::MatchWidthOrHeight;
+        rootEntity->canvas->matchWidthOrHeight = 0.75f;
         rootEntity->canvas->sortingOrder = 7;
     }
 
@@ -1243,6 +1246,8 @@ int main() {
         }
         if (entity["components"].contains("Canvas")) {
             entity["components"]["Canvas"].erase("sortingOrder");
+            entity["components"]["Canvas"].erase("screenMatchMode");
+            entity["components"]["Canvas"].erase("matchWidthOrHeight");
         }
     }
     World legacyButtonWorld;
@@ -1269,7 +1274,11 @@ int main() {
                    !legacyButtonWorld.Find(child)->image->fillReverse &&
                    !legacyButtonWorld.Find(child)->image->preserveAspect &&
                    legacyButtonWorld.Find(root)->canvas &&
-                   legacyButtonWorld.Find(root)->canvas->sortingOrder == 0,
+                   legacyButtonWorld.Find(root)->canvas->sortingOrder == 0 &&
+                   legacyButtonWorld.Find(root)->canvas->screenMatchMode ==
+                       CanvasScreenMatchMode::Expand &&
+                   legacyButtonWorld.Find(root)
+                           ->canvas->matchWidthOrHeight == 0.5f,
                "Legacy Canvas/Button/Image defaults were not restored.")) {
         return 250;
     }
@@ -1284,6 +1293,34 @@ int main() {
                                              invalidCanvasWorld, &error),
                "An out-of-range Canvas sorting order was accepted.")) {
         return 251;
+    }
+    nlohmann::json invalidCanvasMatchScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidCanvasMatchScene["entities"]) {
+        if (entity["components"].contains("Canvas")) {
+            entity["components"]["Canvas"]["matchWidthOrHeight"] = 1.01f;
+        }
+    }
+    World invalidCanvasMatchWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidCanvasMatchScene.dump(),
+                   invalidCanvasMatchWorld, &error),
+               "An out-of-range Canvas screen match value was accepted.")) {
+        return 260;
+    }
+    nlohmann::json invalidCanvasMatchModeScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidCanvasMatchModeScene["entities"]) {
+        if (entity["components"].contains("Canvas")) {
+            entity["components"]["Canvas"]["screenMatchMode"] = "Stretch";
+        }
+    }
+    World invalidCanvasMatchModeWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidCanvasMatchModeScene.dump(),
+                   invalidCanvasMatchModeWorld, &error),
+               "An invalid Canvas screen match mode was accepted.")) {
+        return 261;
     }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
@@ -1547,6 +1584,9 @@ int main() {
                    restored.Find(root)->canvas &&
                    restored.Find(root)->canvas->referenceResolution.x == 1280.0f &&
                    restored.Find(root)->canvas->referenceResolution.y == 720.0f &&
+                   restored.Find(root)->canvas->screenMatchMode ==
+                       CanvasScreenMatchMode::MatchWidthOrHeight &&
+                   restored.Find(root)->canvas->matchWidthOrHeight == 0.75f &&
                    restored.Find(root)->canvas->sortingOrder == 7 &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
@@ -1713,6 +1753,9 @@ int main() {
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&
                    duplicateRootEntity->canvas->referenceResolution.x == 1280.0f &&
+                   duplicateRootEntity->canvas->screenMatchMode ==
+                       CanvasScreenMatchMode::MatchWidthOrHeight &&
+                   duplicateRootEntity->canvas->matchWidthOrHeight == 0.75f &&
                    duplicateRootEntity->canvas->sortingOrder == 7,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;

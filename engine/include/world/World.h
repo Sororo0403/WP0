@@ -158,9 +158,17 @@ struct AnimatorComponent {
     float runtimeTransitionProgress = 0.0f;
 };
 
+enum class CanvasScreenMatchMode : uint8_t {
+    MatchWidthOrHeight,
+    Expand,
+    Shrink,
+};
+
 struct CanvasComponent {
     bool enabled = true;
     DirectX::XMFLOAT2 referenceResolution{1920.0f, 1080.0f};
+    CanvasScreenMatchMode screenMatchMode = CanvasScreenMatchMode::Expand;
+    float matchWidthOrHeight = 0.5f;
     int32_t sortingOrder = 0;
 };
 

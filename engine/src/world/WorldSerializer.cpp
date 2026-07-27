@@ -200,6 +200,36 @@ bool DecodeButtonNavigationMode(const Json& value,
     return true;
 }
 
+const char* EncodeCanvasScreenMatchMode(CanvasScreenMatchMode mode) {
+    switch (mode) {
+    case CanvasScreenMatchMode::MatchWidthOrHeight:
+        return "MatchWidthOrHeight";
+    case CanvasScreenMatchMode::Expand:
+        return "Expand";
+    case CanvasScreenMatchMode::Shrink:
+        return "Shrink";
+    }
+    return "Expand";
+}
+
+bool DecodeCanvasScreenMatchMode(const Json& value,
+                                 CanvasScreenMatchMode& mode) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "MatchWidthOrHeight") {
+        mode = CanvasScreenMatchMode::MatchWidthOrHeight;
+    } else if (encoded == "Expand") {
+        mode = CanvasScreenMatchMode::Expand;
+    } else if (encoded == "Shrink") {
+        mode = CanvasScreenMatchMode::Shrink;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SetError(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -355,6 +385,10 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedCanvas["enabled"] = entity.canvas->enabled;
             encodedCanvas["referenceResolution"] =
                 EncodeFloat2(entity.canvas->referenceResolution);
+            encodedCanvas["screenMatchMode"] =
+                EncodeCanvasScreenMatchMode(entity.canvas->screenMatchMode);
+            encodedCanvas["matchWidthOrHeight"] =
+                entity.canvas->matchWidthOrHeight;
             encodedCanvas["sortingOrder"] = entity.canvas->sortingOrder;
             encoded["components"]["Canvas"] = std::move(encodedCanvas);
         }
@@ -920,6 +954,26 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             component.enabled = canvas["enabled"].get<bool>();
+            if (canvas.contains("screenMatchMode") &&
+                !DecodeCanvasScreenMatchMode(canvas["screenMatchMode"],
+                                             component.screenMatchMode)) {
+                SetError(error, "Scene Canvas screen match mode is invalid.");
+                return false;
+            }
+            if (canvas.contains("matchWidthOrHeight")) {
+                if (!canvas["matchWidthOrHeight"].is_number()) {
+                    SetError(error, "Scene Canvas match value is invalid.");
+                    return false;
+                }
+                component.matchWidthOrHeight =
+                    canvas["matchWidthOrHeight"].get<float>();
+            }
+            if (!std::isfinite(component.matchWidthOrHeight) ||
+                component.matchWidthOrHeight < 0.0f ||
+                component.matchWidthOrHeight > 1.0f) {
+                SetError(error, "Scene Canvas match value is invalid.");
+                return false;
+            }
             if (canvas.contains("sortingOrder")) {
                 if (!canvas["sortingOrder"].is_number_integer()) {
                     SetError(error, "Scene Canvas sorting order is invalid.");
