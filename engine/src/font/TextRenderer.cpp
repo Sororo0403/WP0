@@ -193,50 +193,161 @@ FontHandle ResolveStyleFont(const FontManager& fontManager, const TextStyle& sty
     return style.font.IsValid() ? style.font : fontManager.GetDefaultFont();
 }
 
-std::vector<float> CalculateLineWidths(
+struct PositionedGlyph {
+    char32_t codepoint = U'\0';
+    size_t lineIndex = 0u;
+    float offsetX = 0.0f;
+};
+
+struct TextLayout {
+    std::vector<float> lineWidths;
+    std::vector<PositionedGlyph> glyphs;
+};
+
+bool IsWrapWhitespace(char32_t codepoint) {
+    return codepoint == U' ' || codepoint == U'\t';
+}
+
+float GetAdvance(FontManager& fontManager, FontHandle font,
+                 float pixelSize, char32_t codepoint) {
+    const FontGlyph* glyph =
+        fontManager.GetGlyph(font, pixelSize, codepoint);
+    return glyph != nullptr ? glyph->advanceX : 0.0f;
+}
+
+TextLayout CalculateTextLayout(
     FontManager& fontManager, FontHandle font, float pixelSize,
     const std::vector<char32_t>& codepoints, float wrapWidth) {
-    std::vector<float> lineWidths;
+    TextLayout layout;
     try {
-        lineWidths.reserve(
+        layout.lineWidths.reserve(
             1u + static_cast<size_t>(std::count(codepoints.begin(),
                                                 codepoints.end(), U'\n')));
-        lineWidths.push_back(0.0f);
+        layout.lineWidths.push_back(0.0f);
+        layout.glyphs.reserve(codepoints.size());
     } catch (const std::exception&) {
         return {};
     }
 
-    for (char32_t codepoint : codepoints) {
+    const auto appendLine = [&layout]() {
+        try {
+            layout.lineWidths.push_back(0.0f);
+            return true;
+        } catch (const std::exception&) {
+            return false;
+        }
+    };
+    const auto appendGlyph =
+        [&layout, &fontManager, font, pixelSize](char32_t codepoint) {
+            const float advance =
+                GetAdvance(fontManager, font, pixelSize, codepoint);
+            try {
+                layout.glyphs.push_back(
+                    {codepoint, layout.lineWidths.size() - 1u,
+                     layout.lineWidths.back()});
+            } catch (const std::exception&) {
+                return false;
+            }
+            layout.lineWidths.back() += advance;
+            return true;
+        };
+    const auto measureRange =
+        [&fontManager, font, pixelSize,
+         &codepoints](size_t begin, size_t end) {
+            float width = 0.0f;
+            for (size_t index = begin; index < end; ++index) {
+                width += GetAdvance(fontManager, font, pixelSize,
+                                    codepoints[index]);
+            }
+            return width;
+        };
+
+    size_t index = 0u;
+    while (index < codepoints.size()) {
+        const char32_t codepoint = codepoints[index];
         if (codepoint == U'\r') {
+            ++index;
             continue;
         }
         if (codepoint == U'\n') {
-            try {
-                lineWidths.push_back(0.0f);
-            } catch (const std::exception&) {
+            if (!appendLine()) {
                 return {};
+            }
+            ++index;
+            continue;
+        }
+
+        if (IsWrapWhitespace(codepoint)) {
+            size_t whitespaceEnd = index;
+            while (whitespaceEnd < codepoints.size() &&
+                   IsWrapWhitespace(codepoints[whitespaceEnd])) {
+                ++whitespaceEnd;
+            }
+            if (wrapWidth <= 0.0f) {
+                while (index < whitespaceEnd) {
+                    if (!appendGlyph(codepoints[index++])) {
+                        return {};
+                    }
+                }
+                continue;
+            }
+
+            size_t wordEnd = whitespaceEnd;
+            while (wordEnd < codepoints.size() &&
+                   codepoints[wordEnd] != U'\r' &&
+                   codepoints[wordEnd] != U'\n' &&
+                   !IsWrapWhitespace(codepoints[wordEnd])) {
+                ++wordEnd;
+            }
+            if (wordEnd == whitespaceEnd) {
+                index = whitespaceEnd;
+                continue;
+            }
+            const float requiredWidth =
+                measureRange(index, whitespaceEnd) +
+                measureRange(whitespaceEnd, wordEnd);
+            if (layout.lineWidths.back() + requiredWidth > wrapWidth) {
+                if (layout.lineWidths.back() > 0.0f && !appendLine()) {
+                    return {};
+                }
+                index = whitespaceEnd;
+                continue;
+            }
+            while (index < whitespaceEnd) {
+                if (!appendGlyph(codepoints[index++])) {
+                    return {};
+                }
             }
             continue;
         }
 
-        const FontGlyph* glyph =
-            fontManager.GetGlyph(font, pixelSize, codepoint);
-        if (glyph == nullptr) {
-            continue;
+        size_t wordEnd = index;
+        while (wordEnd < codepoints.size() &&
+               codepoints[wordEnd] != U'\r' &&
+               codepoints[wordEnd] != U'\n' &&
+               !IsWrapWhitespace(codepoints[wordEnd])) {
+            ++wordEnd;
         }
-
-        float& currentWidth = lineWidths.back();
-        if (wrapWidth > 0.0f && currentWidth > 0.0f &&
-            currentWidth + glyph->advanceX > wrapWidth) {
-            try {
-                lineWidths.push_back(0.0f);
-            } catch (const std::exception&) {
+        const float wordWidth = measureRange(index, wordEnd);
+        if (wrapWidth > 0.0f && layout.lineWidths.back() > 0.0f &&
+            layout.lineWidths.back() + wordWidth > wrapWidth &&
+            !appendLine()) {
+            return {};
+        }
+        while (index < wordEnd) {
+            const float advance =
+                GetAdvance(fontManager, font, pixelSize, codepoints[index]);
+            if (wrapWidth > 0.0f && layout.lineWidths.back() > 0.0f &&
+                layout.lineWidths.back() + advance > wrapWidth &&
+                !appendLine()) {
+                return {};
+            }
+            if (!appendGlyph(codepoints[index++])) {
                 return {};
             }
         }
-        lineWidths.back() += glyph->advanceX;
     }
-    return lineWidths;
+    return layout;
 }
 
 float ResolveHorizontalAlignment(TextHorizontalAlignment alignment) {
@@ -268,15 +379,16 @@ TextLayoutMetrics MeasureCodepoints(FontManager& fontManager,
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
     const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
-    const std::vector<float> lineWidths = CalculateLineWidths(
+    const TextLayout layout = CalculateTextLayout(
         fontManager, font, style.pixelSize, codepoints, wrapWidth);
-    if (lineWidths.empty()) {
+    if (layout.lineWidths.empty()) {
         return result;
     }
 
-    result.lineCount = static_cast<uint32_t>(lineWidths.size());
+    result.lineCount = static_cast<uint32_t>(layout.lineWidths.size());
     result.size.x =
-        *std::max_element(lineWidths.begin(), lineWidths.end());
+        *std::max_element(layout.lineWidths.begin(),
+                          layout.lineWidths.end());
     result.size.y = fontMetrics.lineHeight;
     if (result.lineCount > 1u) {
         result.size.y +=
@@ -301,52 +413,39 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
     const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
-    const std::vector<float> lineWidths = CalculateLineWidths(
+    const TextLayout layout = CalculateTextLayout(
         fontManager, font, style.pixelSize, codepoints, wrapWidth);
-    if (lineWidths.empty()) {
+    if (layout.lineWidths.empty()) {
         return;
     }
     const float blockWidth =
-        *std::max_element(lineWidths.begin(), lineWidths.end());
+        *std::max_element(layout.lineWidths.begin(),
+                          layout.lineWidths.end());
     const float alignment =
         ResolveHorizontalAlignment(style.horizontalAlignment);
     const auto resolveLineStart = [&](size_t lineIndex) {
         return position.x +
-               (blockWidth - lineWidths[lineIndex]) * alignment;
+               (blockWidth - layout.lineWidths[lineIndex]) * alignment;
     };
 
-    size_t lineIndex = 0u;
-    float cursorX = resolveLineStart(lineIndex);
-    float baselineY = position.y + fontMetrics.ascent;
-    float currentWidth = 0.0f;
-    for (char32_t codepoint : codepoints) {
-        if (codepoint == U'\r') {
-            continue;
-        }
-        if (codepoint == U'\n') {
-            ++lineIndex;
-            cursorX = resolveLineStart(lineIndex);
-            baselineY += lineAdvance;
-            currentWidth = 0.0f;
-            continue;
-        }
-
-        const FontGlyph* glyph = fontManager.GetGlyph(font, style.pixelSize, codepoint);
+    for (const PositionedGlyph& positioned : layout.glyphs) {
+        const FontGlyph* glyph =
+            fontManager.GetGlyph(font, style.pixelSize,
+                                 positioned.codepoint);
         if (glyph == nullptr) {
             continue;
         }
 
-        if (wrapWidth > 0.0f && currentWidth > 0.0f &&
-            currentWidth + glyph->advanceX > wrapWidth) {
-            ++lineIndex;
-            cursorX = resolveLineStart(lineIndex);
-            baselineY += lineAdvance;
-            currentWidth = 0.0f;
-        }
-
         if (glyph->visible && IsValidResourceId(glyph->textureId)) {
             Sprite sprite{};
-            sprite.position = {cursorX + glyph->offset.x, baselineY + glyph->offset.y};
+            sprite.position = {
+                resolveLineStart(positioned.lineIndex) +
+                    positioned.offsetX + glyph->offset.x,
+                position.y + fontMetrics.ascent +
+                    static_cast<float>(positioned.lineIndex) *
+                        lineAdvance +
+                    glyph->offset.y,
+            };
             sprite.size = glyph->size;
             sprite.uvLeftTop = glyph->uvLeftTop;
             sprite.uvSize = glyph->uvSize;
@@ -356,9 +455,6 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
             sprite.blendMode = SpriteBlendMode::Alpha;
             spriteRenderer.Draw(sprite);
         }
-
-        cursorX += glyph->advanceX;
-        currentWidth += glyph->advanceX;
     }
 }
 
