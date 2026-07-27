@@ -98,6 +98,44 @@ const UiAnchorChoice& GetUiAnchorChoice(UiAnchor anchor) {
                                             : kUiAnchorChoices.front();
 }
 
+const CanvasComponent* FindEnabledCanvas(const World& world,
+                                         const WorldEntity& entity) {
+    const WorldEntity* current = &entity;
+    while (current != nullptr) {
+        if (current->canvas) {
+            return current->canvas->enabled ? &*current->canvas : nullptr;
+        }
+        current = current->parent.IsValid() ? world.Find(current->parent)
+                                            : nullptr;
+    }
+    return nullptr;
+}
+
+struct OrderedUiEntity {
+    const WorldEntity* entity = nullptr;
+    int32_t sortingOrder = 0;
+};
+
+std::vector<OrderedUiEntity> GetOrderedUiEntities(const World& world) {
+    std::vector<OrderedUiEntity> result;
+    for (const WorldEntity& entity : world.Entities()) {
+        if ((!entity.text && !entity.image && !entity.button) ||
+            !world.IsActiveInHierarchy(entity.id)) {
+            continue;
+        }
+        const CanvasComponent* canvas = FindEnabledCanvas(world, entity);
+        if (canvas != nullptr) {
+            result.push_back({&entity, canvas->sortingOrder});
+        }
+    }
+    std::stable_sort(
+        result.begin(), result.end(),
+        [](const OrderedUiEntity& left, const OrderedUiEntity& right) {
+            return left.sortingOrder < right.sortingOrder;
+        });
+    return result;
+}
+
 struct InputKeyChoice {
     int value;
     const char* label;
@@ -5824,8 +5862,20 @@ void EditorScene::DrawInspectorPanel() {
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
             }
+            if (ImGui::DragInt("Sorting Order##Canvas",
+                               &canvas.sortingOrder, 1.0f, -1000000, 1000000,
+                               "%d", ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Canvas sorting order.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Canvas Sorting Order");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
             ImGui::TextDisabled(
-                "UI descendants scale to the Game View while preserving aspect ratio.");
+                "Higher sorting orders are drawn and selected on top.");
         }
     }
 
@@ -8464,19 +8514,8 @@ bool EditorScene::DrawGameUi(int width, int height,
         [&](const WorldEntity& entity, float& scale,
             DirectX::XMFLOAT2& origin,
             DirectX::XMFLOAT2& referenceResolution) {
-            const CanvasComponent* canvas = nullptr;
-            const WorldEntity* canvasEntity = &entity;
-            while (canvasEntity != nullptr) {
-                if (canvasEntity->canvas) {
-                    if (canvasEntity->canvas->enabled) {
-                        canvas = &*canvasEntity->canvas;
-                    }
-                    break;
-                }
-                canvasEntity = canvasEntity->parent.IsValid()
-                                   ? world_.Find(canvasEntity->parent)
-                                   : nullptr;
-            }
+            const CanvasComponent* canvas =
+                FindEnabledCanvas(world_, entity);
             if (canvas == nullptr) {
                 return false;
             }
@@ -8495,7 +8534,9 @@ bool EditorScene::DrawGameUi(int width, int height,
                     0.5f,
             };
             return true;
-        };
+    };
+    const std::vector<OrderedUiEntity> orderedUiEntities =
+        GetOrderedUiEntities(world_);
 
     const ImVec2 imageScreenMin = ImGui::GetCursorScreenPos();
     const ImVec2 mouse = ImGui::GetMousePos();
@@ -8514,10 +8555,10 @@ bool EditorScene::DrawGameUi(int width, int height,
     };
     EntityId hoveredButton{};
     std::vector<EntityId> selectableButtons;
-    for (const WorldEntity& entity : world_.Entities()) {
+    for (const OrderedUiEntity& entry : orderedUiEntities) {
+        const WorldEntity& entity = *entry.entity;
         if (!entity.button || !entity.button->enabled || !entity.image ||
-            !entity.image->enabled ||
-            !world_.IsActiveInHierarchy(entity.id)) {
+            !entity.image->enabled) {
             continue;
         }
         float scale = 1.0f;
@@ -8635,11 +8676,11 @@ bool EditorScene::DrawGameUi(int width, int height,
 
     spriteRenderer.UpdateProjection(width, height);
     spriteRenderer.PreDraw(true);
-    for (const WorldEntity& entity : world_.Entities()) {
+    for (const OrderedUiEntity& entry : orderedUiEntities) {
+        const WorldEntity& entity = *entry.entity;
         const bool drawsText = entity.text && entity.text->enabled;
         const bool drawsImage = entity.image && entity.image->enabled;
-        if ((!drawsText && !drawsImage) ||
-            !world_.IsActiveInHierarchy(entity.id)) {
+        if (!drawsText && !drawsImage) {
             continue;
         }
 
@@ -8753,19 +8794,8 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         [&](const WorldEntity& entity, float& scale,
             DirectX::XMFLOAT2& origin,
             DirectX::XMFLOAT2& referenceResolution) {
-            const CanvasComponent* canvas = nullptr;
-            const WorldEntity* canvasEntity = &entity;
-            while (canvasEntity != nullptr) {
-                if (canvasEntity->canvas) {
-                    if (canvasEntity->canvas->enabled) {
-                        canvas = &*canvasEntity->canvas;
-                    }
-                    break;
-                }
-                canvasEntity = canvasEntity->parent.IsValid()
-                                   ? world_.Find(canvasEntity->parent)
-                                   : nullptr;
-            }
+            const CanvasComponent* canvas =
+                FindEnabledCanvas(world_, entity);
             if (canvas == nullptr) {
                 return false;
             }
@@ -8903,7 +8933,8 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
     const bool imageHovered = ImGui::IsItemHovered();
     EntityId hovered{};
     if (imageHovered) {
-        for (const WorldEntity& entity : world_.Entities()) {
+        for (const OrderedUiEntity& entry : GetOrderedUiEntities(world_)) {
+            const WorldEntity& entity = *entry.entity;
             ImVec2 minimum{};
             ImVec2 maximum{};
             if (calculateRect(entity, minimum, maximum) &&

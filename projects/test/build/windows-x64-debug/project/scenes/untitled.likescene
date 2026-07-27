@@ -504,7 +504,8 @@
           "referenceResolution": [
             1920.0,
             1080.0
-          ]
+          ],
+          "sortingOrder": 0
         },
         "Transform": {
           "position": [
@@ -565,7 +566,7 @@
           "enabled": true,
           "fontSize": 179.5,
           "position": [
-            -19.636335372924805,
+            -17.309062957763672,
             247.45449829101563
           ],
           "text": "Hello LikeEngine!"
@@ -772,6 +773,284 @@
       "layer": 0,
       "name": "Image",
       "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
+    },
+    {
+      "active": true,
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "referenceResolution": [
+            1920.0,
+            1080.0
+          ],
+          "sortingOrder": -46
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4aea84d6-3243-21e3-be2f-34ed06848b97",
+      "layer": 0,
+      "name": "Canvas Copy",
+      "parent": null
+    },
+    {
+      "active": true,
+      "components": {
+        "MaterialOverride": {
+          "alphaCutoff": 0.5,
+          "baseColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "baseColorTexture": "",
+          "blendMode": "Cutout",
+          "cullMode": "Back",
+          "depthWrite": true,
+          "enabled": true,
+          "metallic": 0.0,
+          "metallicTexture": "",
+          "normalStrength": 1.0,
+          "normalTexture": "",
+          "pbrTexturePacking": "Separate",
+          "roughness": 0.5,
+          "roughnessTexture": ""
+        },
+        "Text": {
+          "alignment": "Center",
+          "anchor": "TopCenter",
+          "color": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontSize": 179.5,
+          "position": [
+            -17.309062957763672,
+            247.45449829101563
+          ],
+          "text": "Hello LikeEngine!"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4665765e-9fee-91da-2a99-2acaa6117d99",
+      "layer": 0,
+      "name": "Text",
+      "parent": "4aea84d6-3243-21e3-be2f-34ed06848b97"
+    },
+    {
+      "active": true,
+      "components": {
+        "Button": {
+          "disabledColor": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
+          "enabled": true,
+          "hoveredColor": [
+            0.8500000238418579,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "normalColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pressedColor": [
+            0.699999988079071,
+            0.800000011920929,
+            1.0,
+            1.0
+          ]
+        },
+        "Image": {
+          "anchor": "TopLeft",
+          "color": [
+            0.7142857313156128,
+            0.3998897075653076,
+            0.3998897075653076,
+            1.0
+          ],
+          "enabled": true,
+          "pivot": [
+            0.0,
+            0.0
+          ],
+          "position": [
+            301.0,
+            195.0
+          ],
+          "size": [
+            400.0,
+            100.0
+          ],
+          "texture": "asset://LockPBR/Rock051.png"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "455374e6-2e4c-8287-c5f5-f95cb5749fa0",
+      "layer": 0,
+      "name": "Image",
+      "parent": "4aea84d6-3243-21e3-be2f-34ed06848b97"
+    },
+    {
+      "active": true,
+      "components": {
+        "Button": {
+          "disabledColor": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
+          "enabled": true,
+          "hoveredColor": [
+            0.8500000238418579,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "normalColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pressedColor": [
+            0.699999988079071,
+            0.800000011920929,
+            1.0,
+            1.0
+          ]
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "490a8cfe-18f6-8ff7-7686-1bb9f088dfa1",
+      "layer": 0,
+      "name": "Button",
+      "parent": "4aea84d6-3243-21e3-be2f-34ed06848b97"
+    },
+    {
+      "active": true,
+      "components": {
+        "Image": {
+          "anchor": "Center",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "pivot": [
+            1.0,
+            0.9900000095367432
+          ],
+          "position": [
+            36.599998474121094,
+            202.89999389648438
+          ],
+          "size": [
+            630.1510009765625,
+            520.6224365234375
+          ],
+          "texture": ""
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4e857285-4d88-f371-e988-f31421bbd388",
+      "layer": 0,
+      "name": "Image",
+      "parent": "4aea84d6-3243-21e3-be2f-34ed06848b97"
     }
   ],
   "version": 1

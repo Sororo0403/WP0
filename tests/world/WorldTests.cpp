@@ -1055,6 +1055,7 @@ int main() {
         rootEntity->audioListener = AudioListenerComponent{};
         rootEntity->canvas = CanvasComponent{};
         rootEntity->canvas->referenceResolution = {1280.0f, 720.0f};
+        rootEntity->canvas->sortingOrder = 7;
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -1190,6 +1191,9 @@ int main() {
         if (entity["components"].contains("Image")) {
             entity["components"]["Image"].erase("pivot");
         }
+        if (entity["components"].contains("Canvas")) {
+            entity["components"]["Canvas"].erase("sortingOrder");
+        }
     }
     World legacyButtonWorld;
     if (!Check(WorldSerializer::Deserialize(legacyButtonScene.dump(),
@@ -1200,9 +1204,23 @@ int main() {
                        0.5f &&
                    legacyButtonWorld.Find(child)->image &&
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
-                   legacyButtonWorld.Find(child)->image->pivot.y == 1.0f,
-               "Legacy Button/Image defaults were not restored.")) {
+                   legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
+                   legacyButtonWorld.Find(root)->canvas &&
+                   legacyButtonWorld.Find(root)->canvas->sortingOrder == 0,
+               "Legacy Canvas/Button/Image defaults were not restored.")) {
         return 250;
+    }
+    nlohmann::json invalidCanvasScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidCanvasScene["entities"]) {
+        if (entity["components"].contains("Canvas")) {
+            entity["components"]["Canvas"]["sortingOrder"] = 1000001;
+        }
+    }
+    World invalidCanvasWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidCanvasScene.dump(),
+                                             invalidCanvasWorld, &error),
+               "An out-of-range Canvas sorting order was accepted.")) {
+        return 251;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1362,6 +1380,7 @@ int main() {
                    restored.Find(root)->canvas &&
                    restored.Find(root)->canvas->referenceResolution.x == 1280.0f &&
                    restored.Find(root)->canvas->referenceResolution.y == 720.0f &&
+                   restored.Find(root)->canvas->sortingOrder == 7 &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
@@ -1509,7 +1528,8 @@ int main() {
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&
-                   duplicateRootEntity->canvas->referenceResolution.x == 1280.0f,
+                   duplicateRootEntity->canvas->referenceResolution.x == 1280.0f &&
+                   duplicateRootEntity->canvas->sortingOrder == 7,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }

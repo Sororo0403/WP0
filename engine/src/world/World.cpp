@@ -621,7 +621,9 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 canvas.referenceResolution.x < 1.0f ||
                 canvas.referenceResolution.y < 1.0f ||
                 canvas.referenceResolution.x > 16384.0f ||
-                canvas.referenceResolution.y > 16384.0f) {
+                canvas.referenceResolution.y > 16384.0f ||
+                canvas.sortingOrder < -1000000 ||
+                canvas.sortingOrder > 1000000) {
                 SetError(error, "Scene contains an invalid Canvas component.");
                 return false;
             }

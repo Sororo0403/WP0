@@ -296,6 +296,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedCanvas["enabled"] = entity.canvas->enabled;
             encodedCanvas["referenceResolution"] =
                 EncodeFloat2(entity.canvas->referenceResolution);
+            encodedCanvas["sortingOrder"] = entity.canvas->sortingOrder;
             encoded["components"]["Canvas"] = std::move(encodedCanvas);
         }
         if (entity.text) {
@@ -838,6 +839,32 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             component.enabled = canvas["enabled"].get<bool>();
+            if (canvas.contains("sortingOrder")) {
+                if (!canvas["sortingOrder"].is_number_integer()) {
+                    SetError(error, "Scene Canvas sorting order is invalid.");
+                    return false;
+                }
+                if (canvas["sortingOrder"].is_number_unsigned()) {
+                    const uint64_t sortingOrder =
+                        canvas["sortingOrder"].get<uint64_t>();
+                    if (sortingOrder > 1000000u) {
+                        SetError(error, "Scene Canvas sorting order is invalid.");
+                        return false;
+                    }
+                    component.sortingOrder =
+                        static_cast<int32_t>(sortingOrder);
+                } else {
+                    const int64_t sortingOrder =
+                        canvas["sortingOrder"].get<int64_t>();
+                    if (sortingOrder < -1000000 ||
+                        sortingOrder > 1000000) {
+                        SetError(error, "Scene Canvas sorting order is invalid.");
+                        return false;
+                    }
+                    component.sortingOrder =
+                        static_cast<int32_t>(sortingOrder);
+                }
+            }
             entity.canvas = component;
         }
         if (encoded["components"].contains("Text")) {

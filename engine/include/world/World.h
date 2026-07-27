@@ -161,6 +161,7 @@ struct AnimatorComponent {
 struct CanvasComponent {
     bool enabled = true;
     DirectX::XMFLOAT2 referenceResolution{1920.0f, 1080.0f};
+    int32_t sortingOrder = 0;
 };
 
 enum class TextAlignment : uint8_t {
