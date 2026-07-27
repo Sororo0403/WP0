@@ -180,6 +180,40 @@ bool DecodeImageFillMethod(const Json& value, ImageFillMethod& method) {
     return true;
 }
 
+const char* EncodeSliderDirection(SliderDirection direction) {
+    switch (direction) {
+    case SliderDirection::LeftToRight:
+        return "LeftToRight";
+    case SliderDirection::RightToLeft:
+        return "RightToLeft";
+    case SliderDirection::BottomToTop:
+        return "BottomToTop";
+    case SliderDirection::TopToBottom:
+        return "TopToBottom";
+    }
+    return "LeftToRight";
+}
+
+bool DecodeSliderDirection(const Json& value,
+                           SliderDirection& direction) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "LeftToRight") {
+        direction = SliderDirection::LeftToRight;
+    } else if (encoded == "RightToLeft") {
+        direction = SliderDirection::RightToLeft;
+    } else if (encoded == "BottomToTop") {
+        direction = SliderDirection::BottomToTop;
+    } else if (encoded == "TopToBottom") {
+        direction = SliderDirection::TopToBottom;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 const char* EncodeButtonNavigationMode(ButtonNavigationMode mode) {
     return mode == ButtonNavigationMode::None ? "None" : "Automatic";
 }
@@ -491,6 +525,25 @@ std::string WorldSerializer::Serialize(const World& world) {
                 EncodeFloat4(toggle.checkmarkColor);
             encodedToggle["checkmarkScale"] = toggle.checkmarkScale;
             encoded["components"]["Toggle"] = std::move(encodedToggle);
+        }
+        if (entity.slider) {
+            const SliderComponent& slider = *entity.slider;
+            Json encodedSlider;
+            encodedSlider["enabled"] = slider.enabled;
+            encodedSlider["interactable"] = slider.interactable;
+            encodedSlider["minValue"] = slider.minValue;
+            encodedSlider["maxValue"] = slider.maxValue;
+            encodedSlider["value"] = slider.value;
+            encodedSlider["wholeNumbers"] = slider.wholeNumbers;
+            encodedSlider["direction"] =
+                EncodeSliderDirection(slider.direction);
+            encodedSlider["fillColor"] =
+                EncodeFloat4(slider.fillColor);
+            encodedSlider["handleColor"] =
+                EncodeFloat4(slider.handleColor);
+            encodedSlider["handleSize"] = slider.handleSize;
+            encoded["components"]["Slider"] =
+                std::move(encodedSlider);
         }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
@@ -1341,6 +1394,73 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.toggle = std::move(component);
+        }
+        if (encoded["components"].contains("Slider")) {
+            const Json& encodedSlider =
+                encoded["components"]["Slider"];
+            SliderComponent component{};
+            if (!encodedSlider.is_object() ||
+                !encodedSlider.contains("enabled") ||
+                !encodedSlider["enabled"].is_boolean() ||
+                !encodedSlider.contains("interactable") ||
+                !encodedSlider["interactable"].is_boolean() ||
+                !encodedSlider.contains("minValue") ||
+                !encodedSlider["minValue"].is_number() ||
+                !encodedSlider.contains("maxValue") ||
+                !encodedSlider["maxValue"].is_number() ||
+                !encodedSlider.contains("value") ||
+                !encodedSlider["value"].is_number() ||
+                !encodedSlider.contains("wholeNumbers") ||
+                !encodedSlider["wholeNumbers"].is_boolean() ||
+                !encodedSlider.contains("direction") ||
+                !DecodeSliderDirection(encodedSlider["direction"],
+                                       component.direction) ||
+                !encodedSlider.contains("fillColor") ||
+                !DecodeFloat4(encodedSlider["fillColor"],
+                              component.fillColor) ||
+                !encodedSlider.contains("handleColor") ||
+                !DecodeFloat4(encodedSlider["handleColor"],
+                              component.handleColor) ||
+                !encodedSlider.contains("handleSize") ||
+                !encodedSlider["handleSize"].is_number()) {
+                SetError(error, "Scene Slider component is invalid.");
+                return false;
+            }
+            component.enabled =
+                encodedSlider["enabled"].get<bool>();
+            component.interactable =
+                encodedSlider["interactable"].get<bool>();
+            component.minValue =
+                encodedSlider["minValue"].get<float>();
+            component.maxValue =
+                encodedSlider["maxValue"].get<float>();
+            component.value = encodedSlider["value"].get<float>();
+            component.wholeNumbers =
+                encodedSlider["wholeNumbers"].get<bool>();
+            component.handleSize =
+                encodedSlider["handleSize"].get<float>();
+            const auto validColor =
+                [](const DirectX::XMFLOAT4& color) {
+                    return color.x >= 0.0f && color.x <= 1.0f &&
+                           color.y >= 0.0f && color.y <= 1.0f &&
+                           color.z >= 0.0f && color.z <= 1.0f &&
+                           color.w >= 0.0f && color.w <= 1.0f;
+                };
+            if (!std::isfinite(component.minValue) ||
+                !std::isfinite(component.maxValue) ||
+                !std::isfinite(component.value) ||
+                component.minValue >= component.maxValue ||
+                component.value < component.minValue ||
+                component.value > component.maxValue ||
+                !validColor(component.fillColor) ||
+                !validColor(component.handleColor) ||
+                !std::isfinite(component.handleSize) ||
+                component.handleSize < 0.0f ||
+                component.handleSize > 1000000.0f) {
+                SetError(error, "Scene Slider settings are invalid.");
+                return false;
+            }
+            entity.slider = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

@@ -146,6 +146,22 @@ private:
     bool& lastValue_;
 };
 
+class SliderBehavior final : public Behavior {
+public:
+    SliderBehavior(int& changes, float& lastValue)
+        : changes_(changes), lastValue_(lastValue) {}
+
+    void OnSliderValueChanged(World&, EntityId,
+                              float value) override {
+        ++changes_;
+        lastValue_ = value;
+    }
+
+private:
+    int& changes_;
+    float& lastValue_;
+};
+
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
@@ -743,26 +759,35 @@ int main() {
     int buttonClicks = 0;
     int toggleChanges = 0;
     bool lastToggleValue = false;
+    int sliderChanges = 0;
+    float lastSliderValue = 0.0f;
     BehaviorSystem buttonBehaviors;
     if (!Check(buttonBehaviors.Attach(
                    behaviorEntity,
                    std::make_unique<ButtonBehavior>(buttonClicks)) &&
                    buttonBehaviors.Attach(
+                   behaviorEntity,
+                   std::make_unique<ToggleBehavior>(
+                           toggleChanges, lastToggleValue)) &&
+                   buttonBehaviors.Attach(
                        behaviorEntity,
-                       std::make_unique<ToggleBehavior>(
-                           toggleChanges, lastToggleValue)),
+                       std::make_unique<SliderBehavior>(
+                           sliderChanges, lastSliderValue)),
                "Button Runtime Behavior could not be attached.")) {
         return 224;
     }
     buttonBehaviors.Start(behaviorWorld);
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, true);
+    buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.75f);
     behaviorWorld.Find(behaviorEntity)->active = false;
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, false);
+    buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.25f);
     buttonBehaviors.Stop();
     if (!Check(buttonClicks == 1 && toggleChanges == 1 &&
-                   lastToggleValue,
+                   lastToggleValue && sliderChanges == 1 &&
+                   lastSliderValue == 0.75f,
                "UI event dispatch ignored lifecycle or activation state.")) {
         return 225;
     }
@@ -1085,6 +1110,16 @@ int main() {
     childEntity->toggle->isOn = true;
     childEntity->toggle->checkmarkColor = {0.2f, 0.9f, 0.3f, 0.75f};
     childEntity->toggle->checkmarkScale = 0.55f;
+    childEntity->slider = SliderComponent{};
+    childEntity->slider->interactable = false;
+    childEntity->slider->minValue = -10.0f;
+    childEntity->slider->maxValue = 20.0f;
+    childEntity->slider->value = 5.0f;
+    childEntity->slider->wholeNumbers = true;
+    childEntity->slider->direction = SliderDirection::BottomToTop;
+    childEntity->slider->fillColor = {0.1f, 0.2f, 0.9f, 0.8f};
+    childEntity->slider->handleColor = {0.9f, 0.8f, 0.2f, 0.7f};
+    childEntity->slider->handleSize = 24.0f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1360,6 +1395,20 @@ int main() {
                "An out-of-range CanvasGroup alpha was accepted.")) {
         return 263;
     }
+    nlohmann::json invalidSliderScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidSliderScene["entities"]) {
+        if (entity["components"].contains("Slider")) {
+            entity["components"]["Slider"]["maxValue"] = -10.0f;
+        }
+    }
+    World invalidSliderWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidSliderScene.dump(), invalidSliderWorld,
+                   &error),
+               "An invalid Slider value range was accepted.")) {
+        return 264;
+    }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
         if (entity["components"].contains("Button")) {
@@ -1616,6 +1665,17 @@ int main() {
                    restoredChild->toggle->isOn &&
                    restoredChild->toggle->checkmarkColor.y == 0.9f &&
                    restoredChild->toggle->checkmarkScale == 0.55f &&
+                   restoredChild->slider &&
+                   !restoredChild->slider->interactable &&
+                   restoredChild->slider->minValue == -10.0f &&
+                   restoredChild->slider->maxValue == 20.0f &&
+                   restoredChild->slider->value == 5.0f &&
+                   restoredChild->slider->wholeNumbers &&
+                   restoredChild->slider->direction ==
+                       SliderDirection::BottomToTop &&
+                   restoredChild->slider->fillColor.z == 0.9f &&
+                   restoredChild->slider->handleColor.x == 0.9f &&
+                   restoredChild->slider->handleSize == 24.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1793,6 +1853,15 @@ int main() {
                    duplicateChild->toggle->isOn &&
                    duplicateChild->toggle->checkmarkColor.z == 0.3f &&
                    duplicateChild->toggle->checkmarkScale == 0.55f &&
+                   duplicateChild->slider &&
+                   !duplicateChild->slider->interactable &&
+                   duplicateChild->slider->minValue == -10.0f &&
+                   duplicateChild->slider->maxValue == 20.0f &&
+                   duplicateChild->slider->value == 5.0f &&
+                   duplicateChild->slider->wholeNumbers &&
+                   duplicateChild->slider->direction ==
+                       SliderDirection::BottomToTop &&
+                   duplicateChild->slider->handleSize == 24.0f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

@@ -1658,6 +1658,8 @@ void EditorScene::DrawPanels() {
                         gameInputCursorRestoreY_ = cursor.y;
                     }
                     focusedButton_ = {};
+                    pressedButton_ = {};
+                    activeSlider_ = {};
                     gameInputCaptured_ = true;
                     status_ = "Game input captured. Press Escape to release.";
                 }
@@ -4076,6 +4078,10 @@ bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, Entity
             CreateUiEntity(UiEntityPreset::Toggle, parent);
             created = true;
         }
+        if (ImGui::MenuItem("Slider")) {
+            CreateUiEntity(UiEntityPreset::Slider, parent);
+            created = true;
+        }
         ImGui::EndMenu();
     }
     return created;
@@ -4196,6 +4202,8 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         name = "Image";
     } else if (preset == UiEntityPreset::Toggle) {
         name = "Toggle";
+    } else if (preset == UiEntityPreset::Slider) {
+        name = "Slider";
     }
     const EntityId entityId = world_.CreateEntity(name);
     WorldEntity* entity = world_.Find(entityId);
@@ -4229,7 +4237,7 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         entity->text->anchor = UiAnchor::Center;
         entity->text->alignment = TextAlignment::Center;
         entity->text->fontSize = 28.0f;
-    } else {
+    } else if (preset == UiEntityPreset::Toggle) {
         entity->image = ImageComponent{};
         entity->image->anchor = UiAnchor::Center;
         entity->image->pivot = {0.5f, 0.5f};
@@ -4237,6 +4245,13 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
         entity->button = ButtonComponent{};
         entity->toggle = ToggleComponent{};
+    } else {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {240.0f, 24.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->slider = SliderComponent{};
     }
 
     selection_ = entityId;
@@ -4247,7 +4262,9 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
                   ? "Create UI Image"
                   : preset == UiEntityPreset::Toggle
                         ? "Create UI Toggle"
-                        : "Create UI Button",
+                        : preset == UiEntityPreset::Slider
+                              ? "Create UI Slider"
+                              : "Create UI Button",
         before, selectionBefore);
     status_ = std::string("Created a UI ") + name + ".";
 }
@@ -4782,6 +4799,15 @@ void EditorScene::DrawInspectorPanel() {
             entity->toggle = ToggleComponent{};
             RecordImmediateEdit("Add Toggle", before, selectionBefore);
             status_ = "Added Toggle.";
+        }
+        if (!entity->slider && ImGui::MenuItem("Slider")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->slider = SliderComponent{};
+            RecordImmediateEdit("Add Slider", before,
+                                selectionBefore);
+            status_ = "Added Slider.";
         }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -6763,6 +6789,177 @@ void EditorScene::DrawInspectorPanel() {
             if (entity->scripts.empty()) {
                 ImGui::TextDisabled(
                     "Override OnToggleValueChanged to handle value changes.");
+            }
+        }
+    }
+
+    if (entity->slider) {
+        ImGui::SeparatorText("Slider");
+        if (ImGui::Button("Remove Slider")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->slider.reset();
+            RecordImmediateEdit("Remove Slider", before,
+                                selectionBefore);
+            status_ = "Removed Slider.";
+        } else {
+            SliderComponent& slider = *entity->slider;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Slider",
+                                &slider.enabled)) {
+                RecordImmediateEdit("Toggle Slider",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Slider.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Interactable##Slider",
+                                &slider.interactable)) {
+                RecordImmediateEdit("Toggle Slider Interactable",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Slider interaction.";
+            }
+            if (ImGui::DragFloat("Min Value##Slider",
+                                 &slider.minValue, 0.1f,
+                                 -1000000.0f, 999999.0f, "%.3f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                slider.minValue =
+                    (std::min)(slider.minValue,
+                               slider.maxValue - 0.001f);
+                slider.value = std::clamp(
+                    slider.value, slider.minValue, slider.maxValue);
+                RefreshDirty();
+                status_ = "Modified Slider range.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Slider Range");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat("Max Value##Slider",
+                                 &slider.maxValue, 0.1f,
+                                 -999999.0f, 1000000.0f, "%.3f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                slider.maxValue =
+                    (std::max)(slider.maxValue,
+                               slider.minValue + 0.001f);
+                slider.value = std::clamp(
+                    slider.value, slider.minValue, slider.maxValue);
+                RefreshDirty();
+                status_ = "Modified Slider range.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Slider Range");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::SliderFloat("Value##Slider", &slider.value,
+                                   slider.minValue, slider.maxValue,
+                                   "%.3f")) {
+                if (slider.wholeNumbers) {
+                    slider.value = std::clamp(
+                        std::round(slider.value), slider.minValue,
+                        slider.maxValue);
+                }
+                RefreshDirty();
+                status_ = "Modified Slider value.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Slider Value");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Whole Numbers##Slider",
+                                &slider.wholeNumbers)) {
+                if (slider.wholeNumbers) {
+                    slider.value = std::clamp(
+                        std::round(slider.value), slider.minValue,
+                        slider.maxValue);
+                }
+                RecordImmediateEdit("Toggle Slider Whole Numbers",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Changed Slider whole-number mode.";
+            }
+            const char* direction =
+                slider.direction == SliderDirection::RightToLeft
+                    ? "Right To Left"
+                    : slider.direction == SliderDirection::BottomToTop
+                          ? "Bottom To Top"
+                          : slider.direction ==
+                                    SliderDirection::TopToBottom
+                                ? "Top To Bottom"
+                                : "Left To Right";
+            if (ImGui::BeginCombo("Direction##Slider", direction)) {
+                const auto selectDirection =
+                    [&](SliderDirection value, const char* label) {
+                        if (ImGui::Selectable(
+                                label, slider.direction == value)) {
+                            const std::string directionBefore =
+                                WorldSerializer::Serialize(world_);
+                            slider.direction = value;
+                            RecordImmediateEdit(
+                                "Change Slider Direction",
+                                std::move(directionBefore),
+                                selectionBefore);
+                            status_ = "Changed Slider direction.";
+                        }
+                    };
+                selectDirection(SliderDirection::LeftToRight,
+                                "Left To Right");
+                selectDirection(SliderDirection::RightToLeft,
+                                "Right To Left");
+                selectDirection(SliderDirection::BottomToTop,
+                                "Bottom To Top");
+                selectDirection(SliderDirection::TopToBottom,
+                                "Top To Bottom");
+                ImGui::EndCombo();
+            }
+            const auto editSliderColor =
+                [&](const char* label, DirectX::XMFLOAT4& color) {
+                    if (ImGui::ColorEdit4(label, &color.x)) {
+                        RefreshDirty();
+                        status_ = "Modified Slider colors.";
+                    }
+                    if (ImGui::IsItemActivated()) {
+                        BeginHistoryEdit("Modify Slider Color");
+                    }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        CommitHistoryEdit();
+                    }
+                };
+            editSliderColor("Fill Color##Slider",
+                            slider.fillColor);
+            editSliderColor("Handle Color##Slider",
+                            slider.handleColor);
+            if (ImGui::DragFloat("Handle Size##Slider",
+                                 &slider.handleSize, 1.0f, 0.0f,
+                                 1000000.0f, "%.1f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Slider handle size.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Slider Handle Size");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (!entity->image) {
+                ImGui::TextColored(
+                    {1.0f, 0.72f, 0.25f, 1.0f},
+                    "Slider requires an Image on the same Entity.");
+            }
+            if (entity->scripts.empty()) {
+                ImGui::TextDisabled(
+                    "Override OnSliderValueChanged to handle value changes.");
             }
         }
     }
@@ -9177,47 +9374,127 @@ bool EditorScene::DrawGameUi(int width, int height,
         (mouse.y - imageScreenMin.y) * static_cast<float>(height) /
             static_cast<float>((std::max)(1, requestedGameHeight_)),
     };
+    const auto calculateImageRect =
+        [&](const WorldEntity& entity, float& left, float& top,
+            float& right, float& bottom) {
+            if (!entity.image || !entity.image->enabled) {
+                return false;
+            }
+            float scale = 1.0f;
+            DirectX::XMFLOAT2 origin{};
+            DirectX::XMFLOAT2 referenceResolution{};
+            if (!resolveCanvasLayout(entity, scale, origin,
+                                     referenceResolution)) {
+                return false;
+            }
+            const ImageComponent& image = *entity.image;
+            const DirectX::XMFLOAT2 anchor =
+                GetUiAnchorChoice(image.anchor).factor;
+            left = origin.x +
+                   (referenceResolution.x * anchor.x +
+                    image.position.x - image.size.x * image.pivot.x) *
+                       scale;
+            top = origin.y +
+                  (referenceResolution.y * anchor.y +
+                   image.position.y - image.size.y * image.pivot.y) *
+                      scale;
+            right = left + image.size.x * scale;
+            bottom = top + image.size.y * scale;
+            return true;
+        };
+    const auto setSliderValue =
+        [&](WorldEntity& entity, float requestedValue) {
+            SliderComponent& slider = *entity.slider;
+            float value = std::clamp(requestedValue, slider.minValue,
+                                     slider.maxValue);
+            if (slider.wholeNumbers) {
+                value = std::clamp(std::round(value),
+                                   slider.minValue, slider.maxValue);
+            }
+            if (value == slider.value) {
+                return;
+            }
+            slider.value = value;
+            const auto pending = std::ranges::find(
+                pendingSliderValueChanges_, entity.id,
+                &SliderValueChange::entity);
+            if (pending != pendingSliderValueChanges_.end()) {
+                pending->value = value;
+            } else {
+                pendingSliderValueChanges_.push_back(
+                    {entity.id, value});
+            }
+        };
+    const auto setSliderValueFromPointer =
+        [&](WorldEntity& entity) {
+            float left = 0.0f;
+            float top = 0.0f;
+            float right = 0.0f;
+            float bottom = 0.0f;
+            if (!calculateImageRect(entity, left, top, right,
+                                    bottom)) {
+                return;
+            }
+            SliderComponent& slider = *entity.slider;
+            float normalized = 0.0f;
+            if (slider.direction == SliderDirection::LeftToRight ||
+                slider.direction == SliderDirection::RightToLeft) {
+                normalized =
+                    (pointer.x - left) /
+                    (std::max)(right - left, 0.0001f);
+                if (slider.direction ==
+                    SliderDirection::RightToLeft) {
+                    normalized = 1.0f - normalized;
+                }
+            } else {
+                normalized =
+                    (pointer.y - top) /
+                    (std::max)(bottom - top, 0.0001f);
+                if (slider.direction ==
+                    SliderDirection::BottomToTop) {
+                    normalized = 1.0f - normalized;
+                }
+            }
+            normalized = std::clamp(normalized, 0.0f, 1.0f);
+            setSliderValue(
+                entity,
+                std::lerp(slider.minValue, slider.maxValue,
+                          normalized));
+        };
+
     EntityId hoveredButton{};
     std::vector<EntityId> selectableButtons;
     for (const OrderedUiEntity& entry : orderedUiEntities) {
         const WorldEntity& entity = *entry.entity;
-        if (!entity.button || !entity.button->enabled || !entity.image ||
-            !entity.image->enabled ||
-            (entity.toggle && !entity.toggle->enabled)) {
-            continue;
-        }
-        float scale = 1.0f;
-        DirectX::XMFLOAT2 origin{};
-        DirectX::XMFLOAT2 referenceResolution{};
-        if (!resolveCanvasLayout(entity, scale, origin,
-                                 referenceResolution)) {
+        const bool isButton =
+            entity.button && entity.button->enabled &&
+            (!entity.toggle || entity.toggle->enabled);
+        const bool isSlider =
+            entity.slider && entity.slider->enabled;
+        if ((!isButton && !isSlider) || !entity.image ||
+            !entity.image->enabled) {
             continue;
         }
         const UiGroupState groupState =
             GetUiGroupState(world_, entity);
-        if (entity.button->interactable &&
+        const bool controlInteractable =
             groupState.interactable &&
+            (isSlider ? entity.slider->interactable
+                      : entity.button->interactable);
+        const bool navigationEnabled =
+            isSlider ||
             entity.button->navigation ==
-                ButtonNavigationMode::Automatic) {
+                ButtonNavigationMode::Automatic;
+        if (controlInteractable && navigationEnabled) {
             selectableButtons.push_back(entity.id);
         }
         if (canPoint && groupState.blocksRaycasts) {
-            const ImageComponent& image = *entity.image;
-            const DirectX::XMFLOAT2 anchor =
-                GetUiAnchorChoice(image.anchor).factor;
-            const float left =
-                origin.x +
-                (referenceResolution.x * anchor.x + image.position.x -
-                 image.size.x * image.pivot.x) *
-                    scale;
-            const float top =
-                origin.y +
-                (referenceResolution.y * anchor.y + image.position.y -
-                 image.size.y * image.pivot.y) *
-                    scale;
-            const float right = left + image.size.x * scale;
-            const float bottom = top + image.size.y * scale;
-            if (pointer.x >= left && pointer.x <= right &&
+            float left = 0.0f;
+            float top = 0.0f;
+            float right = 0.0f;
+            float bottom = 0.0f;
+            if (calculateImageRect(entity, left, top, right, bottom) &&
+                pointer.x >= left && pointer.x <= right &&
                 pointer.y >= top && pointer.y <= bottom) {
                 hoveredButton = entity.id;
             }
@@ -9236,16 +9513,25 @@ bool EditorScene::DrawGameUi(int width, int height,
         !ImGui::GetIO().WantTextInput;
     const Input* runtimeInput =
         ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    const WorldEntity* focusedEntity =
+        world_.Find(focusedButton_);
+    const bool focusedSlider =
+        focusedEntity != nullptr && focusedEntity->slider &&
+        focusedEntity->slider->enabled &&
+        focusedEntity->slider->interactable;
     const bool gamepadPrevious =
         canNavigateUi && runtimeInput != nullptr &&
+        !focusedSlider &&
         (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_LEFT) ||
          runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_UP));
     const bool gamepadNext =
         canNavigateUi && runtimeInput != nullptr &&
+        !focusedSlider &&
         (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_RIGHT) ||
          runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_DOWN));
     const bool keyboardNavigation =
         canNavigateUi && ImGui::IsKeyPressed(ImGuiKey_Tab, false);
+    bool navigatedUi = false;
     if ((keyboardNavigation || gamepadPrevious || gamepadNext) &&
         !selectableButtons.empty() &&
         (focusedButton_.IsValid() || keyboardNavigation ||
@@ -9269,6 +9555,7 @@ bool EditorScene::DrawGameUi(int width, int height,
                     : selectableButtons[(index + 1u) %
                                         selectableButtons.size()];
         }
+        navigatedUi = true;
     }
 
     const WorldEntity* hoveredEntity = world_.Find(hoveredButton);
@@ -9277,11 +9564,38 @@ bool EditorScene::DrawGameUi(int width, int height,
         hoveredEntity->button->enabled &&
         hoveredEntity->button->interactable &&
         GetUiGroupState(world_, *hoveredEntity).interactable;
+    const bool hoveredSliderInteractable =
+        hoveredEntity != nullptr && hoveredEntity->slider &&
+        hoveredEntity->slider->enabled &&
+        hoveredEntity->slider->interactable &&
+        GetUiGroupState(world_, *hoveredEntity).interactable;
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        pressedButton_ =
-            hoveredButtonInteractable ? hoveredButton : EntityId{};
-        focusedButton_ =
-            hoveredButtonInteractable ? hoveredButton : EntityId{};
+        if (hoveredSliderInteractable) {
+            activeSlider_ = hoveredButton;
+            pressedButton_ = {};
+            focusedButton_ = hoveredButton;
+            setSliderValueFromPointer(*world_.Find(activeSlider_));
+        } else {
+            activeSlider_ = {};
+            pressedButton_ =
+                hoveredButtonInteractable ? hoveredButton
+                                          : EntityId{};
+            focusedButton_ =
+                hoveredButtonInteractable ? hoveredButton
+                                          : EntityId{};
+        }
+    }
+    if (activeSlider_.IsValid() &&
+        ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        WorldEntity* sliderEntity = world_.Find(activeSlider_);
+        if (sliderEntity != nullptr && sliderEntity->slider &&
+            sliderEntity->slider->enabled &&
+            sliderEntity->slider->interactable &&
+            GetUiGroupState(world_, *sliderEntity).interactable) {
+            setSliderValueFromPointer(*sliderEntity);
+        } else {
+            activeSlider_ = {};
+        }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         if (pressedButton_.IsValid() &&
@@ -9290,6 +9604,7 @@ bool EditorScene::DrawGameUi(int width, int height,
             pendingButtonClicks_.push_back(pressedButton_);
         }
         pressedButton_ = {};
+        activeSlider_ = {};
     }
     const bool gamepadSubmit =
         canNavigateUi && runtimeInput != nullptr &&
@@ -9300,11 +9615,58 @@ bool EditorScene::DrawGameUi(int width, int height,
          ImGui::IsKeyDown(ImGuiKey_Space) ||
          (runtimeInput != nullptr &&
           runtimeInput->IsGamepadButtonPress(XINPUT_GAMEPAD_A)));
-    if (canNavigateUi && focusedButton_.IsValid() &&
+    const WorldEntity* submitEntity = world_.Find(focusedButton_);
+    if (canNavigateUi && submitEntity != nullptr &&
+        submitEntity->button && submitEntity->button->enabled &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
          ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
          gamepadSubmit)) {
         pendingButtonClicks_.push_back(focusedButton_);
+    }
+    WorldEntity* keyboardSlider = world_.Find(focusedButton_);
+    if (canNavigateUi && !navigatedUi &&
+        keyboardSlider != nullptr &&
+        keyboardSlider->slider && keyboardSlider->slider->enabled &&
+        keyboardSlider->slider->interactable &&
+        GetUiGroupState(world_, *keyboardSlider).interactable) {
+        SliderComponent& slider = *keyboardSlider->slider;
+        const bool horizontal =
+            slider.direction == SliderDirection::LeftToRight ||
+            slider.direction == SliderDirection::RightToLeft;
+        const bool negative =
+            horizontal
+                ? (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
+                   (runtimeInput != nullptr &&
+                    runtimeInput->IsGamepadButtonTrigger(
+                        XINPUT_GAMEPAD_DPAD_LEFT)))
+                : (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+                   (runtimeInput != nullptr &&
+                    runtimeInput->IsGamepadButtonTrigger(
+                        XINPUT_GAMEPAD_DPAD_DOWN)));
+        const bool positive =
+            horizontal
+                ? (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+                   (runtimeInput != nullptr &&
+                    runtimeInput->IsGamepadButtonTrigger(
+                        XINPUT_GAMEPAD_DPAD_RIGHT)))
+                : (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+                   (runtimeInput != nullptr &&
+                    runtimeInput->IsGamepadButtonTrigger(
+                        XINPUT_GAMEPAD_DPAD_UP)));
+        if (negative || positive) {
+            const bool reverse =
+                slider.direction == SliderDirection::RightToLeft ||
+                slider.direction == SliderDirection::TopToBottom;
+            const float step =
+                slider.wholeNumbers
+                    ? 1.0f
+                    : (slider.maxValue - slider.minValue) * 0.1f;
+            const float visualDirection =
+                positive ? 1.0f : -1.0f;
+            setSliderValue(*keyboardSlider,
+                           slider.value +
+                               visualDirection * (reverse ? -step : step));
+        }
     }
     if (canNavigateUi && runtimeInput != nullptr &&
         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_B)) {
@@ -9380,6 +9742,7 @@ bool EditorScene::DrawGameUi(int width, int height,
                         (availableSize.y - sprite.size.y) * image.pivot.y;
                 }
             }
+            const Sprite sliderTrack = sprite;
             if (image.type == ImageType::Filled) {
                 const float fillAmount =
                     std::clamp(image.fillAmount, 0.0f, 1.0f);
@@ -9498,6 +9861,87 @@ bool EditorScene::DrawGameUi(int width, int height,
                 checkmark.color.w *= groupState.alpha;
                 checkmark.textureId = kInvalidResourceId;
                 spriteRenderer.Draw(checkmark);
+            }
+            if (entity.slider && entity.slider->enabled) {
+                const SliderComponent& slider = *entity.slider;
+                const float normalized = std::clamp(
+                    (slider.value - slider.minValue) /
+                        (slider.maxValue - slider.minValue),
+                    0.0f, 1.0f);
+                const float interactionAlpha =
+                    slider.interactable && groupState.interactable
+                        ? 1.0f
+                        : 0.5f;
+                Sprite fill = sliderTrack;
+                fill.textureId = kInvalidResourceId;
+                fill.color = slider.fillColor;
+                fill.color.w *=
+                    groupState.alpha * interactionAlpha;
+                if (slider.direction ==
+                        SliderDirection::LeftToRight ||
+                    slider.direction ==
+                        SliderDirection::RightToLeft) {
+                    const float fullWidth = fill.size.x;
+                    fill.size.x *= normalized;
+                    if (slider.direction ==
+                        SliderDirection::RightToLeft) {
+                        fill.position.x +=
+                            fullWidth - fill.size.x;
+                    }
+                } else {
+                    const float fullHeight = fill.size.y;
+                    fill.size.y *= normalized;
+                    if (slider.direction ==
+                        SliderDirection::BottomToTop) {
+                        fill.position.y +=
+                            fullHeight - fill.size.y;
+                    }
+                }
+                if (fill.size.x > 0.0f && fill.size.y > 0.0f) {
+                    spriteRenderer.Draw(fill);
+                }
+
+                Sprite handle{};
+                const float handleSize =
+                    slider.handleSize * scale;
+                handle.size = {handleSize, handleSize};
+                if (slider.direction ==
+                        SliderDirection::LeftToRight ||
+                    slider.direction ==
+                        SliderDirection::RightToLeft) {
+                    float position = normalized;
+                    if (slider.direction ==
+                        SliderDirection::RightToLeft) {
+                        position = 1.0f - position;
+                    }
+                    handle.position = {
+                        sliderTrack.position.x +
+                            sliderTrack.size.x * position -
+                            handleSize * 0.5f,
+                        sliderTrack.position.y +
+                            (sliderTrack.size.y - handleSize) * 0.5f,
+                    };
+                } else {
+                    float position = normalized;
+                    if (slider.direction ==
+                        SliderDirection::BottomToTop) {
+                        position = 1.0f - position;
+                    }
+                    handle.position = {
+                        sliderTrack.position.x +
+                            (sliderTrack.size.x - handleSize) * 0.5f,
+                        sliderTrack.position.y +
+                            sliderTrack.size.y * position -
+                            handleSize * 0.5f,
+                    };
+                }
+                handle.color = slider.handleColor;
+                handle.color.w *=
+                    groupState.alpha * interactionAlpha;
+                handle.textureId = kInvalidResourceId;
+                if (handleSize > 0.0f) {
+                    spriteRenderer.Draw(handle);
+                }
             }
         }
         if (!drawsText) {
@@ -10500,6 +10944,24 @@ bool EditorScene::TryNormalizeScriptAssetReference(
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+    std::vector<SliderValueChange> sliderChanges =
+        std::move(pendingSliderValueChanges_);
+    pendingSliderValueChanges_.clear();
+    for (const SliderValueChange& change : sliderChanges) {
+        WorldEntity* entity = world_.Find(change.entity);
+        if (entity == nullptr || !entity->slider ||
+            !entity->slider->enabled ||
+            !entity->slider->interactable ||
+            !GetUiGroupState(world_, *entity).interactable ||
+            !world_.IsActiveInHierarchy(change.entity)) {
+            continue;
+        }
+        runtimeBehaviors_.DispatchSliderValueChanged(
+            change.entity, change.value);
+        if (ApplyPendingRuntimeSceneLoad()) {
+            return;
+        }
+    }
     std::vector<EntityId> buttonClicks = std::move(pendingButtonClicks_);
     pendingButtonClicks_.clear();
     for (const EntityId entityId : buttonClicks) {
@@ -10576,7 +11038,9 @@ void EditorScene::EndRuntimeWorld() {
     runtimeBehaviors_.Clear();
     focusedButton_ = {};
     pressedButton_ = {};
+    activeSlider_ = {};
     pendingButtonClicks_.clear();
+    pendingSliderValueChanges_.clear();
     buttonColorTransitions_.clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;

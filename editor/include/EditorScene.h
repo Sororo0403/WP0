@@ -116,6 +116,7 @@ private:
         Image,
         Button,
         Toggle,
+        Slider,
     };
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
@@ -338,7 +339,13 @@ private:
     TriggerSystem runtimeTriggers_;
     EntityId focusedButton_{};
     EntityId pressedButton_{};
+    EntityId activeSlider_{};
     std::vector<EntityId> pendingButtonClicks_;
+    struct SliderValueChange {
+        EntityId entity{};
+        float value = 0.0f;
+    };
+    std::vector<SliderValueChange> pendingSliderValueChanges_;
     struct ButtonColorTransition {
         DirectX::XMFLOAT4 current{1.0f, 1.0f, 1.0f, 1.0f};
         DirectX::XMFLOAT4 start{1.0f, 1.0f, 1.0f, 1.0f};

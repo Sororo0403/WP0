@@ -106,6 +106,22 @@ void BehaviorSystem::DispatchToggleValueChanged(EntityId entity, bool isOn) {
     }
 }
 
+void BehaviorSystem::DispatchSliderValueChanged(EntityId entity,
+                                                float value) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnSliderValueChanged(*world_, entity, value);
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;

@@ -16,6 +16,7 @@ public:
     void Update(float deltaTime);
     void DispatchButtonClick(EntityId entity);
     void DispatchToggleValueChanged(EntityId entity, bool isOn);
+    void DispatchSliderValueChanged(EntityId entity, float value);
     void Stop();
     void Clear();
 

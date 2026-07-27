@@ -78,6 +78,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->image = original.image;
         duplicate->button = original.button;
         duplicate->toggle = original.toggle;
+        duplicate->slider = original.slider;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -739,6 +740,33 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 toggle.checkmarkScale < 0.0f ||
                 toggle.checkmarkScale > 1.0f) {
                 SetError(error, "Scene contains an invalid Toggle component.");
+                return false;
+            }
+        }
+        if (entity.slider) {
+            const SliderComponent& slider = *entity.slider;
+            const auto validColor = [](const DirectX::XMFLOAT4& color) {
+                return IsFinite(color) && color.x >= 0.0f &&
+                       color.x <= 1.0f && color.y >= 0.0f &&
+                       color.y <= 1.0f && color.z >= 0.0f &&
+                       color.z <= 1.0f && color.w >= 0.0f &&
+                       color.w <= 1.0f;
+            };
+            if (!std::isfinite(slider.minValue) ||
+                !std::isfinite(slider.maxValue) ||
+                !std::isfinite(slider.value) ||
+                slider.minValue >= slider.maxValue ||
+                slider.value < slider.minValue ||
+                slider.value > slider.maxValue ||
+                slider.direction < SliderDirection::LeftToRight ||
+                slider.direction > SliderDirection::TopToBottom ||
+                !validColor(slider.fillColor) ||
+                !validColor(slider.handleColor) ||
+                !std::isfinite(slider.handleSize) ||
+                slider.handleSize < 0.0f ||
+                slider.handleSize > 1000000.0f) {
+                SetError(error,
+                         "Scene contains an invalid Slider component.");
                 return false;
             }
         }

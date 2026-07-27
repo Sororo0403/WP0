@@ -264,6 +264,26 @@ struct ToggleComponent {
     float checkmarkScale = 0.6f;
 };
 
+enum class SliderDirection : uint8_t {
+    LeftToRight,
+    RightToLeft,
+    BottomToTop,
+    TopToBottom,
+};
+
+struct SliderComponent {
+    bool enabled = true;
+    bool interactable = true;
+    float minValue = 0.0f;
+    float maxValue = 1.0f;
+    float value = 0.5f;
+    bool wholeNumbers = false;
+    SliderDirection direction = SliderDirection::LeftToRight;
+    DirectX::XMFLOAT4 fillColor{0.25f, 0.55f, 1.0f, 1.0f};
+    DirectX::XMFLOAT4 handleColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float handleSize = 16.0f;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -320,6 +340,7 @@ struct WorldEntity {
     std::optional<ImageComponent> image;
     std::optional<ButtonComponent> button;
     std::optional<ToggleComponent> toggle;
+    std::optional<SliderComponent> slider;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;
