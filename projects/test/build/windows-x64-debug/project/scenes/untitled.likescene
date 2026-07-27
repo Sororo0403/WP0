@@ -534,6 +534,7 @@
       "components": {
         "Text": {
           "alignment": "Center",
+          "anchor": "TopCenter",
           "color": [
             1.0,
             1.0,
@@ -543,7 +544,7 @@
           "enabled": true,
           "fontSize": 179.5,
           "position": [
-            902.0,
+            -8.0,
             294.0
           ],
           "text": "Hello LikeEngine!"
@@ -597,6 +598,7 @@
           ]
         },
         "Image": {
+          "anchor": "TopLeft",
           "color": [
             0.7142857313156128,
             0.3998897075653076,

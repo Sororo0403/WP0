@@ -48,6 +48,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <sstream>
 #include <string_view>
 #include <system_error>
@@ -68,6 +69,34 @@ constexpr const char* kPrefabAssetDragPayload = "EDITOR_PREFAB_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
 constexpr size_t kMaxRecentScenes = 10;
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
+
+struct UiAnchorChoice {
+    UiAnchor value;
+    const char* label;
+    DirectX::XMFLOAT2 factor;
+};
+
+constexpr std::array<UiAnchorChoice, 9> kUiAnchorChoices = {{
+    {UiAnchor::TopLeft, "Top Left", {0.0f, 0.0f}},
+    {UiAnchor::TopCenter, "Top Center", {0.5f, 0.0f}},
+    {UiAnchor::TopRight, "Top Right", {1.0f, 0.0f}},
+    {UiAnchor::MiddleLeft, "Middle Left", {0.0f, 0.5f}},
+    {UiAnchor::Center, "Center", {0.5f, 0.5f}},
+    {UiAnchor::MiddleRight, "Middle Right", {1.0f, 0.5f}},
+    {UiAnchor::BottomLeft, "Bottom Left", {0.0f, 1.0f}},
+    {UiAnchor::BottomCenter, "Bottom Center", {0.5f, 1.0f}},
+    {UiAnchor::BottomRight, "Bottom Right", {1.0f, 1.0f}},
+}};
+
+const UiAnchorChoice& GetUiAnchorChoice(UiAnchor anchor) {
+    const auto choice = std::ranges::find_if(
+        kUiAnchorChoices,
+        [anchor](const UiAnchorChoice& candidate) {
+            return candidate.value == anchor;
+        });
+    return choice != kUiAnchorChoices.end() ? *choice
+                                            : kUiAnchorChoices.front();
+}
 
 struct InputKeyChoice {
     int value;
@@ -5646,7 +5675,7 @@ void EditorScene::DrawInspectorPanel() {
                 CommitHistoryEdit();
             }
             ImGui::TextDisabled(
-                "Text descendants scale to the Game View while preserving aspect ratio.");
+                "UI descendants scale to the Game View while preserving aspect ratio.");
         }
     }
 
@@ -5666,6 +5695,24 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Toggle Text", std::move(before),
                                     selectionBefore);
             }
+            const UiAnchorChoice& textAnchor =
+                GetUiAnchorChoice(text.anchor);
+            if (ImGui::BeginCombo("Anchor##Text", textAnchor.label)) {
+                for (const UiAnchorChoice& choice : kUiAnchorChoices) {
+                    if (ImGui::Selectable(choice.label,
+                                          text.anchor == choice.value)) {
+                        const std::string anchorBefore =
+                            WorldSerializer::Serialize(world_);
+                        text.anchor = choice.value;
+                        RecordImmediateEdit("Modify Text Anchor",
+                                            anchorBefore, selectionBefore);
+                        status_ = "Modified Text anchor.";
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled(
+                "Position is an offset from the selected anchor.");
 
             std::array<char, 4097> textBuffer{};
             std::memcpy(textBuffer.data(), text.text.data(),
@@ -5770,6 +5817,24 @@ void EditorScene::DrawInspectorPanel() {
                 RecordImmediateEdit("Toggle Image", std::move(before),
                                     selectionBefore);
             }
+            const UiAnchorChoice& imageAnchor =
+                GetUiAnchorChoice(image.anchor);
+            if (ImGui::BeginCombo("Anchor##Image", imageAnchor.label)) {
+                for (const UiAnchorChoice& choice : kUiAnchorChoices) {
+                    if (ImGui::Selectable(choice.label,
+                                          image.anchor == choice.value)) {
+                        const std::string anchorBefore =
+                            WorldSerializer::Serialize(world_);
+                        image.anchor = choice.value;
+                        RecordImmediateEdit("Modify Image Anchor",
+                                            anchorBefore, selectionBefore);
+                        status_ = "Modified Image anchor.";
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled(
+                "Position is an offset from the selected anchor.");
 
             const std::string textureLabel =
                 image.texturePath.empty() ? "None (solid color)"
@@ -8231,7 +8296,8 @@ bool EditorScene::DrawGameUi(int width, int height) {
 
     const auto resolveCanvasLayout =
         [&](const WorldEntity& entity, float& scale,
-            DirectX::XMFLOAT2& origin) {
+            DirectX::XMFLOAT2& origin,
+            DirectX::XMFLOAT2& referenceResolution) {
             const CanvasComponent* canvas = nullptr;
             const WorldEntity* canvasEntity = &entity;
             while (canvasEntity != nullptr) {
@@ -8248,6 +8314,7 @@ bool EditorScene::DrawGameUi(int width, int height) {
             if (canvas == nullptr) {
                 return false;
             }
+            referenceResolution = canvas->referenceResolution;
             scale =
                 (std::min)(static_cast<float>(width) /
                                canvas->referenceResolution.x,
@@ -8289,12 +8356,24 @@ bool EditorScene::DrawGameUi(int width, int height) {
             }
             float scale = 1.0f;
             DirectX::XMFLOAT2 origin{};
-            if (!resolveCanvasLayout(entity, scale, origin)) {
+            DirectX::XMFLOAT2 referenceResolution{};
+            if (!resolveCanvasLayout(entity, scale, origin,
+                                     referenceResolution)) {
                 continue;
             }
             const ImageComponent& image = *entity.image;
-            const float left = origin.x + image.position.x * scale;
-            const float top = origin.y + image.position.y * scale;
+            const DirectX::XMFLOAT2 anchor =
+                GetUiAnchorChoice(image.anchor).factor;
+            const float left =
+                origin.x +
+                (referenceResolution.x * anchor.x + image.position.x -
+                 image.size.x * anchor.x) *
+                    scale;
+            const float top =
+                origin.y +
+                (referenceResolution.y * anchor.y + image.position.y -
+                 image.size.y * anchor.y) *
+                    scale;
             const float right = left + image.size.x * scale;
             const float bottom = top + image.size.y * scale;
             if (pointer.x >= left && pointer.x <= right &&
@@ -8316,15 +8395,25 @@ bool EditorScene::DrawGameUi(int width, int height) {
 
         float scale = 1.0f;
         DirectX::XMFLOAT2 canvasOrigin{};
-        if (!resolveCanvasLayout(entity, scale, canvasOrigin)) {
+        DirectX::XMFLOAT2 referenceResolution{};
+        if (!resolveCanvasLayout(entity, scale, canvasOrigin,
+                                 referenceResolution)) {
             continue;
         }
         if (drawsImage) {
             const ImageComponent& image = *entity.image;
+            const DirectX::XMFLOAT2 anchor =
+                GetUiAnchorChoice(image.anchor).factor;
             Sprite sprite{};
             sprite.position = {
-                canvasOrigin.x + image.position.x * scale,
-                canvasOrigin.y + image.position.y * scale,
+                canvasOrigin.x +
+                    (referenceResolution.x * anchor.x + image.position.x -
+                     image.size.x * anchor.x) *
+                        scale,
+                canvasOrigin.y +
+                    (referenceResolution.y * anchor.y + image.position.y -
+                     image.size.y * anchor.y) *
+                        scale,
             };
             sprite.size = {
                 image.size.x * scale,
@@ -8361,16 +8450,25 @@ bool EditorScene::DrawGameUi(int width, int height) {
         TextStyle style{};
         style.pixelSize = text.fontSize * scale;
         style.color = text.color;
+        const DirectX::XMFLOAT2 anchor =
+            GetUiAnchorChoice(text.anchor).factor;
         DirectX::XMFLOAT2 position{
-            canvasOrigin.x + text.position.x * scale,
-            canvasOrigin.y + text.position.y * scale,
+            canvasOrigin.x +
+                (referenceResolution.x * anchor.x + text.position.x) *
+                    scale,
+            canvasOrigin.y +
+                (referenceResolution.y * anchor.y + text.position.y) *
+                    scale,
         };
-        if (text.alignment != TextAlignment::Left) {
+        if (text.alignment != TextAlignment::Left || anchor.y > 0.0f) {
             const TextLayoutMetrics metrics =
                 textRenderer.MeasureText(text.text, style);
-            position.x -= text.alignment == TextAlignment::Center
-                              ? metrics.size.x * 0.5f
-                              : metrics.size.x;
+            if (text.alignment != TextAlignment::Left) {
+                position.x -= text.alignment == TextAlignment::Center
+                                  ? metrics.size.x * 0.5f
+                                  : metrics.size.x;
+            }
+            position.y -= metrics.size.y * anchor.y;
         }
         textRenderer.DrawText(text.text, position, style);
     }

@@ -1032,11 +1032,13 @@ int main() {
     childEntity->text->fontSize = 40.0f;
     childEntity->text->color = {1.0f, 0.25f, 0.2f, 0.9f};
     childEntity->text->alignment = TextAlignment::Center;
+    childEntity->text->anchor = UiAnchor::TopCenter;
     childEntity->image = ImageComponent{};
     childEntity->image->texturePath = "asset://textures/hud.png";
     childEntity->image->position = {24.0f, 16.0f};
     childEntity->image->size = {320.0f, 48.0f};
     childEntity->image->color = {0.1f, 0.8f, 0.25f, 0.75f};
+    childEntity->image->anchor = UiAnchor::BottomRight;
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
@@ -1309,6 +1311,7 @@ int main() {
                    restoredChild->text->color.y == 0.25f &&
                    restoredChild->text->color.w == 0.9f &&
                    restoredChild->text->alignment == TextAlignment::Center &&
+                   restoredChild->text->anchor == UiAnchor::TopCenter &&
                    restoredChild->image && restoredChild->image->enabled &&
                    restoredChild->image->texturePath ==
                        "asset://textures/hud.png" &&
@@ -1318,6 +1321,7 @@ int main() {
                    restoredChild->image->size.y == 48.0f &&
                    restoredChild->image->color.y == 0.8f &&
                    restoredChild->image->color.w == 0.75f &&
+                   restoredChild->image->anchor == UiAnchor::BottomRight &&
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
                    restoredChild->button->normalColor.x == 0.9f &&
@@ -1461,10 +1465,12 @@ int main() {
                    duplicateChild->text &&
                    duplicateChild->text->text == "HP: 100" &&
                    duplicateChild->text->alignment == TextAlignment::Center &&
+                   duplicateChild->text->anchor == UiAnchor::TopCenter &&
                    duplicateChild->image &&
                    duplicateChild->image->texturePath ==
                        "asset://textures/hud.png" &&
                    duplicateChild->image->size.x == 320.0f &&
+                   duplicateChild->image->anchor == UiAnchor::BottomRight &&
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&

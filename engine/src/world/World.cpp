@@ -639,7 +639,9 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 text.color.z < 0.0f || text.color.z > 1.0f ||
                 text.color.w < 0.0f || text.color.w > 1.0f ||
                 text.alignment < TextAlignment::Left ||
-                text.alignment > TextAlignment::Right) {
+                text.alignment > TextAlignment::Right ||
+                text.anchor < UiAnchor::TopLeft ||
+                text.anchor > UiAnchor::BottomRight) {
                 SetError(error, "Scene contains an invalid Text component.");
                 return false;
             }
@@ -657,7 +659,9 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 image.color.x > 1.0f || image.color.y < 0.0f ||
                 image.color.y > 1.0f || image.color.z < 0.0f ||
                 image.color.z > 1.0f || image.color.w < 0.0f ||
-                image.color.w > 1.0f) {
+                image.color.w > 1.0f ||
+                image.anchor < UiAnchor::TopLeft ||
+                image.anchor > UiAnchor::BottomRight) {
                 SetError(error, "Scene contains an invalid Image component.");
                 return false;
             }

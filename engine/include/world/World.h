@@ -169,6 +169,18 @@ enum class TextAlignment : uint8_t {
     Right = 2,
 };
 
+enum class UiAnchor : uint8_t {
+    TopLeft = 0,
+    TopCenter = 1,
+    TopRight = 2,
+    MiddleLeft = 3,
+    Center = 4,
+    MiddleRight = 5,
+    BottomLeft = 6,
+    BottomCenter = 7,
+    BottomRight = 8,
+};
+
 struct TextComponent {
     bool enabled = true;
     std::string text = "Text";
@@ -176,6 +188,7 @@ struct TextComponent {
     float fontSize = 32.0f;
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
     TextAlignment alignment = TextAlignment::Left;
+    UiAnchor anchor = UiAnchor::TopLeft;
 };
 
 struct ImageComponent {
@@ -184,6 +197,7 @@ struct ImageComponent {
     DirectX::XMFLOAT2 position{0.0f, 0.0f};
     DirectX::XMFLOAT2 size{100.0f, 100.0f};
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    UiAnchor anchor = UiAnchor::TopLeft;
 };
 
 struct ButtonComponent {

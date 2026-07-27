@@ -64,6 +64,59 @@ bool DecodeFloat4(const Json& value, DirectX::XMFLOAT4& result) {
            std::isfinite(result.w);
 }
 
+const char* EncodeUiAnchor(UiAnchor anchor) {
+    switch (anchor) {
+    case UiAnchor::TopLeft:
+        return "TopLeft";
+    case UiAnchor::TopCenter:
+        return "TopCenter";
+    case UiAnchor::TopRight:
+        return "TopRight";
+    case UiAnchor::MiddleLeft:
+        return "MiddleLeft";
+    case UiAnchor::Center:
+        return "Center";
+    case UiAnchor::MiddleRight:
+        return "MiddleRight";
+    case UiAnchor::BottomLeft:
+        return "BottomLeft";
+    case UiAnchor::BottomCenter:
+        return "BottomCenter";
+    case UiAnchor::BottomRight:
+        return "BottomRight";
+    }
+    return "TopLeft";
+}
+
+bool DecodeUiAnchor(const Json& value, UiAnchor& anchor) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "TopLeft") {
+        anchor = UiAnchor::TopLeft;
+    } else if (encoded == "TopCenter") {
+        anchor = UiAnchor::TopCenter;
+    } else if (encoded == "TopRight") {
+        anchor = UiAnchor::TopRight;
+    } else if (encoded == "MiddleLeft") {
+        anchor = UiAnchor::MiddleLeft;
+    } else if (encoded == "Center") {
+        anchor = UiAnchor::Center;
+    } else if (encoded == "MiddleRight") {
+        anchor = UiAnchor::MiddleRight;
+    } else if (encoded == "BottomLeft") {
+        anchor = UiAnchor::BottomLeft;
+    } else if (encoded == "BottomCenter") {
+        anchor = UiAnchor::BottomCenter;
+    } else if (encoded == "BottomRight") {
+        anchor = UiAnchor::BottomRight;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SetError(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -229,6 +282,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedText["position"] = EncodeFloat2(text.position);
             encodedText["fontSize"] = text.fontSize;
             encodedText["color"] = EncodeFloat4(text.color);
+            encodedText["anchor"] = EncodeUiAnchor(text.anchor);
             switch (text.alignment) {
             case TextAlignment::Left:
                 encodedText["alignment"] = "Left";
@@ -250,6 +304,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedImage["position"] = EncodeFloat2(image.position);
             encodedImage["size"] = EncodeFloat2(image.size);
             encodedImage["color"] = EncodeFloat4(image.color);
+            encodedImage["anchor"] = EncodeUiAnchor(image.anchor);
             encoded["components"]["Image"] = std::move(encodedImage);
         }
         if (entity.button) {
@@ -792,6 +847,11 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 SetError(error, "Scene Text alignment is invalid.");
                 return false;
             }
+            if (encodedText.contains("anchor") &&
+                !DecodeUiAnchor(encodedText["anchor"], component.anchor)) {
+                SetError(error, "Scene Text anchor is invalid.");
+                return false;
+            }
             if (component.text.size() > 4096u ||
                 component.text.find('\0') != std::string::npos ||
                 std::abs(component.position.x) > 1000000.0f ||
@@ -827,6 +887,12 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             component.enabled = encodedImage["enabled"].get<bool>();
             component.texturePath =
                 encodedImage["texture"].get<std::string>();
+            if (encodedImage.contains("anchor") &&
+                !DecodeUiAnchor(encodedImage["anchor"],
+                                component.anchor)) {
+                SetError(error, "Scene Image anchor is invalid.");
+                return false;
+            }
             if (component.texturePath.size() > 1024u ||
                 component.texturePath.find('\0') != std::string::npos ||
                 component.size.x < 0.0f || component.size.y < 0.0f ||
