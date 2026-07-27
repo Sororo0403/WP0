@@ -615,7 +615,8 @@
             1.0,
             1.0
           ],
-          "interactable": false,
+          "interactable": true,
+          "navigation": "Automatic",
           "normalColor": [
             1.0,
             1.0,
@@ -649,7 +650,7 @@
             301.0,
             195.0
           ],
-          "preserveAspect": false,
+          "preserveAspect": true,
           "size": [
             512.0,
             512.0
@@ -699,6 +700,7 @@
             1.0
           ],
           "interactable": true,
+          "navigation": "Automatic",
           "normalColor": [
             1.0,
             1.0,
@@ -909,6 +911,7 @@
             1.0
           ],
           "interactable": true,
+          "navigation": "Automatic",
           "normalColor": [
             1.0,
             1.0,
@@ -992,6 +995,7 @@
             1.0
           ],
           "interactable": true,
+          "navigation": "Automatic",
           "normalColor": [
             1.0,
             1.0,

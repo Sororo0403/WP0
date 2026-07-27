@@ -9004,6 +9004,12 @@ bool EditorScene::DrawGameUi(int width, int height,
     const bool gamepadSubmit =
         canNavigateUi && runtimeInput != nullptr &&
         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_A);
+    const bool submitHeld =
+        canNavigateUi &&
+        (ImGui::IsKeyDown(ImGuiKey_Enter) ||
+         ImGui::IsKeyDown(ImGuiKey_Space) ||
+         (runtimeInput != nullptr &&
+          runtimeInput->IsGamepadButtonPress(XINPUT_GAMEPAD_A)));
     if (canNavigateUi && focusedButton_.IsValid() &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
          ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
@@ -9118,10 +9124,14 @@ bool EditorScene::DrawGameUi(int width, int height,
                 if (button.interactable &&
                     (entity.id == hoveredButton ||
                      entity.id == focusedButton_)) {
-                    targetColor =
+                    const bool pointerPressed =
                         entity.id == hoveredButton &&
-                                entity.id == pressedButton_ &&
-                                ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                        entity.id == pressedButton_ &&
+                        ImGui::IsMouseDown(ImGuiMouseButton_Left);
+                    const bool navigationPressed =
+                        entity.id == focusedButton_ && submitHeld;
+                    targetColor =
+                        pointerPressed || navigationPressed
                             ? button.pressedColor
                             : button.hoveredColor;
                 }
