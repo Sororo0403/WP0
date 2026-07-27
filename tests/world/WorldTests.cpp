@@ -178,6 +178,31 @@ private:
     int32_t& lastValue_;
 };
 
+class InputFieldBehavior final : public Behavior {
+public:
+    InputFieldBehavior(int& changes, int& submits,
+                       std::string& lastText)
+        : changes_(changes), submits_(submits),
+          lastText_(lastText) {}
+
+    void OnInputFieldValueChanged(World&, EntityId,
+                                  const char* text) override {
+        ++changes_;
+        lastText_ = text != nullptr ? text : "";
+    }
+
+    void OnInputFieldSubmit(World&, EntityId,
+                            const char* text) override {
+        ++submits_;
+        lastText_ = text != nullptr ? text : "";
+    }
+
+private:
+    int& changes_;
+    int& submits_;
+    std::string& lastText_;
+};
+
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
@@ -779,6 +804,9 @@ int main() {
     float lastSliderValue = 0.0f;
     int dropdownChanges = 0;
     int32_t lastDropdownValue = -1;
+    int inputFieldChanges = 0;
+    int inputFieldSubmits = 0;
+    std::string lastInputFieldText;
     BehaviorSystem buttonBehaviors;
     if (!Check(buttonBehaviors.Attach(
                    behaviorEntity,
@@ -795,7 +823,13 @@ int main() {
                        behaviorEntity,
                        std::make_unique<DropdownBehavior>(
                            dropdownChanges,
-                           lastDropdownValue)),
+                           lastDropdownValue)) &&
+                   buttonBehaviors.Attach(
+                       behaviorEntity,
+                       std::make_unique<InputFieldBehavior>(
+                           inputFieldChanges,
+                           inputFieldSubmits,
+                           lastInputFieldText)),
                "Button Runtime Behavior could not be attached.")) {
         return 224;
     }
@@ -804,17 +838,28 @@ int main() {
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, true);
     buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.75f);
     buttonBehaviors.DispatchDropdownValueChanged(behaviorEntity, 2);
+    buttonBehaviors.DispatchInputFieldValueChanged(
+        behaviorEntity, "Player");
+    buttonBehaviors.DispatchInputFieldSubmit(
+        behaviorEntity, "Player One");
     behaviorWorld.Find(behaviorEntity)->active = false;
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, false);
     buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.25f);
     buttonBehaviors.DispatchDropdownValueChanged(behaviorEntity, 1);
+    buttonBehaviors.DispatchInputFieldValueChanged(
+        behaviorEntity, "Ignored");
+    buttonBehaviors.DispatchInputFieldSubmit(
+        behaviorEntity, "Ignored");
     buttonBehaviors.Stop();
     if (!Check(buttonClicks == 1 && toggleChanges == 1 &&
                    lastToggleValue && sliderChanges == 1 &&
                    lastSliderValue == 0.75f &&
                    dropdownChanges == 1 &&
-                   lastDropdownValue == 2,
+                   lastDropdownValue == 2 &&
+                   inputFieldChanges == 1 &&
+                   inputFieldSubmits == 1 &&
+                   lastInputFieldText == "Player One",
                "UI event dispatch ignored lifecycle or activation state.")) {
         return 225;
     }
@@ -1159,6 +1204,13 @@ int main() {
     childEntity->dropdown->highlightedColor =
         {0.4f, 0.5f, 0.6f, 0.9f};
     childEntity->dropdown->itemHeight = 42.0f;
+    childEntity->inputField = InputFieldComponent{};
+    childEntity->inputField->interactable = false;
+    childEntity->inputField->text = "secret";
+    childEntity->inputField->placeholder = "Password";
+    childEntity->inputField->characterLimit = 24;
+    childEntity->inputField->contentType =
+        InputFieldContentType::Password;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1469,6 +1521,22 @@ int main() {
                    invalidDropdownWorld, &error),
                "An invalid Dropdown value was accepted.")) {
         return 267;
+    }
+    nlohmann::json invalidInputFieldScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity :
+         invalidInputFieldScene["entities"]) {
+        if (entity["components"].contains("InputField")) {
+            entity["components"]["InputField"]
+                  ["characterLimit"] = 4097;
+        }
+    }
+    World invalidInputFieldWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidInputFieldScene.dump(),
+                   invalidInputFieldWorld, &error),
+               "An invalid InputField character limit was accepted.")) {
+        return 268;
     }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
@@ -1782,6 +1850,14 @@ int main() {
                    restoredChild->dropdown->highlightedColor.w ==
                        0.9f &&
                    restoredChild->dropdown->itemHeight == 42.0f &&
+                   restoredChild->inputField &&
+                   !restoredChild->inputField->interactable &&
+                   restoredChild->inputField->text == "secret" &&
+                   restoredChild->inputField->placeholder ==
+                       "Password" &&
+                   restoredChild->inputField->characterLimit == 24 &&
+                   restoredChild->inputField->contentType ==
+                       InputFieldContentType::Password &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1991,6 +2067,14 @@ int main() {
                    duplicateChild->dropdown->options[2] == "High" &&
                    duplicateChild->dropdown->value == 2 &&
                    duplicateChild->dropdown->itemHeight == 42.0f &&
+                   duplicateChild->inputField &&
+                   !duplicateChild->inputField->interactable &&
+                   duplicateChild->inputField->text == "secret" &&
+                   duplicateChild->inputField->placeholder ==
+                       "Password" &&
+                   duplicateChild->inputField->characterLimit == 24 &&
+                   duplicateChild->inputField->contentType ==
+                       InputFieldContentType::Password &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 class World;
@@ -18,6 +19,10 @@ public:
     void DispatchToggleValueChanged(EntityId entity, bool isOn);
     void DispatchSliderValueChanged(EntityId entity, float value);
     void DispatchDropdownValueChanged(EntityId entity, int32_t value);
+    void DispatchInputFieldValueChanged(EntityId entity,
+                                        const std::string& text);
+    void DispatchInputFieldSubmit(EntityId entity,
+                                  const std::string& text);
     void Stop();
     void Clear();
 

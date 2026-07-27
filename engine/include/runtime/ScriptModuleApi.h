@@ -7,7 +7,7 @@
 
 class Input;
 
-inline constexpr uint32_t kScriptModuleApiVersion = 12u;
+inline constexpr uint32_t kScriptModuleApiVersion = 13u;
 inline constexpr char kScriptModuleVersionExport[] =
     "LikeEngineScriptModuleApiVersion";
 inline constexpr char kScriptModuleTypesExport[] = "LikeEngineGetScriptTypes";

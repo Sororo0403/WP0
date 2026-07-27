@@ -81,6 +81,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->toggle = original.toggle;
         duplicate->slider = original.slider;
         duplicate->dropdown = original.dropdown;
+        duplicate->inputField = original.inputField;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -862,6 +863,26 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 dropdown.itemHeight > 1000000.0f) {
                 SetError(error,
                          "Scene contains an invalid Dropdown component.");
+                return false;
+            }
+        }
+        if (entity.inputField) {
+            const InputFieldComponent& inputField =
+                *entity.inputField;
+            if (inputField.text.size() > 4096u ||
+                inputField.text.find('\0') != std::string::npos ||
+                inputField.placeholder.size() > 1024u ||
+                inputField.placeholder.find('\0') !=
+                    std::string::npos ||
+                inputField.characterLimit < 0 ||
+                inputField.characterLimit > 4096 ||
+                inputField.contentType <
+                    InputFieldContentType::Standard ||
+                inputField.contentType >
+                    InputFieldContentType::Password) {
+                SetError(
+                    error,
+                    "Scene contains an invalid InputField component.");
                 return false;
             }
         }

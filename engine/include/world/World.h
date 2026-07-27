@@ -305,6 +305,21 @@ struct DropdownComponent {
     float itemHeight = 48.0f;
 };
 
+enum class InputFieldContentType : uint8_t {
+    Standard,
+    Password,
+};
+
+struct InputFieldComponent {
+    bool enabled = true;
+    bool interactable = true;
+    std::string text;
+    std::string placeholder = "Enter text...";
+    int32_t characterLimit = 0;
+    InputFieldContentType contentType =
+        InputFieldContentType::Standard;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -364,6 +379,7 @@ struct WorldEntity {
     std::optional<ToggleComponent> toggle;
     std::optional<SliderComponent> slider;
     std::optional<DropdownComponent> dropdown;
+    std::optional<InputFieldComponent> inputField;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

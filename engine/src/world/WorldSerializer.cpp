@@ -600,6 +600,26 @@ std::string WorldSerializer::Serialize(const World& world) {
             encoded["components"]["Dropdown"] =
                 std::move(encodedDropdown);
         }
+        if (entity.inputField) {
+            const InputFieldComponent& inputField =
+                *entity.inputField;
+            Json encodedInputField;
+            encodedInputField["enabled"] = inputField.enabled;
+            encodedInputField["interactable"] =
+                inputField.interactable;
+            encodedInputField["text"] = inputField.text;
+            encodedInputField["placeholder"] =
+                inputField.placeholder;
+            encodedInputField["characterLimit"] =
+                inputField.characterLimit;
+            encodedInputField["contentType"] =
+                inputField.contentType ==
+                        InputFieldContentType::Password
+                    ? "Password"
+                    : "Standard";
+            encoded["components"]["InputField"] =
+                std::move(encodedInputField);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -1646,6 +1666,67 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.dropdown = std::move(component);
+        }
+        if (encoded["components"].contains("InputField")) {
+            const Json& encodedInputField =
+                encoded["components"]["InputField"];
+            InputFieldComponent component{};
+            if (!encodedInputField.is_object() ||
+                !encodedInputField.contains("enabled") ||
+                !encodedInputField["enabled"].is_boolean() ||
+                !encodedInputField.contains("interactable") ||
+                !encodedInputField["interactable"].is_boolean() ||
+                !encodedInputField.contains("text") ||
+                !encodedInputField["text"].is_string() ||
+                !encodedInputField.contains("placeholder") ||
+                !encodedInputField["placeholder"].is_string() ||
+                !encodedInputField.contains("characterLimit") ||
+                !encodedInputField["characterLimit"]
+                     .is_number_integer() ||
+                !encodedInputField.contains("contentType") ||
+                !encodedInputField["contentType"].is_string()) {
+                SetError(error,
+                         "Scene InputField component is invalid.");
+                return false;
+            }
+            component.enabled =
+                encodedInputField["enabled"].get<bool>();
+            component.interactable =
+                encodedInputField["interactable"].get<bool>();
+            component.text =
+                encodedInputField["text"].get<std::string>();
+            component.placeholder =
+                encodedInputField["placeholder"]
+                    .get<std::string>();
+            component.characterLimit =
+                encodedInputField["characterLimit"]
+                    .get<int32_t>();
+            const std::string contentType =
+                encodedInputField["contentType"]
+                    .get<std::string>();
+            if (contentType == "Standard") {
+                component.contentType =
+                    InputFieldContentType::Standard;
+            } else if (contentType == "Password") {
+                component.contentType =
+                    InputFieldContentType::Password;
+            } else {
+                SetError(error,
+                         "Scene InputField content type is invalid.");
+                return false;
+            }
+            if (component.text.size() > 4096u ||
+                component.text.find('\0') != std::string::npos ||
+                component.placeholder.size() > 1024u ||
+                component.placeholder.find('\0') !=
+                    std::string::npos ||
+                component.characterLimit < 0 ||
+                component.characterLimit > 4096) {
+                SetError(error,
+                         "Scene InputField settings are invalid.");
+                return false;
+            }
+            entity.inputField = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

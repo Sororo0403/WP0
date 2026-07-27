@@ -60,6 +60,18 @@ public:
         (void)entity;
         (void)value;
     }
+    virtual void OnInputFieldValueChanged(World& world, EntityId entity,
+                                          const char* text) {
+        (void)world;
+        (void)entity;
+        (void)text;
+    }
+    virtual void OnInputFieldSubmit(World& world, EntityId entity,
+                                    const char* text) {
+        (void)world;
+        (void)entity;
+        (void)text;
+    }
     virtual void OnStop(World& world, EntityId entity) {
         (void)world;
         (void)entity;

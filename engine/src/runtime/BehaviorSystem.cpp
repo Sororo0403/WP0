@@ -138,6 +138,40 @@ void BehaviorSystem::DispatchDropdownValueChanged(EntityId entity,
     }
 }
 
+void BehaviorSystem::DispatchInputFieldValueChanged(
+    EntityId entity, const std::string& text) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnInputFieldValueChanged(
+            *world_, entity, text.c_str());
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
+void BehaviorSystem::DispatchInputFieldSubmit(
+    EntityId entity, const std::string& text) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnInputFieldSubmit(
+            *world_, entity, text.c_str());
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;
