@@ -8620,6 +8620,7 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
     if (playModeState_ != PlayModeState::Edit || ctx_ == nullptr ||
         imageMax.x <= imageMin.x || imageMax.y <= imageMin.y) {
         gameUiDragEntity_ = {};
+        gameUiResizeEntity_ = {};
         return;
     }
 
@@ -8737,6 +8738,43 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
             return hasRect;
         };
 
+    const auto calculateImageRect =
+        [&](const WorldEntity& entity, ImVec2& minimum,
+            ImVec2& maximum, float* canvasScale = nullptr) {
+            if (!world_.IsActiveInHierarchy(entity.id) || !entity.image ||
+                !entity.image->enabled) {
+                return false;
+            }
+            float scale = 1.0f;
+            DirectX::XMFLOAT2 origin{};
+            DirectX::XMFLOAT2 referenceResolution{};
+            if (!resolveCanvasLayout(entity, scale, origin,
+                                     referenceResolution)) {
+                return false;
+            }
+            const ImageComponent& image = *entity.image;
+            const DirectX::XMFLOAT2 anchor =
+                GetUiAnchorChoice(image.anchor).factor;
+            minimum = {
+                origin.x +
+                    (referenceResolution.x * anchor.x +
+                     image.position.x - image.size.x * anchor.x) *
+                        scale,
+                origin.y +
+                    (referenceResolution.y * anchor.y +
+                     image.position.y - image.size.y * anchor.y) *
+                        scale,
+            };
+            maximum = {
+                minimum.x + image.size.x * scale,
+                minimum.y + image.size.y * scale,
+            };
+            if (canvasScale != nullptr) {
+                *canvasScale = scale;
+            }
+            return true;
+        };
+
     const ImVec2 mouse = ImGui::GetMousePos();
     const bool imageHovered = ImGui::IsItemHovered();
     EntityId hovered{};
@@ -8752,19 +8790,89 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         }
     }
 
+    const WorldEntity* selectedBeforeInput = world_.Find(selection_);
+    ImVec2 selectedImageMin{};
+    ImVec2 selectedImageMax{};
+    const bool selectedHasImage =
+        selectedBeforeInput != nullptr &&
+        calculateImageRect(*selectedBeforeInput, selectedImageMin,
+                           selectedImageMax);
+    constexpr float kResizeHandleRadius = 6.0f;
+    constexpr float kResizeHitRadius = 9.0f;
+    const bool resizeHandleHovered =
+        imageHovered && selectedHasImage &&
+        std::abs(mouse.x - selectedImageMax.x) <= kResizeHitRadius &&
+        std::abs(mouse.y - selectedImageMax.y) <= kResizeHitRadius;
+
     if (imageHovered &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (hovered.IsValid()) {
+        if (resizeHandleHovered) {
+            gameUiResizeEntity_ = selection_;
+            gameUiDragEntity_ = {};
+            BeginHistoryEdit("Resize UI Image");
+        } else if (hovered.IsValid()) {
             SelectHierarchyEntity(hovered, false, false);
             gameUiDragEntity_ = hovered;
+            gameUiResizeEntity_ = {};
             BeginHistoryEdit("Move UI Element");
         } else {
             ClearHierarchySelection();
             gameUiDragEntity_ = {};
+            gameUiResizeEntity_ = {};
         }
     }
 
-    if (gameUiDragEntity_.IsValid() &&
+    if (gameUiResizeEntity_.IsValid() &&
+        ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        WorldEntity* entity = world_.Find(gameUiResizeEntity_);
+        if (entity != nullptr && entity->image &&
+            ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
+            float scale = 1.0f;
+            ImVec2 rectMin{};
+            ImVec2 rectMax{};
+            if (calculateImageRect(*entity, rectMin, rectMax, &scale) &&
+                scale > 0.0f) {
+                const ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
+                ImageComponent& image = *entity->image;
+                const DirectX::XMFLOAT2 anchor =
+                    GetUiAnchorChoice(image.anchor).factor;
+                const DirectX::XMFLOAT2 previousSize = image.size;
+                image.size.x = std::clamp(
+                    image.size.x + mouseDelta.x / scale, 1.0f,
+                    1000000.0f);
+                image.size.y = std::clamp(
+                    image.size.y + mouseDelta.y / scale, 1.0f,
+                    1000000.0f);
+                const DirectX::XMFLOAT2 sizeDelta{
+                    image.size.x - previousSize.x,
+                    image.size.y - previousSize.y,
+                };
+                const DirectX::XMFLOAT2 positionDelta{
+                    sizeDelta.x * anchor.x,
+                    sizeDelta.y * anchor.y,
+                };
+                image.position.x = std::clamp(
+                    image.position.x + positionDelta.x, -1000000.0f,
+                    1000000.0f);
+                image.position.y = std::clamp(
+                    image.position.y + positionDelta.y, -1000000.0f,
+                    1000000.0f);
+                if (entity->text) {
+                    entity->text->position.x = std::clamp(
+                        entity->text->position.x + positionDelta.x,
+                        -1000000.0f, 1000000.0f);
+                    entity->text->position.y = std::clamp(
+                        entity->text->position.y + positionDelta.y,
+                        -1000000.0f, 1000000.0f);
+                }
+                RefreshDirty();
+                status_ = "Resized UI Image in the Game View.";
+            }
+        }
+    } else if (gameUiResizeEntity_.IsValid()) {
+        CommitHistoryEdit();
+        gameUiResizeEntity_ = {};
+    } else if (gameUiDragEntity_.IsValid() &&
         ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
         WorldEntity* entity = world_.Find(gameUiDragEntity_);
         if (entity != nullptr &&
@@ -8810,9 +8918,21 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         drawList->PushClipRect(imageMin, imageMax, true);
         drawList->AddRect(selectedMin, selectedMax,
                           IM_COL32(255, 190, 60, 255), 0.0f, 0, 2.0f);
+        ImVec2 imageRectMin{};
+        ImVec2 imageRectMax{};
+        if (calculateImageRect(*selected, imageRectMin, imageRectMax)) {
+            drawList->AddRectFilled(
+                {imageRectMax.x - kResizeHandleRadius,
+                 imageRectMax.y - kResizeHandleRadius},
+                {imageRectMax.x + kResizeHandleRadius,
+                 imageRectMax.y + kResizeHandleRadius},
+                IM_COL32(255, 190, 60, 255));
+        }
         drawList->PopClipRect();
     }
-    if (gameUiDragEntity_.IsValid()) {
+    if (gameUiResizeEntity_.IsValid() || resizeHandleHovered) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+    } else if (gameUiDragEntity_.IsValid()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     } else if (hovered.IsValid()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);

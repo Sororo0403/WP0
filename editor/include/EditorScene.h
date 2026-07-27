@@ -297,6 +297,7 @@ private:
     bool focusGamePanelRequested_ = false;
     bool gameInputCaptured_ = false;
     EntityId gameUiDragEntity_{};
+    EntityId gameUiResizeEntity_{};
     int gameInputCursorRestoreX_ = 0;
     int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;
