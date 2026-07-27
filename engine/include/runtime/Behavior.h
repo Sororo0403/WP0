@@ -42,6 +42,12 @@ public:
         (void)world;
         (void)entity;
     }
+    virtual void OnToggleValueChanged(World& world, EntityId entity,
+                                      bool isOn) {
+        (void)world;
+        (void)entity;
+        (void)isOn;
+    }
     virtual void OnStop(World& world, EntityId entity) {
         (void)world;
         (void)entity;

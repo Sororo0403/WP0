@@ -91,6 +91,21 @@ void BehaviorSystem::DispatchButtonClick(EntityId entity) {
     }
 }
 
+void BehaviorSystem::DispatchToggleValueChanged(EntityId entity, bool isOn) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnToggleValueChanged(*world_, entity, isOn);
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;

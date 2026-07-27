@@ -76,6 +76,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->text = original.text;
         duplicate->image = original.image;
         duplicate->button = original.button;
+        duplicate->toggle = original.toggle;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -702,6 +703,24 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 button.fadeDuration < 0.0f ||
                 button.fadeDuration > 10.0f) {
                 SetError(error, "Scene contains an invalid Button component.");
+                return false;
+            }
+        }
+        if (entity.toggle) {
+            const ToggleComponent& toggle = *entity.toggle;
+            if (!IsFinite(toggle.checkmarkColor) ||
+                toggle.checkmarkColor.x < 0.0f ||
+                toggle.checkmarkColor.x > 1.0f ||
+                toggle.checkmarkColor.y < 0.0f ||
+                toggle.checkmarkColor.y > 1.0f ||
+                toggle.checkmarkColor.z < 0.0f ||
+                toggle.checkmarkColor.z > 1.0f ||
+                toggle.checkmarkColor.w < 0.0f ||
+                toggle.checkmarkColor.w > 1.0f ||
+                !std::isfinite(toggle.checkmarkScale) ||
+                toggle.checkmarkScale < 0.0f ||
+                toggle.checkmarkScale > 1.0f) {
+                SetError(error, "Scene contains an invalid Toggle component.");
                 return false;
             }
         }

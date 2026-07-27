@@ -236,6 +236,13 @@ struct ButtonComponent {
     float fadeDuration = 0.1f;
 };
 
+struct ToggleComponent {
+    bool enabled = true;
+    bool isOn = false;
+    DirectX::XMFLOAT4 checkmarkColor{0.25f, 0.9f, 0.4f, 1.0f};
+    float checkmarkScale = 0.6f;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -290,6 +297,7 @@ struct WorldEntity {
     std::optional<TextComponent> text;
     std::optional<ImageComponent> image;
     std::optional<ButtonComponent> button;
+    std::optional<ToggleComponent> toggle;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

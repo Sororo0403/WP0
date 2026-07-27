@@ -115,6 +115,7 @@ private:
         Text,
         Image,
         Button,
+        Toggle,
     };
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();

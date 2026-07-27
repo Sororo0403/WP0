@@ -4012,6 +4012,10 @@ bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, Entity
             CreateUiEntity(UiEntityPreset::Button, parent);
             created = true;
         }
+        if (ImGui::MenuItem("Toggle")) {
+            CreateUiEntity(UiEntityPreset::Toggle, parent);
+            created = true;
+        }
         ImGui::EndMenu();
     }
     return created;
@@ -4125,10 +4129,14 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         uiParent = createdCanvas;
     }
 
-    const char* name =
-        preset == UiEntityPreset::Text
-            ? "Text"
-            : preset == UiEntityPreset::Image ? "Image" : "Button";
+    const char* name = "Button";
+    if (preset == UiEntityPreset::Text) {
+        name = "Text";
+    } else if (preset == UiEntityPreset::Image) {
+        name = "Image";
+    } else if (preset == UiEntityPreset::Toggle) {
+        name = "Toggle";
+    }
     const EntityId entityId = world_.CreateEntity(name);
     WorldEntity* entity = world_.Find(entityId);
     if (entity == nullptr || !world_.SetParent(entityId, uiParent)) {
@@ -4149,7 +4157,7 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         entity->image->anchor = UiAnchor::Center;
         entity->image->pivot = {0.5f, 0.5f};
         entity->image->size = {200.0f, 100.0f};
-    } else {
+    } else if (preset == UiEntityPreset::Button) {
         entity->image = ImageComponent{};
         entity->image->anchor = UiAnchor::Center;
         entity->image->pivot = {0.5f, 0.5f};
@@ -4161,14 +4169,25 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         entity->text->anchor = UiAnchor::Center;
         entity->text->alignment = TextAlignment::Center;
         entity->text->fontSize = 28.0f;
+    } else {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {48.0f, 48.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->toggle = ToggleComponent{};
     }
 
     selection_ = entityId;
     RecordImmediateEdit(
         preset == UiEntityPreset::Text
             ? "Create UI Text"
-            : preset == UiEntityPreset::Image ? "Create UI Image"
-                                               : "Create UI Button",
+            : preset == UiEntityPreset::Image
+                  ? "Create UI Image"
+                  : preset == UiEntityPreset::Toggle
+                        ? "Create UI Toggle"
+                        : "Create UI Button",
         before, selectionBefore);
     status_ = std::string("Created a UI ") + name + ".";
 }
@@ -4686,6 +4705,13 @@ void EditorScene::DrawInspectorPanel() {
             entity->button = ButtonComponent{};
             RecordImmediateEdit("Add Button", before, selectionBefore);
             status_ = "Added Button.";
+        }
+        if (!entity->toggle && ImGui::MenuItem("Toggle")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->toggle = ToggleComponent{};
+            RecordImmediateEdit("Add Toggle", before, selectionBefore);
+            status_ = "Added Toggle.";
         }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -6468,6 +6494,66 @@ void EditorScene::DrawInspectorPanel() {
             if (entity->scripts.empty()) {
                 ImGui::TextDisabled(
                     "Add a Script and override OnButtonClick to handle clicks.");
+            }
+        }
+    }
+
+    if (entity->toggle) {
+        ImGui::SeparatorText("Toggle");
+        if (ImGui::Button("Remove Toggle")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->toggle.reset();
+            RecordImmediateEdit("Remove Toggle", before, selectionBefore);
+            status_ = "Removed Toggle.";
+        } else {
+            ToggleComponent& toggle = *entity->toggle;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Toggle", &toggle.enabled)) {
+                RecordImmediateEdit("Toggle Toggle", std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Toggle.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Is On##Toggle", &toggle.isOn)) {
+                RecordImmediateEdit("Change Toggle Value",
+                                    std::move(before), selectionBefore);
+                status_ = "Changed Toggle value.";
+            }
+            if (ImGui::ColorEdit4("Checkmark Color##Toggle",
+                                  &toggle.checkmarkColor.x)) {
+                RefreshDirty();
+                status_ = "Modified Toggle checkmark color.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Toggle Checkmark Color");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat("Checkmark Scale##Toggle",
+                                 &toggle.checkmarkScale, 0.01f, 0.0f, 1.0f,
+                                 "%.2f")) {
+                toggle.checkmarkScale =
+                    std::clamp(toggle.checkmarkScale, 0.0f, 1.0f);
+                RefreshDirty();
+                status_ = "Modified Toggle checkmark scale.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Toggle Checkmark Scale");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (!entity->button || !entity->image) {
+                ImGui::TextColored(
+                    {1.0f, 0.72f, 0.25f, 1.0f},
+                    "Toggle requires Button and Image on the same Entity.");
+            }
+            if (entity->scripts.empty()) {
+                ImGui::TextDisabled(
+                    "Override OnToggleValueChanged to handle value changes.");
             }
         }
     }
@@ -8897,7 +8983,8 @@ bool EditorScene::DrawGameUi(int width, int height,
     for (const OrderedUiEntity& entry : orderedUiEntities) {
         const WorldEntity& entity = *entry.entity;
         if (!entity.button || !entity.button->enabled || !entity.image ||
-            !entity.image->enabled) {
+            !entity.image->enabled ||
+            (entity.toggle && !entity.toggle->enabled)) {
             continue;
         }
         float scale = 1.0f;
@@ -9186,6 +9273,24 @@ bool EditorScene::DrawGameUi(int width, int height,
                     ? texture.Get()
                     : kInvalidResourceId;
             spriteRenderer.Draw(sprite);
+            if (entity.toggle && entity.toggle->enabled &&
+                entity.toggle->isOn) {
+                const ToggleComponent& toggle = *entity.toggle;
+                Sprite checkmark{};
+                checkmark.size = {
+                    sprite.size.x * toggle.checkmarkScale,
+                    sprite.size.y * toggle.checkmarkScale,
+                };
+                checkmark.position = {
+                    sprite.position.x +
+                        (sprite.size.x - checkmark.size.x) * 0.5f,
+                    sprite.position.y +
+                        (sprite.size.y - checkmark.size.y) * 0.5f,
+                };
+                checkmark.color = toggle.checkmarkColor;
+                checkmark.textureId = kInvalidResourceId;
+                spriteRenderer.Draw(checkmark);
+            }
         }
         if (!drawsText) {
             continue;
@@ -10195,11 +10300,20 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     std::vector<EntityId> buttonClicks = std::move(pendingButtonClicks_);
     pendingButtonClicks_.clear();
     for (const EntityId entityId : buttonClicks) {
-        const WorldEntity* entity = world_.Find(entityId);
+        WorldEntity* entity = world_.Find(entityId);
         if (entity == nullptr || !entity->button || !entity->button->enabled ||
             !entity->button->interactable ||
+            (entity->toggle && !entity->toggle->enabled) ||
             !world_.IsActiveInHierarchy(entityId)) {
             continue;
+        }
+        if (entity->toggle) {
+            entity->toggle->isOn = !entity->toggle->isOn;
+            runtimeBehaviors_.DispatchToggleValueChanged(
+                entityId, entity->toggle->isOn);
+            if (ApplyPendingRuntimeSceneLoad()) {
+                return;
+            }
         }
         runtimeBehaviors_.DispatchButtonClick(entityId);
         if (ApplyPendingRuntimeSceneLoad()) {

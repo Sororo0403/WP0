@@ -415,6 +415,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedButton["fadeDuration"] = button.fadeDuration;
             encoded["components"]["Button"] = std::move(encodedButton);
         }
+        if (entity.toggle) {
+            const ToggleComponent& toggle = *entity.toggle;
+            Json encodedToggle;
+            encodedToggle["enabled"] = toggle.enabled;
+            encodedToggle["isOn"] = toggle.isOn;
+            encodedToggle["checkmarkColor"] =
+                EncodeFloat4(toggle.checkmarkColor);
+            encodedToggle["checkmarkScale"] = toggle.checkmarkScale;
+            encoded["components"]["Toggle"] = std::move(encodedToggle);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -1174,6 +1184,39 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.button = std::move(component);
+        }
+        if (encoded["components"].contains("Toggle")) {
+            const Json& encodedToggle = encoded["components"]["Toggle"];
+            ToggleComponent component{};
+            if (!encodedToggle.is_object() ||
+                !encodedToggle.contains("enabled") ||
+                !encodedToggle["enabled"].is_boolean() ||
+                !encodedToggle.contains("isOn") ||
+                !encodedToggle["isOn"].is_boolean() ||
+                !encodedToggle.contains("checkmarkColor") ||
+                !DecodeFloat4(encodedToggle["checkmarkColor"],
+                              component.checkmarkColor) ||
+                !encodedToggle.contains("checkmarkScale") ||
+                !encodedToggle["checkmarkScale"].is_number()) {
+                SetError(error, "Scene Toggle component is invalid.");
+                return false;
+            }
+            component.enabled = encodedToggle["enabled"].get<bool>();
+            component.isOn = encodedToggle["isOn"].get<bool>();
+            component.checkmarkScale =
+                encodedToggle["checkmarkScale"].get<float>();
+            const DirectX::XMFLOAT4& color = component.checkmarkColor;
+            if (color.x < 0.0f || color.x > 1.0f ||
+                color.y < 0.0f || color.y > 1.0f ||
+                color.z < 0.0f || color.z > 1.0f ||
+                color.w < 0.0f || color.w > 1.0f ||
+                !std::isfinite(component.checkmarkScale) ||
+                component.checkmarkScale < 0.0f ||
+                component.checkmarkScale > 1.0f) {
+                SetError(error, "Scene Toggle settings are invalid.");
+                return false;
+            }
+            entity.toggle = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

@@ -15,6 +15,7 @@ public:
     void Start(World& world);
     void Update(float deltaTime);
     void DispatchButtonClick(EntityId entity);
+    void DispatchToggleValueChanged(EntityId entity, bool isOn);
     void Stop();
     void Clear();
 

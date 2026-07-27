@@ -131,6 +131,21 @@ private:
     int& clicks_;
 };
 
+class ToggleBehavior final : public Behavior {
+public:
+    ToggleBehavior(int& changes, bool& lastValue)
+        : changes_(changes), lastValue_(lastValue) {}
+
+    void OnToggleValueChanged(World&, EntityId, bool isOn) override {
+        ++changes_;
+        lastValue_ = isOn;
+    }
+
+private:
+    int& changes_;
+    bool& lastValue_;
+};
+
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
@@ -726,20 +741,29 @@ int main() {
     }
 
     int buttonClicks = 0;
+    int toggleChanges = 0;
+    bool lastToggleValue = false;
     BehaviorSystem buttonBehaviors;
     if (!Check(buttonBehaviors.Attach(
                    behaviorEntity,
-                   std::make_unique<ButtonBehavior>(buttonClicks)),
+                   std::make_unique<ButtonBehavior>(buttonClicks)) &&
+                   buttonBehaviors.Attach(
+                       behaviorEntity,
+                       std::make_unique<ToggleBehavior>(
+                           toggleChanges, lastToggleValue)),
                "Button Runtime Behavior could not be attached.")) {
         return 224;
     }
     buttonBehaviors.Start(behaviorWorld);
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
+    buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, true);
     behaviorWorld.Find(behaviorEntity)->active = false;
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
+    buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, false);
     buttonBehaviors.Stop();
-    if (!Check(buttonClicks == 1,
-               "Button click dispatch ignored lifecycle or activation state.")) {
+    if (!Check(buttonClicks == 1 && toggleChanges == 1 &&
+                   lastToggleValue,
+               "UI event dispatch ignored lifecycle or activation state.")) {
         return 225;
     }
 
@@ -1057,6 +1081,10 @@ int main() {
     childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
     childEntity->button->disabledColor = {0.4f, 0.3f, 0.2f, 0.8f};
     childEntity->button->fadeDuration = 0.25f;
+    childEntity->toggle = ToggleComponent{};
+    childEntity->toggle->isOn = true;
+    childEntity->toggle->checkmarkColor = {0.2f, 0.9f, 0.3f, 0.75f};
+    childEntity->toggle->checkmarkScale = 0.55f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1283,6 +1311,18 @@ int main() {
                "An invalid Button navigation mode was accepted.")) {
         return 258;
     }
+    nlohmann::json invalidToggleScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidToggleScene["entities"]) {
+        if (entity["components"].contains("Toggle")) {
+            entity["components"]["Toggle"]["checkmarkScale"] = 1.01f;
+        }
+    }
+    World invalidToggleWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidToggleScene.dump(),
+                                             invalidToggleWorld, &error),
+               "An out-of-range Toggle checkmark scale was accepted.")) {
+        return 259;
+    }
     nlohmann::json invalidImageScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidImageScene["entities"]) {
         if (entity["components"].contains("Image")) {
@@ -1497,6 +1537,10 @@ int main() {
                    restoredChild->button->disabledColor.x == 0.4f &&
                    restoredChild->button->disabledColor.w == 0.8f &&
                    restoredChild->button->fadeDuration == 0.25f &&
+                   restoredChild->toggle &&
+                   restoredChild->toggle->isOn &&
+                   restoredChild->toggle->checkmarkColor.y == 0.9f &&
+                   restoredChild->toggle->checkmarkScale == 0.55f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1661,6 +1705,10 @@ int main() {
                    duplicateChild->button->pressedColor.x == 0.7f &&
                    duplicateChild->button->disabledColor.y == 0.3f &&
                    duplicateChild->button->fadeDuration == 0.25f &&
+                   duplicateChild->toggle &&
+                   duplicateChild->toggle->isOn &&
+                   duplicateChild->toggle->checkmarkColor.z == 0.3f &&
+                   duplicateChild->toggle->checkmarkScale == 0.55f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&
