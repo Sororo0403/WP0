@@ -193,6 +193,64 @@ FontHandle ResolveStyleFont(const FontManager& fontManager, const TextStyle& sty
     return style.font.IsValid() ? style.font : fontManager.GetDefaultFont();
 }
 
+std::vector<float> CalculateLineWidths(
+    FontManager& fontManager, FontHandle font, float pixelSize,
+    const std::vector<char32_t>& codepoints, float wrapWidth) {
+    std::vector<float> lineWidths;
+    try {
+        lineWidths.reserve(
+            1u + static_cast<size_t>(std::count(codepoints.begin(),
+                                                codepoints.end(), U'\n')));
+        lineWidths.push_back(0.0f);
+    } catch (const std::exception&) {
+        return {};
+    }
+
+    for (char32_t codepoint : codepoints) {
+        if (codepoint == U'\r') {
+            continue;
+        }
+        if (codepoint == U'\n') {
+            try {
+                lineWidths.push_back(0.0f);
+            } catch (const std::exception&) {
+                return {};
+            }
+            continue;
+        }
+
+        const FontGlyph* glyph =
+            fontManager.GetGlyph(font, pixelSize, codepoint);
+        if (glyph == nullptr) {
+            continue;
+        }
+
+        float& currentWidth = lineWidths.back();
+        if (wrapWidth > 0.0f && currentWidth > 0.0f &&
+            currentWidth + glyph->advanceX > wrapWidth) {
+            try {
+                lineWidths.push_back(0.0f);
+            } catch (const std::exception&) {
+                return {};
+            }
+        }
+        lineWidths.back() += glyph->advanceX;
+    }
+    return lineWidths;
+}
+
+float ResolveHorizontalAlignment(TextHorizontalAlignment alignment) {
+    switch (alignment) {
+    case TextHorizontalAlignment::Center:
+        return 0.5f;
+    case TextHorizontalAlignment::Right:
+        return 1.0f;
+    case TextHorizontalAlignment::Left:
+    default:
+        return 0.0f;
+    }
+}
+
 TextLayoutMetrics MeasureCodepoints(FontManager& fontManager,
                                     const std::vector<char32_t>& codepoints,
                                     const TextStyle& style) {
@@ -210,39 +268,19 @@ TextLayoutMetrics MeasureCodepoints(FontManager& fontManager,
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
     const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
-
-    float currentWidth = 0.0f;
-    float maxWidth = 0.0f;
-    uint32_t lineCount = 1u;
-    for (char32_t codepoint : codepoints) {
-        if (codepoint == U'\r') {
-            continue;
-        }
-        if (codepoint == U'\n') {
-            maxWidth = (std::max)(maxWidth, currentWidth);
-            currentWidth = 0.0f;
-            ++lineCount;
-            continue;
-        }
-
-        const FontGlyph* glyph = fontManager.GetGlyph(font, style.pixelSize, codepoint);
-        if (glyph != nullptr) {
-            if (wrapWidth > 0.0f && currentWidth > 0.0f &&
-                currentWidth + glyph->advanceX > wrapWidth) {
-                maxWidth = (std::max)(maxWidth, currentWidth);
-                currentWidth = 0.0f;
-                ++lineCount;
-            }
-            currentWidth += glyph->advanceX;
-        }
+    const std::vector<float> lineWidths = CalculateLineWidths(
+        fontManager, font, style.pixelSize, codepoints, wrapWidth);
+    if (lineWidths.empty()) {
+        return result;
     }
-    maxWidth = (std::max)(maxWidth, currentWidth);
 
-    result.lineCount = lineCount;
-    result.size.x = maxWidth;
+    result.lineCount = static_cast<uint32_t>(lineWidths.size());
+    result.size.x =
+        *std::max_element(lineWidths.begin(), lineWidths.end());
     result.size.y = fontMetrics.lineHeight;
-    if (lineCount > 1u) {
-        result.size.y += static_cast<float>(lineCount - 1u) * lineAdvance;
+    if (result.lineCount > 1u) {
+        result.size.y +=
+            static_cast<float>(result.lineCount - 1u) * lineAdvance;
     }
     return result;
 }
@@ -263,8 +301,22 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
     const FontMetrics fontMetrics = fontManager.GetMetrics(font, style.pixelSize);
     const float lineAdvance = fontMetrics.lineHeight + ResolveLineSpacing(style.lineSpacing);
     const float wrapWidth = ResolveWrapWidth(style.wrapWidth);
+    const std::vector<float> lineWidths = CalculateLineWidths(
+        fontManager, font, style.pixelSize, codepoints, wrapWidth);
+    if (lineWidths.empty()) {
+        return;
+    }
+    const float blockWidth =
+        *std::max_element(lineWidths.begin(), lineWidths.end());
+    const float alignment =
+        ResolveHorizontalAlignment(style.horizontalAlignment);
+    const auto resolveLineStart = [&](size_t lineIndex) {
+        return position.x +
+               (blockWidth - lineWidths[lineIndex]) * alignment;
+    };
 
-    float cursorX = position.x;
+    size_t lineIndex = 0u;
+    float cursorX = resolveLineStart(lineIndex);
     float baselineY = position.y + fontMetrics.ascent;
     float currentWidth = 0.0f;
     for (char32_t codepoint : codepoints) {
@@ -272,7 +324,8 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
             continue;
         }
         if (codepoint == U'\n') {
-            cursorX = position.x;
+            ++lineIndex;
+            cursorX = resolveLineStart(lineIndex);
             baselineY += lineAdvance;
             currentWidth = 0.0f;
             continue;
@@ -285,7 +338,8 @@ void DrawCodepoints(FontManager& fontManager, SpriteRenderer& spriteRenderer,
 
         if (wrapWidth > 0.0f && currentWidth > 0.0f &&
             currentWidth + glyph->advanceX > wrapWidth) {
-            cursorX = position.x;
+            ++lineIndex;
+            cursorX = resolveLineStart(lineIndex);
             baselineY += lineAdvance;
             currentWidth = 0.0f;
         }

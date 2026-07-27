@@ -8935,6 +8935,12 @@ bool EditorScene::DrawGameUi(int width, int height,
         style.pixelSize = text.fontSize * scale;
         style.lineSpacing = text.lineSpacing * scale;
         style.wrapWidth = text.wrapWidth * scale;
+        style.horizontalAlignment =
+            text.alignment == TextAlignment::Center
+                ? TextHorizontalAlignment::Center
+                : text.alignment == TextAlignment::Right
+                      ? TextHorizontalAlignment::Right
+                      : TextHorizontalAlignment::Left;
         style.color = text.color;
         const DirectX::XMFLOAT2 anchor =
             GetUiAnchorChoice(text.anchor).factor;

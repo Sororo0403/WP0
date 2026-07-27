@@ -11,6 +11,12 @@
 
 class SpriteRenderer;
 
+enum class TextHorizontalAlignment : uint8_t {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+};
+
 struct TextStyle {
     FontHandle font{};
     float pixelSize = 32.0f;
@@ -18,6 +24,8 @@ struct TextStyle {
     float zOrder = 0.0f;
     float lineSpacing = 0.0f;
     float wrapWidth = 0.0f;
+    TextHorizontalAlignment horizontalAlignment =
+        TextHorizontalAlignment::Left;
 };
 
 struct TextLayoutMetrics {
