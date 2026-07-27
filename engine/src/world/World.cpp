@@ -74,6 +74,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->animator = original.animator;
         duplicate->canvas = original.canvas;
         duplicate->canvasGroup = original.canvasGroup;
+        duplicate->eventSystem = original.eventSystem;
         duplicate->text = original.text;
         duplicate->image = original.image;
         duplicate->button = original.button;
@@ -137,6 +138,15 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
             remapNavigation(duplicate->button->selectOnRight);
             remapNavigation(duplicate->button->selectOnUp);
             remapNavigation(duplicate->button->selectOnDown);
+        }
+        if (duplicate->eventSystem) {
+            const auto remapped =
+                duplicateIds.find(
+                    duplicate->eventSystem->firstSelected);
+            if (remapped != duplicateIds.end()) {
+                duplicate->eventSystem->firstSelected =
+                    remapped->second;
+            }
         }
     }
     return duplicateIds.at(source);
@@ -220,6 +230,15 @@ bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
             remapNavigation(instantiated.button->selectOnUp);
             remapNavigation(instantiated.button->selectOnDown);
         }
+        if (instantiated.eventSystem &&
+            instantiated.eventSystem->firstSelected.IsValid()) {
+            const auto mapped = instantiatedIds.find(
+                instantiated.eventSystem->firstSelected);
+            instantiated.eventSystem->firstSelected =
+                mapped != instantiatedIds.end()
+                    ? mapped->second
+                    : EntityId{};
+        }
         combined.push_back(std::move(instantiated));
     }
     if (instantiatedRoots.empty() || !ReplaceEntities(std::move(combined), error)) {
@@ -278,6 +297,10 @@ bool World::DestroyEntity(EntityId id) {
             clearRemovedNavigation(entity.button->selectOnRight);
             clearRemovedNavigation(entity.button->selectOnUp);
             clearRemovedNavigation(entity.button->selectOnDown);
+        }
+        if (entity.eventSystem &&
+            removed.contains(entity.eventSystem->firstSelected)) {
+            entity.eventSystem->firstSelected = {};
         }
     }
     return true;

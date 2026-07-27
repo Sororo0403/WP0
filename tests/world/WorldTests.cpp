@@ -1140,6 +1140,9 @@ int main() {
         rootEntity->canvasGroup->alpha = 0.65f;
         rootEntity->canvasGroup->interactable = false;
         rootEntity->canvasGroup->blocksRaycasts = false;
+        rootEntity->eventSystem = EventSystemComponent{};
+        rootEntity->eventSystem->firstSelected = child;
+        rootEntity->eventSystem->sendNavigationEvents = false;
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -1457,6 +1460,22 @@ int main() {
                "An invalid Button navigation target was accepted.")) {
         return 265;
     }
+    nlohmann::json invalidEventSystemScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity :
+         invalidEventSystemScene["entities"]) {
+        if (entity["components"].contains("EventSystem")) {
+            entity["components"]["EventSystem"]["firstSelected"] =
+                "not-an-entity-id";
+        }
+    }
+    World invalidEventSystemWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidEventSystemScene.dump(),
+                   invalidEventSystemWorld, &error),
+               "An invalid EventSystem selection was accepted.")) {
+        return 266;
+    }
     nlohmann::json invalidToggleScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidToggleScene["entities"]) {
         if (entity["components"].contains("Toggle")) {
@@ -1717,6 +1736,11 @@ int main() {
                    restored.Find(root)->canvasGroup->alpha == 0.65f &&
                    !restored.Find(root)->canvasGroup->interactable &&
                    !restored.Find(root)->canvasGroup->blocksRaycasts &&
+                   restored.Find(root)->eventSystem &&
+                   restored.Find(root)->eventSystem->firstSelected ==
+                       child &&
+                   !restored.Find(root)
+                        ->eventSystem->sendNavigationEvents &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
@@ -1768,6 +1792,10 @@ int main() {
                    instanceChild->button->selectOnUp ==
                        instanceRoot->id &&
                    !instanceChild->button->selectOnDown.IsValid() &&
+                   instanceRoot->eventSystem &&
+                   instanceRoot->eventSystem->firstSelected ==
+                       instanceChild->id &&
+                   !instanceRoot->eventSystem->sendNavigationEvents &&
                    instanceTarget != nullptr &&
                    instanceTarget->entityValue == instanceRoot->id &&
                    instanceExternalTarget != nullptr &&
@@ -1908,7 +1936,12 @@ int main() {
                    duplicateRootEntity->canvasGroup &&
                    duplicateRootEntity->canvasGroup->alpha == 0.65f &&
                    !duplicateRootEntity->canvasGroup->interactable &&
-                   !duplicateRootEntity->canvasGroup->blocksRaycasts,
+                   !duplicateRootEntity->canvasGroup->blocksRaycasts &&
+                   duplicateRootEntity->eventSystem &&
+                   duplicateRootEntity->eventSystem->firstSelected ==
+                       duplicateChild->id &&
+                   !duplicateRootEntity
+                        ->eventSystem->sendNavigationEvents,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }
@@ -1928,13 +1961,19 @@ int main() {
         ButtonNavigationMode::Explicit;
     referenceWorld.Find(scriptOwner)->button->selectOnRight =
         referencedTarget;
+    referenceWorld.Find(scriptOwner)->eventSystem =
+        EventSystemComponent{};
+    referenceWorld.Find(scriptOwner)->eventSystem->firstSelected =
+        referencedTarget;
     if (!Check(referenceWorld.DestroyEntity(referencedTarget) &&
                    !referenceWorld.Find(scriptOwner)
                         ->scripts[0]
                         .properties[0]
                         .entityValue.IsValid() &&
                    !referenceWorld.Find(scriptOwner)
-                        ->button->selectOnRight.IsValid(),
+                        ->button->selectOnRight.IsValid() &&
+                   !referenceWorld.Find(scriptOwner)
+                        ->eventSystem->firstSelected.IsValid(),
                "Destroyed Entity remained assigned to a component.")) {
         return 148;
     }

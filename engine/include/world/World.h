@@ -185,6 +185,12 @@ struct CanvasGroupComponent {
     bool blocksRaycasts = true;
 };
 
+struct EventSystemComponent {
+    bool enabled = true;
+    EntityId firstSelected{};
+    bool sendNavigationEvents = true;
+};
+
 enum class TextAlignment : uint8_t {
     Left = 0,
     Center = 1,
@@ -341,6 +347,7 @@ struct WorldEntity {
     std::optional<AnimatorComponent> animator;
     std::optional<CanvasComponent> canvas;
     std::optional<CanvasGroupComponent> canvasGroup;
+    std::optional<EventSystemComponent> eventSystem;
     std::optional<TextComponent> text;
     std::optional<ImageComponent> image;
     std::optional<ButtonComponent> button;

@@ -340,6 +340,7 @@ private:
     EntityId focusedButton_{};
     EntityId pressedButton_{};
     EntityId activeSlider_{};
+    bool runtimeInitialUiSelectionApplied_ = false;
     std::vector<EntityId> pendingButtonClicks_;
     struct SliderValueChange {
         EntityId entity{};

@@ -469,6 +469,20 @@ std::string WorldSerializer::Serialize(const World& world) {
             encoded["components"]["CanvasGroup"] =
                 std::move(encodedGroup);
         }
+        if (entity.eventSystem) {
+            const EventSystemComponent& eventSystem =
+                *entity.eventSystem;
+            Json encodedEventSystem;
+            encodedEventSystem["enabled"] = eventSystem.enabled;
+            encodedEventSystem["firstSelected"] =
+                eventSystem.firstSelected.IsValid()
+                    ? Json(eventSystem.firstSelected.ToString())
+                    : Json(nullptr);
+            encodedEventSystem["sendNavigationEvents"] =
+                eventSystem.sendNavigationEvents;
+            encoded["components"]["EventSystem"] =
+                std::move(encodedEventSystem);
+        }
         if (entity.text) {
             const TextComponent& text = *entity.text;
             Json encodedText;
@@ -1150,6 +1164,39 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.canvasGroup = std::move(component);
+        }
+        if (encoded["components"].contains("EventSystem")) {
+            const Json& encodedEventSystem =
+                encoded["components"]["EventSystem"];
+            EventSystemComponent component{};
+            if (!encodedEventSystem.is_object() ||
+                !encodedEventSystem.contains("enabled") ||
+                !encodedEventSystem["enabled"].is_boolean() ||
+                !encodedEventSystem.contains("firstSelected") ||
+                !encodedEventSystem.contains(
+                    "sendNavigationEvents") ||
+                !encodedEventSystem["sendNavigationEvents"]
+                     .is_boolean()) {
+                SetError(error,
+                         "Scene EventSystem component is invalid.");
+                return false;
+            }
+            const Json& firstSelected =
+                encodedEventSystem["firstSelected"];
+            if (!firstSelected.is_null() &&
+                (!firstSelected.is_string() ||
+                 !EntityId::TryParse(
+                     firstSelected.get_ref<const std::string&>(),
+                     component.firstSelected))) {
+                SetError(error,
+                         "Scene EventSystem first selection is invalid.");
+                return false;
+            }
+            component.enabled =
+                encodedEventSystem["enabled"].get<bool>();
+            component.sendNavigationEvents =
+                encodedEventSystem["sendNavigationEvents"].get<bool>();
+            entity.eventSystem = std::move(component);
         }
         if (encoded["components"].contains("Text")) {
             const Json& encodedText = encoded["components"]["Text"];

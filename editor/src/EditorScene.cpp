@@ -138,6 +138,15 @@ UiGroupState GetUiGroupState(const World& world,
     return state;
 }
 
+const WorldEntity* FindEventSystemEntity(const World& world) {
+    for (const WorldEntity& entity : world.Entities()) {
+        if (entity.eventSystem) {
+            return &entity;
+        }
+    }
+    return nullptr;
+}
+
 void CalculateCanvasLayout(const CanvasComponent& canvas, float width,
                            float height, float offsetX, float offsetY,
                            float& scale, DirectX::XMFLOAT2& origin,
@@ -4140,6 +4149,22 @@ void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
 void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
     const std::string before = WorldSerializer::Serialize(world_);
     const EntityId selectionBefore = selection_;
+    const auto createEventSystemIfNeeded = [&]() {
+        if (std::ranges::any_of(
+                world_.Entities(), [](const WorldEntity& entity) {
+                    return entity.eventSystem.has_value();
+                })) {
+            return EntityId{};
+        }
+        const EntityId eventSystemId =
+            world_.CreateEntity("Event System");
+        if (WorldEntity* eventSystem =
+                world_.Find(eventSystemId)) {
+            eventSystem->eventSystem = EventSystemComponent{};
+            return eventSystemId;
+        }
+        return EntityId{};
+    };
 
     if (preset == UiEntityPreset::Canvas) {
         const EntityId canvasId = world_.CreateEntity("Canvas");
@@ -4154,6 +4179,7 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
             status_ = "Could not parent the new Canvas.";
             return;
         }
+        createEventSystemIfNeeded();
         selection_ = canvasId;
         RecordImmediateEdit("Create UI Canvas", before, selectionBefore);
         status_ = "Created a UI Canvas.";
@@ -4194,6 +4220,8 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         canvas->canvas = CanvasComponent{};
         uiParent = createdCanvas;
     }
+    const EntityId createdEventSystem =
+        createEventSystemIfNeeded();
 
     const char* name = "Button";
     if (preset == UiEntityPreset::Text) {
@@ -4211,6 +4239,9 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         world_.DestroyEntity(entityId);
         if (createdCanvas.IsValid()) {
             world_.DestroyEntity(createdCanvas);
+        }
+        if (createdEventSystem.IsValid()) {
+            world_.DestroyEntity(createdEventSystem);
         }
         status_ = "Could not create the UI element.";
         return;
@@ -4771,6 +4802,16 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add CanvasGroup", before,
                                 selectionBefore);
             status_ = "Added Canvas Group.";
+        }
+        if (!entity->eventSystem &&
+            ImGui::MenuItem("Event System")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->eventSystem = EventSystemComponent{};
+            RecordImmediateEdit("Add EventSystem", before,
+                                selectionBefore);
+            status_ = "Added Event System.";
         }
         if (!entity->text && ImGui::MenuItem("Text")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -6167,6 +6208,125 @@ void EditorScene::DrawInspectorPanel() {
             }
             ImGui::TextDisabled(
                 "Settings affect UI on this Entity and its children.");
+        }
+    }
+
+    if (entity->eventSystem) {
+        ImGui::SeparatorText("Event System");
+        if (ImGui::Button("Remove Event System")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->eventSystem.reset();
+            RecordImmediateEdit("Remove EventSystem", before,
+                                selectionBefore);
+            status_ = "Removed Event System.";
+        } else {
+            EventSystemComponent& eventSystem =
+                *entity->eventSystem;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##EventSystem",
+                                &eventSystem.enabled)) {
+                RecordImmediateEdit("Toggle EventSystem",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Event System.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox(
+                    "Send Navigation Events##EventSystem",
+                    &eventSystem.sendNavigationEvents)) {
+                RecordImmediateEdit(
+                    "Toggle EventSystem Navigation",
+                    std::move(before), selectionBefore);
+                status_ =
+                    "Toggled Event System navigation events.";
+            }
+
+            const WorldEntity* selectedEntity =
+                world_.Find(eventSystem.firstSelected);
+            std::string selectedLabel =
+                selectedEntity != nullptr
+                    ? selectedEntity->name
+                    : eventSystem.firstSelected.IsValid()
+                          ? "Missing Entity"
+                          : "None";
+            selectedLabel += "##EventSystemFirstSelected";
+            ImGui::TextUnformatted("First Selected");
+            ImGui::SameLine();
+            if (ImGui::Button(selectedLabel.c_str(),
+                              {-FLT_MIN, 0.0f})) {
+                ImGui::OpenPopup("EventSystemFirstSelectedPicker");
+            }
+            const auto assignFirstSelected = [&](EntityId value) {
+                if (eventSystem.firstSelected == value) {
+                    return;
+                }
+                const std::string targetBefore =
+                    WorldSerializer::Serialize(world_);
+                eventSystem.firstSelected = value;
+                RecordImmediateEdit(
+                    "Assign EventSystem First Selected",
+                    targetBefore, selectionBefore);
+                status_ = "Assigned Event System first selection.";
+            };
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(
+                            kEntityDragPayload);
+                    payload != nullptr && payload->IsDelivery() &&
+                    payload->DataSize == sizeof(EntityId)) {
+                    EntityId dropped{};
+                    std::memcpy(&dropped, payload->Data,
+                                sizeof(dropped));
+                    const WorldEntity* droppedEntity =
+                        world_.Find(dropped);
+                    if (droppedEntity != nullptr &&
+                        (droppedEntity->button ||
+                         droppedEntity->slider)) {
+                        assignFirstSelected(dropped);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopup(
+                    "EventSystemFirstSelectedPicker")) {
+                if (ImGui::MenuItem(
+                        "None", nullptr,
+                        !eventSystem.firstSelected.IsValid())) {
+                    assignFirstSelected({});
+                }
+                ImGui::Separator();
+                for (const WorldEntity& candidate :
+                     world_.Entities()) {
+                    if (!candidate.button && !candidate.slider) {
+                        continue;
+                    }
+                    const std::string candidateLabel =
+                        candidate.name + "##" +
+                        candidate.id.ToString();
+                    if (ImGui::MenuItem(
+                            candidateLabel.c_str(), nullptr,
+                            candidate.id ==
+                                eventSystem.firstSelected)) {
+                        assignFirstSelected(candidate.id);
+                    }
+                }
+                ImGui::EndPopup();
+            }
+            const size_t eventSystemCount =
+                static_cast<size_t>(std::ranges::count_if(
+                    world_.Entities(),
+                    [](const WorldEntity& candidate) {
+                        return candidate.eventSystem &&
+                               candidate.eventSystem->enabled;
+                    }));
+            if (eventSystemCount > 1u) {
+                ImGui::TextColored(
+                    {1.0f, 0.72f, 0.25f, 1.0f},
+                    "Multiple enabled Event Systems exist.");
+            }
         }
     }
 
@@ -9448,6 +9608,16 @@ bool EditorScene::DrawGameUi(int width, int height,
     };
     const std::vector<OrderedUiEntity> orderedUiEntities =
         GetOrderedUiEntities(world_);
+    const WorldEntity* eventSystemEntity =
+        FindEventSystemEntity(world_);
+    const EventSystemComponent* eventSystem =
+        eventSystemEntity != nullptr
+            ? &*eventSystemEntity->eventSystem
+            : nullptr;
+    const bool uiEventsEnabled =
+        eventSystem == nullptr ||
+        (eventSystem->enabled &&
+         world_.IsActiveInHierarchy(eventSystemEntity->id));
     for (auto transition = buttonColorTransitions_.begin();
          transition != buttonColorTransitions_.end();) {
         const WorldEntity* entity = world_.Find(transition->first);
@@ -9461,7 +9631,8 @@ bool EditorScene::DrawGameUi(int width, int height,
     const ImVec2 imageScreenMin = ImGui::GetCursorScreenPos();
     const ImVec2 mouse = ImGui::GetMousePos();
     const bool canPoint =
-        playModeState_ == PlayModeState::Playing && !gameInputCaptured_ &&
+        playModeState_ == PlayModeState::Playing &&
+        uiEventsEnabled && !gameInputCaptured_ &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
         requestedGameWidth_ > 0 && requestedGameHeight_ > 0 &&
         mouse.x >= imageScreenMin.x && mouse.y >= imageScreenMin.y &&
@@ -9617,9 +9788,23 @@ bool EditorScene::DrawGameUi(int width, int height,
             selectableButtons.end()) {
         focusedButton_ = {};
     }
+    if (playModeState_ == PlayModeState::Playing &&
+        uiEventsEnabled &&
+        !runtimeInitialUiSelectionApplied_) {
+        runtimeInitialUiSelectionApplied_ = true;
+        if (eventSystem != nullptr &&
+            std::ranges::find(selectableButtons,
+                              eventSystem->firstSelected) !=
+                selectableButtons.end()) {
+            focusedButton_ = eventSystem->firstSelected;
+        }
+    }
     const bool canNavigateUi =
         playModeState_ == PlayModeState::Playing &&
+        uiEventsEnabled &&
         !gameInputCaptured_ &&
+        (eventSystem == nullptr ||
+         eventSystem->sendNavigationEvents) &&
         ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
         !ImGui::GetIO().WantTextInput;
     const Input* runtimeInput =
@@ -11264,6 +11449,7 @@ void EditorScene::EndRuntimeWorld() {
     focusedButton_ = {};
     pressedButton_ = {};
     activeSlider_ = {};
+    runtimeInitialUiSelectionApplied_ = false;
     pendingButtonClicks_.clear();
     pendingSliderValueChanges_.clear();
     buttonColorTransitions_.clear();
