@@ -178,6 +178,13 @@ struct CanvasComponent {
     int32_t sortingOrder = 0;
 };
 
+struct CanvasGroupComponent {
+    bool enabled = true;
+    float alpha = 1.0f;
+    bool interactable = true;
+    bool blocksRaycasts = true;
+};
+
 enum class TextAlignment : uint8_t {
     Left = 0,
     Center = 1,
@@ -308,6 +315,7 @@ struct WorldEntity {
     std::optional<AudioListenerComponent> audioListener;
     std::optional<AnimatorComponent> animator;
     std::optional<CanvasComponent> canvas;
+    std::optional<CanvasGroupComponent> canvasGroup;
     std::optional<TextComponent> text;
     std::optional<ImageComponent> image;
     std::optional<ButtonComponent> button;

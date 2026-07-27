@@ -112,6 +112,32 @@ const CanvasComponent* FindEnabledCanvas(const World& world,
     return nullptr;
 }
 
+struct UiGroupState {
+    float alpha = 1.0f;
+    bool interactable = true;
+    bool blocksRaycasts = true;
+};
+
+UiGroupState GetUiGroupState(const World& world,
+                             const WorldEntity& entity) {
+    UiGroupState state{};
+    const WorldEntity* current = &entity;
+    while (current != nullptr) {
+        if (current->canvasGroup && current->canvasGroup->enabled) {
+            const CanvasGroupComponent& group = *current->canvasGroup;
+            state.alpha *= group.alpha;
+            state.interactable =
+                state.interactable && group.interactable;
+            state.blocksRaycasts =
+                state.blocksRaycasts && group.blocksRaycasts;
+        }
+        current = current->parent.IsValid()
+                      ? world.Find(current->parent)
+                      : nullptr;
+    }
+    return state;
+}
+
 void CalculateCanvasLayout(const CanvasComponent& canvas, float width,
                            float height, float offsetX, float offsetY,
                            float& scale, DirectX::XMFLOAT2& origin,
@@ -4719,6 +4745,16 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add Canvas", before, selectionBefore);
             status_ = "Added Canvas.";
         }
+        if (!entity->canvasGroup &&
+            ImGui::MenuItem("Canvas Group")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->canvasGroup = CanvasGroupComponent{};
+            RecordImmediateEdit("Add CanvasGroup", before,
+                                selectionBefore);
+            status_ = "Added Canvas Group.";
+        }
         if (!entity->text && ImGui::MenuItem("Text")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
@@ -6050,6 +6086,61 @@ void EditorScene::DrawInspectorPanel() {
             }
             ImGui::TextDisabled(
                 "Higher sorting orders are drawn and selected on top.");
+        }
+    }
+
+    if (entity->canvasGroup) {
+        ImGui::SeparatorText("Canvas Group");
+        if (ImGui::Button("Remove Canvas Group")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->canvasGroup.reset();
+            RecordImmediateEdit("Remove CanvasGroup", before,
+                                selectionBefore);
+            status_ = "Removed Canvas Group.";
+        } else {
+            CanvasGroupComponent& group = *entity->canvasGroup;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##CanvasGroup",
+                                &group.enabled)) {
+                RecordImmediateEdit("Toggle CanvasGroup",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Canvas Group.";
+            }
+            if (ImGui::SliderFloat("Alpha##CanvasGroup",
+                                   &group.alpha, 0.0f, 1.0f, "%.2f")) {
+                RefreshDirty();
+                status_ = "Modified Canvas Group alpha.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify CanvasGroup Alpha");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Interactable##CanvasGroup",
+                                &group.interactable)) {
+                RecordImmediateEdit(
+                    "Toggle CanvasGroup Interactable",
+                    std::move(before), selectionBefore);
+                status_ =
+                    "Toggled Canvas Group interaction.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Blocks Raycasts##CanvasGroup",
+                                &group.blocksRaycasts)) {
+                RecordImmediateEdit(
+                    "Toggle CanvasGroup Raycasts",
+                    std::move(before), selectionBefore);
+                status_ =
+                    "Toggled Canvas Group raycast blocking.";
+            }
+            ImGui::TextDisabled(
+                "Settings affect UI on this Entity and its children.");
         }
     }
 
@@ -9102,12 +9193,15 @@ bool EditorScene::DrawGameUi(int width, int height,
                                  referenceResolution)) {
             continue;
         }
+        const UiGroupState groupState =
+            GetUiGroupState(world_, entity);
         if (entity.button->interactable &&
+            groupState.interactable &&
             entity.button->navigation ==
                 ButtonNavigationMode::Automatic) {
             selectableButtons.push_back(entity.id);
         }
-        if (canPoint) {
+        if (canPoint && groupState.blocksRaycasts) {
             const ImageComponent& image = *entity.image;
             const DirectX::XMFLOAT2 anchor =
                 GetUiAnchorChoice(image.anchor).factor;
@@ -9181,7 +9275,8 @@ bool EditorScene::DrawGameUi(int width, int height,
     const bool hoveredButtonInteractable =
         hoveredEntity != nullptr && hoveredEntity->button &&
         hoveredEntity->button->enabled &&
-        hoveredEntity->button->interactable;
+        hoveredEntity->button->interactable &&
+        GetUiGroupState(world_, *hoveredEntity).interactable;
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         pressedButton_ =
             hoveredButtonInteractable ? hoveredButton : EntityId{};
@@ -9233,6 +9328,8 @@ bool EditorScene::DrawGameUi(int width, int height,
                                  referenceResolution)) {
             continue;
         }
+        const UiGroupState groupState =
+            GetUiGroupState(world_, entity);
         if (drawsImage) {
             const ImageComponent& image = *entity.image;
             const auto loaded = loadedTextures_.find(image.texturePath);
@@ -9313,10 +9410,12 @@ bool EditorScene::DrawGameUi(int width, int height,
             DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
             if (entity.button && entity.button->enabled) {
                 const ButtonComponent& button = *entity.button;
+                const bool interactable =
+                    button.interactable && groupState.interactable;
                 DirectX::XMFLOAT4 targetColor =
-                    button.interactable ? button.normalColor
-                                        : button.disabledColor;
-                if (button.interactable &&
+                    interactable ? button.normalColor
+                                 : button.disabledColor;
+                if (interactable &&
                     (entity.id == hoveredButton ||
                      entity.id == focusedButton_)) {
                     const bool pointerPressed =
@@ -9374,7 +9473,7 @@ bool EditorScene::DrawGameUi(int width, int height,
                 image.color.x * stateColor.x,
                 image.color.y * stateColor.y,
                 image.color.z * stateColor.z,
-                image.color.w * stateColor.w,
+                image.color.w * stateColor.w * groupState.alpha,
             };
             sprite.textureId =
                 texture.IsValid()
@@ -9396,6 +9495,7 @@ bool EditorScene::DrawGameUi(int width, int height,
                         (sprite.size.y - checkmark.size.y) * 0.5f,
                 };
                 checkmark.color = toggle.checkmarkColor;
+                checkmark.color.w *= groupState.alpha;
                 checkmark.textureId = kInvalidResourceId;
                 spriteRenderer.Draw(checkmark);
             }
@@ -9419,6 +9519,7 @@ bool EditorScene::DrawGameUi(int width, int height,
                       ? TextHorizontalAlignment::Right
                       : TextHorizontalAlignment::Left;
         style.color = text.color;
+        style.color.w *= groupState.alpha;
         const DirectX::XMFLOAT2 anchor =
             GetUiAnchorChoice(text.anchor).factor;
         DirectX::XMFLOAT2 position{
@@ -10405,6 +10506,7 @@ void EditorScene::UpdateRuntimeWorld(float deltaTime) {
         WorldEntity* entity = world_.Find(entityId);
         if (entity == nullptr || !entity->button || !entity->button->enabled ||
             !entity->button->interactable ||
+            !GetUiGroupState(world_, *entity).interactable ||
             (entity->toggle && !entity->toggle->enabled) ||
             !world_.IsActiveInHierarchy(entityId)) {
             continue;

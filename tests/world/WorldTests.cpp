@@ -1099,6 +1099,10 @@ int main() {
             CanvasScreenMatchMode::MatchWidthOrHeight;
         rootEntity->canvas->matchWidthOrHeight = 0.75f;
         rootEntity->canvas->sortingOrder = 7;
+        rootEntity->canvasGroup = CanvasGroupComponent{};
+        rootEntity->canvasGroup->alpha = 0.65f;
+        rootEntity->canvasGroup->interactable = false;
+        rootEntity->canvasGroup->blocksRaycasts = false;
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -1340,6 +1344,21 @@ int main() {
                    invalidCanvasScaleModeWorld, &error),
                "An invalid Canvas scale mode was accepted.")) {
         return 262;
+    }
+    nlohmann::json invalidCanvasGroupScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity :
+         invalidCanvasGroupScene["entities"]) {
+        if (entity["components"].contains("CanvasGroup")) {
+            entity["components"]["CanvasGroup"]["alpha"] = 1.01f;
+        }
+    }
+    World invalidCanvasGroupWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidCanvasGroupScene.dump(),
+                   invalidCanvasGroupWorld, &error),
+               "An out-of-range CanvasGroup alpha was accepted.")) {
+        return 263;
     }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
@@ -1609,6 +1628,10 @@ int main() {
                        CanvasScreenMatchMode::MatchWidthOrHeight &&
                    restored.Find(root)->canvas->matchWidthOrHeight == 0.75f &&
                    restored.Find(root)->canvas->sortingOrder == 7 &&
+                   restored.Find(root)->canvasGroup &&
+                   restored.Find(root)->canvasGroup->alpha == 0.65f &&
+                   !restored.Find(root)->canvasGroup->interactable &&
+                   !restored.Find(root)->canvasGroup->blocksRaycasts &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
@@ -1779,7 +1802,11 @@ int main() {
                    duplicateRootEntity->canvas->screenMatchMode ==
                        CanvasScreenMatchMode::MatchWidthOrHeight &&
                    duplicateRootEntity->canvas->matchWidthOrHeight == 0.75f &&
-                   duplicateRootEntity->canvas->sortingOrder == 7,
+                   duplicateRootEntity->canvas->sortingOrder == 7 &&
+                   duplicateRootEntity->canvasGroup &&
+                   duplicateRootEntity->canvasGroup->alpha == 0.65f &&
+                   !duplicateRootEntity->canvasGroup->interactable &&
+                   !duplicateRootEntity->canvasGroup->blocksRaycasts,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }

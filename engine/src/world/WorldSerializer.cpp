@@ -415,6 +415,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedCanvas["sortingOrder"] = entity.canvas->sortingOrder;
             encoded["components"]["Canvas"] = std::move(encodedCanvas);
         }
+        if (entity.canvasGroup) {
+            const CanvasGroupComponent& group = *entity.canvasGroup;
+            Json encodedGroup;
+            encodedGroup["enabled"] = group.enabled;
+            encodedGroup["alpha"] = group.alpha;
+            encodedGroup["interactable"] = group.interactable;
+            encodedGroup["blocksRaycasts"] = group.blocksRaycasts;
+            encoded["components"]["CanvasGroup"] =
+                std::move(encodedGroup);
+        }
         if (entity.text) {
             const TextComponent& text = *entity.text;
             Json encodedText;
@@ -1030,6 +1040,37 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 }
             }
             entity.canvas = component;
+        }
+        if (encoded["components"].contains("CanvasGroup")) {
+            const Json& encodedGroup =
+                encoded["components"]["CanvasGroup"];
+            CanvasGroupComponent component{};
+            if (!encodedGroup.is_object() ||
+                !encodedGroup.contains("enabled") ||
+                !encodedGroup["enabled"].is_boolean() ||
+                !encodedGroup.contains("alpha") ||
+                !encodedGroup["alpha"].is_number() ||
+                !encodedGroup.contains("interactable") ||
+                !encodedGroup["interactable"].is_boolean() ||
+                !encodedGroup.contains("blocksRaycasts") ||
+                !encodedGroup["blocksRaycasts"].is_boolean()) {
+                SetError(error,
+                         "Scene CanvasGroup component is invalid.");
+                return false;
+            }
+            component.enabled = encodedGroup["enabled"].get<bool>();
+            component.alpha = encodedGroup["alpha"].get<float>();
+            component.interactable =
+                encodedGroup["interactable"].get<bool>();
+            component.blocksRaycasts =
+                encodedGroup["blocksRaycasts"].get<bool>();
+            if (!std::isfinite(component.alpha) ||
+                component.alpha < 0.0f || component.alpha > 1.0f) {
+                SetError(error,
+                         "Scene CanvasGroup settings are invalid.");
+                return false;
+            }
+            entity.canvasGroup = std::move(component);
         }
         if (encoded["components"].contains("Text")) {
             const Json& encodedText = encoded["components"]["Text"];

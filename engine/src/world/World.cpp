@@ -73,6 +73,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->audioListener = original.audioListener;
         duplicate->animator = original.animator;
         duplicate->canvas = original.canvas;
+        duplicate->canvasGroup = original.canvasGroup;
         duplicate->text = original.text;
         duplicate->image = original.image;
         duplicate->button = original.button;
@@ -634,6 +635,15 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 canvas.sortingOrder < -1000000 ||
                 canvas.sortingOrder > 1000000) {
                 SetError(error, "Scene contains an invalid Canvas component.");
+                return false;
+            }
+        }
+        if (entity.canvasGroup) {
+            const CanvasGroupComponent& group = *entity.canvasGroup;
+            if (!std::isfinite(group.alpha) || group.alpha < 0.0f ||
+                group.alpha > 1.0f) {
+                SetError(error,
+                         "Scene contains an invalid CanvasGroup component.");
                 return false;
             }
         }
