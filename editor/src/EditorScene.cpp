@@ -6040,6 +6040,14 @@ void EditorScene::DrawInspectorPanel() {
                 }
                 ImGui::EndCombo();
             }
+            const std::string preserveAspectBefore =
+                WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Preserve Aspect##Image",
+                                &image.preserveAspect)) {
+                RecordImmediateEdit("Toggle Image Preserve Aspect",
+                                    preserveAspectBefore, selectionBefore);
+                status_ = "Modified Image aspect preservation.";
+            }
             if (image.type == ImageType::Filled) {
                 const char* fillMethod =
                     image.fillMethod == ImageFillMethod::Vertical
@@ -6216,9 +6224,26 @@ void EditorScene::DrawInspectorPanel() {
                     : loadedTextures_.contains(image.texturePath)
                           ? loadedTextures_.at(image.texturePath)
                           : TextureHandle{};
-            if (texture.IsValid() && ctx_ != nullptr &&
+            const bool textureAvailable =
+                texture.IsValid() && ctx_ != nullptr &&
                 ctx_->rendering.texture != nullptr &&
-                ctx_->rendering.texture->IsValidTexture(texture)) {
+                ctx_->rendering.texture->IsValidTexture(texture);
+            ImGui::BeginDisabled(!textureAvailable);
+            if (ImGui::Button("Set Native Size##Image")) {
+                const std::string nativeSizeBefore =
+                    WorldSerializer::Serialize(world_);
+                image.size = {
+                    static_cast<float>(
+                        ctx_->rendering.texture->GetWidth(texture)),
+                    static_cast<float>(
+                        ctx_->rendering.texture->GetHeight(texture)),
+                };
+                RecordImmediateEdit("Set Image Native Size",
+                                    nativeSizeBefore, selectionBefore);
+                status_ = "Set Image to its texture's native size.";
+            }
+            ImGui::EndDisabled();
+            if (textureAvailable) {
                 const D3D12_GPU_DESCRIPTOR_HANDLE handle =
                     ctx_->rendering.texture->GetGpuHandle(texture);
                 ImGui::Image(static_cast<ImTextureID>(handle.ptr),
@@ -8771,6 +8796,12 @@ bool EditorScene::DrawGameUi(int width, int height,
         }
         if (drawsImage) {
             const ImageComponent& image = *entity.image;
+            const auto loaded = loadedTextures_.find(image.texturePath);
+            const TextureHandle texture =
+                loaded != loadedTextures_.end() &&
+                        loaded->second.IsValid()
+                    ? loaded->second
+                    : TextureHandle{};
             const DirectX::XMFLOAT2 anchor =
                 GetUiAnchorChoice(image.anchor).factor;
             Sprite sprite{};
@@ -8788,6 +8819,31 @@ bool EditorScene::DrawGameUi(int width, int height,
                 image.size.x * scale,
                 image.size.y * scale,
             };
+            if (image.preserveAspect && texture.IsValid() &&
+                ctx_->rendering.texture != nullptr &&
+                ctx_->rendering.texture->IsValidTexture(texture)) {
+                const float textureWidth = static_cast<float>(
+                    ctx_->rendering.texture->GetWidth(texture));
+                const float textureHeight = static_cast<float>(
+                    ctx_->rendering.texture->GetHeight(texture));
+                if (textureWidth > 0.0f && textureHeight > 0.0f &&
+                    sprite.size.x > 0.0f && sprite.size.y > 0.0f) {
+                    const DirectX::XMFLOAT2 availableSize = sprite.size;
+                    const float textureAspect =
+                        textureWidth / textureHeight;
+                    const float availableAspect =
+                        availableSize.x / availableSize.y;
+                    if (availableAspect > textureAspect) {
+                        sprite.size.x = availableSize.y * textureAspect;
+                    } else {
+                        sprite.size.y = availableSize.x / textureAspect;
+                    }
+                    sprite.position.x +=
+                        (availableSize.x - sprite.size.x) * image.pivot.x;
+                    sprite.position.y +=
+                        (availableSize.y - sprite.size.y) * image.pivot.y;
+                }
+            }
             if (image.type == ImageType::Filled) {
                 const float fillAmount =
                     std::clamp(image.fillAmount, 0.0f, 1.0f);
@@ -8838,10 +8894,9 @@ bool EditorScene::DrawGameUi(int width, int height,
                 image.color.z * stateColor.z,
                 image.color.w * stateColor.w,
             };
-            const auto loaded = loadedTextures_.find(image.texturePath);
             sprite.textureId =
-                loaded != loadedTextures_.end() && loaded->second.IsValid()
-                    ? loaded->second.Get()
+                texture.IsValid()
+                    ? texture.Get()
                     : kInvalidResourceId;
             spriteRenderer.Draw(sprite);
         }

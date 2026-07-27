@@ -214,6 +214,7 @@ struct ImageComponent {
     ImageFillMethod fillMethod = ImageFillMethod::Horizontal;
     float fillAmount = 1.0f;
     bool fillReverse = false;
+    bool preserveAspect = false;
 };
 
 struct ButtonComponent {

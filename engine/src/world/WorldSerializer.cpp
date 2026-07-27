@@ -375,6 +375,7 @@ std::string WorldSerializer::Serialize(const World& world) {
                 EncodeImageFillMethod(image.fillMethod);
             encodedImage["fillAmount"] = image.fillAmount;
             encodedImage["fillReverse"] = image.fillReverse;
+            encodedImage["preserveAspect"] = image.preserveAspect;
             encoded["components"]["Image"] = std::move(encodedImage);
         }
         if (entity.button) {
@@ -1024,6 +1025,14 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 }
                 component.fillReverse =
                     encodedImage["fillReverse"].get<bool>();
+            }
+            if (encodedImage.contains("preserveAspect")) {
+                if (!encodedImage["preserveAspect"].is_boolean()) {
+                    SetError(error, "Scene Image preserve aspect setting is invalid.");
+                    return false;
+                }
+                component.preserveAspect =
+                    encodedImage["preserveAspect"].get<bool>();
             }
             if (component.texturePath.size() > 1024u ||
                 component.texturePath.find('\0') != std::string::npos ||

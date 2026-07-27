@@ -634,6 +634,9 @@
             1.0
           ],
           "enabled": true,
+          "fillAmount": 1.0,
+          "fillMethod": "Horizontal",
+          "fillReverse": false,
           "pivot": [
             0.0,
             0.0
@@ -646,7 +649,8 @@
             400.0,
             100.0
           ],
-          "texture": "asset://LockPBR/Rock051.png"
+          "texture": "asset://LockPBR/Rock051.png",
+          "type": "Simple"
         },
         "Transform": {
           "position": [
@@ -737,19 +741,23 @@
             1.0
           ],
           "enabled": true,
+          "fillAmount": 1.0,
+          "fillMethod": "Vertical",
+          "fillReverse": true,
           "pivot": [
             1.0,
             0.9900000095367432
           ],
           "position": [
-            36.599998474121094,
-            202.89999389648438
+            809.2544555664063,
+            421.66363525390625
           ],
           "size": [
             630.1510009765625,
             520.6224365234375
           ],
-          "texture": ""
+          "texture": "",
+          "type": "Filled"
         },
         "Transform": {
           "position": [
@@ -912,6 +920,9 @@
             1.0
           ],
           "enabled": true,
+          "fillAmount": 1.0,
+          "fillMethod": "Horizontal",
+          "fillReverse": false,
           "pivot": [
             0.0,
             0.0
@@ -924,7 +935,8 @@
             400.0,
             100.0
           ],
-          "texture": "asset://LockPBR/Rock051.png"
+          "texture": "asset://LockPBR/Rock051.png",
+          "type": "Simple"
         },
         "Transform": {
           "position": [
@@ -1015,6 +1027,9 @@
             1.0
           ],
           "enabled": true,
+          "fillAmount": 1.0,
+          "fillMethod": "Horizontal",
+          "fillReverse": false,
           "pivot": [
             1.0,
             0.9900000095367432
@@ -1027,7 +1042,8 @@
             630.1510009765625,
             520.6224365234375
           ],
-          "texture": ""
+          "texture": "",
+          "type": "Simple"
         },
         "Transform": {
           "position": [

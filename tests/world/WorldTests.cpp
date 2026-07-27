@@ -1045,6 +1045,7 @@ int main() {
     childEntity->image->fillMethod = ImageFillMethod::Vertical;
     childEntity->image->fillAmount = 0.65f;
     childEntity->image->fillReverse = true;
+    childEntity->image->preserveAspect = true;
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
@@ -1198,6 +1199,7 @@ int main() {
             entity["components"]["Image"].erase("fillMethod");
             entity["components"]["Image"].erase("fillAmount");
             entity["components"]["Image"].erase("fillReverse");
+            entity["components"]["Image"].erase("preserveAspect");
         }
         if (entity["components"].contains("Canvas")) {
             entity["components"]["Canvas"].erase("sortingOrder");
@@ -1217,6 +1219,7 @@ int main() {
                        ImageType::Simple &&
                    legacyButtonWorld.Find(child)->image->fillAmount == 1.0f &&
                    !legacyButtonWorld.Find(child)->image->fillReverse &&
+                   !legacyButtonWorld.Find(child)->image->preserveAspect &&
                    legacyButtonWorld.Find(root)->canvas &&
                    legacyButtonWorld.Find(root)->canvas->sortingOrder == 0,
                "Legacy Canvas/Button/Image defaults were not restored.")) {
@@ -1396,6 +1399,7 @@ int main() {
                        ImageFillMethod::Vertical &&
                    restoredChild->image->fillAmount == 0.65f &&
                    restoredChild->image->fillReverse &&
+                   restoredChild->image->preserveAspect &&
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
                    restoredChild->button->normalColor.x == 0.9f &&
@@ -1555,6 +1559,7 @@ int main() {
                        ImageFillMethod::Vertical &&
                    duplicateChild->image->fillAmount == 0.65f &&
                    duplicateChild->image->fillReverse &&
+                   duplicateChild->image->preserveAspect &&
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
