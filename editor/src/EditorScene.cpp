@@ -1557,6 +1557,7 @@ void EditorScene::DrawPanels() {
                         gameInputCursorRestoreX_ = cursor.x;
                         gameInputCursorRestoreY_ = cursor.y;
                     }
+                    focusedButton_ = {};
                     gameInputCaptured_ = true;
                     status_ = "Game input captured. Press Escape to release.";
                 }
@@ -8494,20 +8495,24 @@ bool EditorScene::DrawGameUi(int width, int height) {
             static_cast<float>((std::max)(1, requestedGameHeight_)),
     };
     EntityId hoveredButton{};
-    if (canPoint) {
-        for (const WorldEntity& entity : world_.Entities()) {
-            if (!entity.button || !entity.button->enabled || !entity.image ||
-                !entity.image->enabled ||
-                !world_.IsActiveInHierarchy(entity.id)) {
-                continue;
-            }
-            float scale = 1.0f;
-            DirectX::XMFLOAT2 origin{};
-            DirectX::XMFLOAT2 referenceResolution{};
-            if (!resolveCanvasLayout(entity, scale, origin,
-                                     referenceResolution)) {
-                continue;
-            }
+    std::vector<EntityId> selectableButtons;
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.button || !entity.button->enabled || !entity.image ||
+            !entity.image->enabled ||
+            !world_.IsActiveInHierarchy(entity.id)) {
+            continue;
+        }
+        float scale = 1.0f;
+        DirectX::XMFLOAT2 origin{};
+        DirectX::XMFLOAT2 referenceResolution{};
+        if (!resolveCanvasLayout(entity, scale, origin,
+                                 referenceResolution)) {
+            continue;
+        }
+        if (entity.button->interactable) {
+            selectableButtons.push_back(entity.id);
+        }
+        if (canPoint) {
             const ImageComponent& image = *entity.image;
             const DirectX::XMFLOAT2 anchor =
                 GetUiAnchorChoice(image.anchor).factor;
@@ -8530,6 +8535,35 @@ bool EditorScene::DrawGameUi(int width, int height) {
         }
     }
 
+    if (focusedButton_.IsValid() &&
+        std::ranges::find(selectableButtons, focusedButton_) ==
+            selectableButtons.end()) {
+        focusedButton_ = {};
+    }
+    if (playModeState_ == PlayModeState::Playing &&
+        !gameInputCaptured_ &&
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !ImGui::GetIO().WantTextInput &&
+        ImGui::IsKeyPressed(ImGuiKey_Tab, false) &&
+        !selectableButtons.empty()) {
+        const auto focused =
+            std::ranges::find(selectableButtons, focusedButton_);
+        if (focused == selectableButtons.end()) {
+            focusedButton_ = ImGui::GetIO().KeyShift
+                                 ? selectableButtons.back()
+                                 : selectableButtons.front();
+        } else {
+            const size_t index =
+                static_cast<size_t>(focused - selectableButtons.begin());
+            focusedButton_ =
+                ImGui::GetIO().KeyShift
+                    ? selectableButtons[(index + selectableButtons.size() - 1u) %
+                                        selectableButtons.size()]
+                    : selectableButtons[(index + 1u) %
+                                        selectableButtons.size()];
+        }
+    }
+
     const WorldEntity* hoveredEntity = world_.Find(hoveredButton);
     const bool hoveredButtonInteractable =
         hoveredEntity != nullptr && hoveredEntity->button &&
@@ -8537,6 +8571,8 @@ bool EditorScene::DrawGameUi(int width, int height) {
         hoveredEntity->button->interactable;
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         pressedButton_ =
+            hoveredButtonInteractable ? hoveredButton : EntityId{};
+        focusedButton_ =
             hoveredButtonInteractable ? hoveredButton : EntityId{};
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -8546,6 +8582,14 @@ bool EditorScene::DrawGameUi(int width, int height) {
             pendingButtonClicks_.push_back(pressedButton_);
         }
         pressedButton_ = {};
+    }
+    if (playModeState_ == PlayModeState::Playing &&
+        !gameInputCaptured_ && focusedButton_.IsValid() &&
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !ImGui::GetIO().WantTextInput &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+         ImGui::IsKeyPressed(ImGuiKey_Space, false))) {
+        pendingButtonClicks_.push_back(focusedButton_);
     }
 
     spriteRenderer.UpdateProjection(width, height);
@@ -8590,9 +8634,12 @@ bool EditorScene::DrawGameUi(int width, int height) {
                 stateColor = button.interactable
                                  ? button.normalColor
                                  : button.disabledColor;
-                if (button.interactable && entity.id == hoveredButton) {
+                if (button.interactable &&
+                    (entity.id == hoveredButton ||
+                     entity.id == focusedButton_)) {
                     stateColor =
-                        entity.id == pressedButton_ &&
+                        entity.id == hoveredButton &&
+                                entity.id == pressedButton_ &&
                                 ImGui::IsMouseDown(ImGuiMouseButton_Left)
                             ? button.pressedColor
                             : button.hoveredColor;
@@ -9673,6 +9720,7 @@ void EditorScene::EndRuntimeWorld() {
     EndRuntimeAudio();
     runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
+    focusedButton_ = {};
     pressedButton_ = {};
     pendingButtonClicks_.clear();
     runtimeFrameCount_ = 0;
