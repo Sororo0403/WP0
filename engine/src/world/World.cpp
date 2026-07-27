@@ -8,6 +8,10 @@
 #include <utility>
 
 namespace {
+bool IsFinite(const DirectX::XMFLOAT2& value) {
+    return std::isfinite(value.x) && std::isfinite(value.y);
+}
+
 bool IsFinite(const DirectX::XMFLOAT3& value) {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
@@ -68,6 +72,8 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->audioSource = original.audioSource;
         duplicate->audioListener = original.audioListener;
         duplicate->animator = original.animator;
+        duplicate->canvas = original.canvas;
+        duplicate->text = original.text;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -604,6 +610,35 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 !std::isfinite(source.maxDistance) || source.minDistance < 0.0f ||
                 source.maxDistance <= source.minDistance) {
                 SetError(error, "Scene contains an invalid AudioSource component.");
+                return false;
+            }
+        }
+        if (entity.canvas) {
+            const CanvasComponent& canvas = *entity.canvas;
+            if (!IsFinite(canvas.referenceResolution) ||
+                canvas.referenceResolution.x < 1.0f ||
+                canvas.referenceResolution.y < 1.0f ||
+                canvas.referenceResolution.x > 16384.0f ||
+                canvas.referenceResolution.y > 16384.0f) {
+                SetError(error, "Scene contains an invalid Canvas component.");
+                return false;
+            }
+        }
+        if (entity.text) {
+            const TextComponent& text = *entity.text;
+            if (text.text.size() > 4096u ||
+                text.text.find('\0') != std::string::npos ||
+                !IsFinite(text.position) || std::abs(text.position.x) > 1000000.0f ||
+                std::abs(text.position.y) > 1000000.0f ||
+                !std::isfinite(text.fontSize) || text.fontSize < 1.0f ||
+                text.fontSize > 512.0f || !IsFinite(text.color) ||
+                text.color.x < 0.0f || text.color.x > 1.0f ||
+                text.color.y < 0.0f || text.color.y > 1.0f ||
+                text.color.z < 0.0f || text.color.z > 1.0f ||
+                text.color.w < 0.0f || text.color.w > 1.0f ||
+                text.alignment < TextAlignment::Left ||
+                text.alignment > TextAlignment::Right) {
+                SetError(error, "Scene contains an invalid Text component.");
                 return false;
             }
         }

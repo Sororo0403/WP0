@@ -10,6 +10,8 @@
 
 #include "core/AssetManager.h"
 #include "core/MathUtils.h"
+#include "core/WinApp.h"
+#include "font/TextRenderer.h"
 #include "graphics/DirectXCommon.h"
 #include "graphics/LightingScene.h"
 #include "graphics/RenderScene.h"
@@ -24,6 +26,7 @@
 #include "model/ModelManager.h"
 #include "model/MeshRenderer.h"
 #include "sound/ISoundService.h"
+#include "sprite/SpriteRenderer.h"
 #include "texture/TextureManager.h"
 #include "world/WorldSerializer.h"
 #include "world/WorldCollision.h"
@@ -31,6 +34,10 @@
 #include <Windows.h>
 #include <commdlg.h>
 #include <shellapi.h>
+
+#ifdef DrawText
+#undef DrawText
+#endif
 
 #include <algorithm>
 #include <array>
@@ -1491,6 +1498,8 @@ void EditorScene::DrawPanels() {
                 };
                 gameViewPostProcess_.DrawToTarget(gameViewSurface_.GetSceneColorGpuHandle(),
                                                   gameViewSurface_.GetDepthGpuHandle(), target);
+                DrawGameUi(gameViewSurface_.GetWidth(),
+                           gameViewSurface_.GetHeight());
                 gameViewSurface_.EndOutputPass();
                 gameViewSurface_.TransitionDepthToWrite();
                 ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
@@ -4384,6 +4393,20 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add Animator", before, selectionBefore);
             status_ = "Added Animator.";
         }
+        if (!entity->canvas && ImGui::MenuItem("Canvas")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->canvas = CanvasComponent{};
+            RecordImmediateEdit("Add Canvas", before, selectionBefore);
+            status_ = "Added Canvas.";
+        }
+        if (!entity->text && ImGui::MenuItem("Text")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->text = TextComponent{};
+            RecordImmediateEdit("Add Text", before, selectionBefore);
+            status_ = "Added Text.";
+        }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
@@ -5552,6 +5575,146 @@ void EditorScene::DrawInspectorPanel() {
             }
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
+            }
+        }
+    }
+
+    if (entity->canvas) {
+        ImGui::SeparatorText("Canvas");
+        if (ImGui::Button("Remove Canvas")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->canvas.reset();
+            RecordImmediateEdit("Remove Canvas", before, selectionBefore);
+            status_ = "Removed Canvas.";
+        } else {
+            CanvasComponent& canvas = *entity->canvas;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Canvas", &canvas.enabled)) {
+                RecordImmediateEdit("Toggle Canvas", std::move(before),
+                                    selectionBefore);
+            }
+            float resolution[2]{
+                canvas.referenceResolution.x,
+                canvas.referenceResolution.y,
+            };
+            if (ImGui::DragFloat2("Reference Resolution##Canvas", resolution,
+                                  1.0f, 1.0f, 16384.0f, "%.0f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                canvas.referenceResolution = {resolution[0], resolution[1]};
+                RefreshDirty();
+                status_ = "Modified Canvas reference resolution.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Canvas");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            ImGui::TextDisabled(
+                "Text descendants scale to the Game View while preserving aspect ratio.");
+        }
+    }
+
+    if (entity->text) {
+        ImGui::SeparatorText("Text");
+        if (ImGui::Button("Remove Text")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->text.reset();
+            RecordImmediateEdit("Remove Text", before, selectionBefore);
+            status_ = "Removed Text.";
+        } else {
+            TextComponent& text = *entity->text;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Text", &text.enabled)) {
+                RecordImmediateEdit("Toggle Text", std::move(before),
+                                    selectionBefore);
+            }
+
+            std::array<char, 4097> textBuffer{};
+            std::memcpy(textBuffer.data(), text.text.data(),
+                        (std::min)(text.text.size(), textBuffer.size() - 1u));
+            if (ImGui::InputTextMultiline("Content##Text", textBuffer.data(),
+                                          textBuffer.size(), {-FLT_MIN, 80.0f})) {
+                text.text = textBuffer.data();
+                RefreshDirty();
+                status_ = "Modified Text content.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat2("Position##Text", &text.position.x, 1.0f,
+                                  -1000000.0f, 1000000.0f, "%.1f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Text position.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat("Font Size##Text", &text.fontSize, 0.5f,
+                                 1.0f, 512.0f, "%.1f",
+                                 ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Text font size.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::ColorEdit4("Color##Text", &text.color.x)) {
+                RefreshDirty();
+                status_ = "Modified Text color.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Text");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+
+            const char* alignment =
+                text.alignment == TextAlignment::Left
+                    ? "Left"
+                    : text.alignment == TextAlignment::Center ? "Center" : "Right";
+            if (ImGui::BeginCombo("Alignment##Text", alignment)) {
+                const auto selectAlignment = [&](TextAlignment value,
+                                                 const char* label) {
+                    if (ImGui::Selectable(label, text.alignment == value)) {
+                        const std::string alignmentBefore =
+                            WorldSerializer::Serialize(world_);
+                        text.alignment = value;
+                        RecordImmediateEdit("Modify Text Alignment",
+                                            alignmentBefore, selectionBefore);
+                        status_ = "Modified Text alignment.";
+                    }
+                };
+                selectAlignment(TextAlignment::Left, "Left");
+                selectAlignment(TextAlignment::Center, "Center");
+                selectAlignment(TextAlignment::Right, "Right");
+                ImGui::EndCombo();
+            }
+
+            const WorldEntity* ancestor = entity;
+            while (ancestor != nullptr && !ancestor->canvas) {
+                ancestor = ancestor->parent.IsValid()
+                               ? world_.Find(ancestor->parent)
+                               : nullptr;
+            }
+            if (ancestor == nullptr) {
+                ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f},
+                                   "Text requires a Canvas on this Entity or an ancestor.");
             }
         }
     }
@@ -7801,6 +7964,74 @@ void EditorScene::UpdateAssetPreview() {
     assetPreviewCamera_.SetPosition({0.0f, 0.0f, -distance});
     assetPreviewCamera_.SetClipRange((std::max)(0.01f, distance - radius * 2.0f),
                                      distance + radius * 4.0f);
+}
+
+void EditorScene::DrawGameUi(int width, int height) {
+    if (ctx_ == nullptr || ctx_->rendering.text == nullptr ||
+        ctx_->rendering.spriteRenderer == nullptr || width <= 0 || height <= 0) {
+        return;
+    }
+    TextRenderer& textRenderer = *ctx_->rendering.text;
+    SpriteRenderer& spriteRenderer = *ctx_->rendering.spriteRenderer;
+    if (!textRenderer.IsReady() || !spriteRenderer.IsReady()) {
+        return;
+    }
+
+    spriteRenderer.UpdateProjection(width, height);
+    spriteRenderer.PreDraw(true);
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.text || !entity.text->enabled ||
+            !world_.IsActiveInHierarchy(entity.id)) {
+            continue;
+        }
+
+        const CanvasComponent* canvas = nullptr;
+        const WorldEntity* canvasEntity = &entity;
+        while (canvasEntity != nullptr) {
+            if (canvasEntity->canvas) {
+                if (canvasEntity->canvas->enabled) {
+                    canvas = &*canvasEntity->canvas;
+                }
+                break;
+            }
+            canvasEntity = canvasEntity->parent.IsValid()
+                               ? world_.Find(canvasEntity->parent)
+                               : nullptr;
+        }
+        if (canvas == nullptr) {
+            continue;
+        }
+
+        const float scale =
+            (std::min)(static_cast<float>(width) / canvas->referenceResolution.x,
+                       static_cast<float>(height) / canvas->referenceResolution.y);
+        const DirectX::XMFLOAT2 canvasOrigin{
+            (static_cast<float>(width) - canvas->referenceResolution.x * scale) * 0.5f,
+            (static_cast<float>(height) - canvas->referenceResolution.y * scale) * 0.5f,
+        };
+        const TextComponent& text = *entity.text;
+        TextStyle style{};
+        style.pixelSize = text.fontSize * scale;
+        style.color = text.color;
+        DirectX::XMFLOAT2 position{
+            canvasOrigin.x + text.position.x * scale,
+            canvasOrigin.y + text.position.y * scale,
+        };
+        if (text.alignment != TextAlignment::Left) {
+            const TextLayoutMetrics metrics =
+                textRenderer.MeasureText(text.text, style);
+            position.x -= text.alignment == TextAlignment::Center
+                              ? metrics.size.x * 0.5f
+                              : metrics.size.x;
+        }
+        textRenderer.DrawText(text.text, position, style);
+    }
+    spriteRenderer.PostDraw();
+
+    if (ctx_->systems.winApp != nullptr) {
+        spriteRenderer.UpdateProjection(ctx_->systems.winApp->GetWidth(),
+                                        ctx_->systems.winApp->GetHeight());
+    }
 }
 
 void EditorScene::BuildRenderScene() {

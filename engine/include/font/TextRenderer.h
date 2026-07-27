@@ -5,6 +5,10 @@
 #include <DirectXMath.h>
 #include <string_view>
 
+#ifdef DrawText
+#undef DrawText
+#endif
+
 class SpriteRenderer;
 
 struct TextStyle {

@@ -996,12 +996,20 @@ int main() {
     childEntity->characterController->center = {0.0f, 1.0f, 0.0f};
     childEntity->characterController->radius = 0.4f;
     childEntity->characterController->height = 1.8f;
+    childEntity->text = TextComponent{};
+    childEntity->text->text = "HP: 100";
+    childEntity->text->position = {48.0f, 32.0f};
+    childEntity->text->fontSize = 40.0f;
+    childEntity->text->color = {1.0f, 0.25f, 0.2f, 0.9f};
+    childEntity->text->alignment = TextAlignment::Center;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
         rootEntity->camera->primary = true;
         rootEntity->camera->fieldOfViewDegrees = 60.0f;
         rootEntity->audioListener = AudioListenerComponent{};
+        rootEntity->canvas = CanvasComponent{};
+        rootEntity->canvas->referenceResolution = {1280.0f, 720.0f};
     }
 
     DirectX::XMFLOAT4X4 childWorld{};
@@ -1253,9 +1261,20 @@ int main() {
                    restoredChild->characterController->center.y == 1.0f &&
                    restoredChild->characterController->radius == 0.4f &&
                    restoredChild->characterController->height == 1.8f &&
+                   restoredChild->text && restoredChild->text->enabled &&
+                   restoredChild->text->text == "HP: 100" &&
+                   restoredChild->text->position.x == 48.0f &&
+                   restoredChild->text->position.y == 32.0f &&
+                   restoredChild->text->fontSize == 40.0f &&
+                   restoredChild->text->color.y == 0.25f &&
+                   restoredChild->text->color.w == 0.9f &&
+                   restoredChild->text->alignment == TextAlignment::Center &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
+                   restored.Find(root)->canvas &&
+                   restored.Find(root)->canvas->referenceResolution.x == 1280.0f &&
+                   restored.Find(root)->canvas->referenceResolution.y == 720.0f &&
                    restored.Find(root)->camera->fieldOfViewDegrees == 60.0f,
                "World JSON round-trip changed entity data.")) {
         return 7;
@@ -1385,8 +1404,13 @@ int main() {
                    duplicateChild->characterController &&
                    duplicateChild->characterController->radius == 0.4f &&
                    duplicateChild->characterController->height == 1.8f &&
+                   duplicateChild->text &&
+                   duplicateChild->text->text == "HP: 100" &&
+                   duplicateChild->text->alignment == TextAlignment::Center &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
-                   duplicateRootEntity->audioListener,
+                   duplicateRootEntity->audioListener &&
+                   duplicateRootEntity->canvas &&
+                   duplicateRootEntity->canvas->referenceResolution.x == 1280.0f,
                "Hierarchy duplication did not preserve entity data and parenting.")) {
         return 8;
     }

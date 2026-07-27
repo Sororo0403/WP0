@@ -201,6 +201,7 @@ private:
     void RefreshDirty();
     void BuildRenderScene();
     void BuildEditorOverlayScene();
+    void DrawGameUi(int width, int height);
     void UpdateAssetPreview();
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;

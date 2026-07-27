@@ -14,12 +14,28 @@
 namespace {
 using Json = nlohmann::json;
 
+Json EncodeFloat2(const DirectX::XMFLOAT2& value) {
+    return Json::array({value.x, value.y});
+}
+
 Json EncodeFloat3(const DirectX::XMFLOAT3& value) {
     return Json::array({value.x, value.y, value.z});
 }
 
 Json EncodeFloat4(const DirectX::XMFLOAT4& value) {
     return Json::array({value.x, value.y, value.z, value.w});
+}
+
+bool DecodeFloat2(const Json& value, DirectX::XMFLOAT2& result) {
+    if (!value.is_array() || value.size() != 2u) {
+        return false;
+    }
+    try {
+        result = {value[0].get<float>(), value[1].get<float>()};
+    } catch (const std::exception&) {
+        return false;
+    }
+    return std::isfinite(result.x) && std::isfinite(result.y);
 }
 
 bool DecodeFloat3(const Json& value, DirectX::XMFLOAT3& result) {
@@ -197,6 +213,34 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedAnimator["speed"] = animator.speed;
             encodedAnimator["lockRootPosition"] = animator.lockRootPosition;
             encoded["components"]["Animator"] = std::move(encodedAnimator);
+        }
+        if (entity.canvas) {
+            Json encodedCanvas;
+            encodedCanvas["enabled"] = entity.canvas->enabled;
+            encodedCanvas["referenceResolution"] =
+                EncodeFloat2(entity.canvas->referenceResolution);
+            encoded["components"]["Canvas"] = std::move(encodedCanvas);
+        }
+        if (entity.text) {
+            const TextComponent& text = *entity.text;
+            Json encodedText;
+            encodedText["enabled"] = text.enabled;
+            encodedText["text"] = text.text;
+            encodedText["position"] = EncodeFloat2(text.position);
+            encodedText["fontSize"] = text.fontSize;
+            encodedText["color"] = EncodeFloat4(text.color);
+            switch (text.alignment) {
+            case TextAlignment::Left:
+                encodedText["alignment"] = "Left";
+                break;
+            case TextAlignment::Center:
+                encodedText["alignment"] = "Center";
+                break;
+            case TextAlignment::Right:
+                encodedText["alignment"] = "Right";
+                break;
+            }
+            encoded["components"]["Text"] = std::move(encodedText);
         }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
@@ -676,6 +720,72 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.animator = std::move(component);
+        }
+        if (encoded["components"].contains("Canvas")) {
+            const Json& canvas = encoded["components"]["Canvas"];
+            CanvasComponent component{};
+            if (!canvas.is_object() || !canvas.contains("enabled") ||
+                !canvas["enabled"].is_boolean() ||
+                !canvas.contains("referenceResolution") ||
+                !DecodeFloat2(canvas["referenceResolution"],
+                              component.referenceResolution) ||
+                component.referenceResolution.x < 1.0f ||
+                component.referenceResolution.y < 1.0f ||
+                component.referenceResolution.x > 16384.0f ||
+                component.referenceResolution.y > 16384.0f) {
+                SetError(error, "Scene Canvas component is invalid.");
+                return false;
+            }
+            component.enabled = canvas["enabled"].get<bool>();
+            entity.canvas = component;
+        }
+        if (encoded["components"].contains("Text")) {
+            const Json& encodedText = encoded["components"]["Text"];
+            TextComponent component{};
+            if (!encodedText.is_object() || !encodedText.contains("enabled") ||
+                !encodedText["enabled"].is_boolean() ||
+                !encodedText.contains("text") ||
+                !encodedText["text"].is_string() ||
+                !encodedText.contains("position") ||
+                !DecodeFloat2(encodedText["position"], component.position) ||
+                !encodedText.contains("fontSize") ||
+                !encodedText["fontSize"].is_number() ||
+                !encodedText.contains("color") ||
+                !DecodeFloat4(encodedText["color"], component.color) ||
+                !encodedText.contains("alignment") ||
+                !encodedText["alignment"].is_string()) {
+                SetError(error, "Scene Text component is invalid.");
+                return false;
+            }
+            component.enabled = encodedText["enabled"].get<bool>();
+            component.text = encodedText["text"].get<std::string>();
+            component.fontSize = encodedText["fontSize"].get<float>();
+            const std::string alignment =
+                encodedText["alignment"].get<std::string>();
+            if (alignment == "Left") {
+                component.alignment = TextAlignment::Left;
+            } else if (alignment == "Center") {
+                component.alignment = TextAlignment::Center;
+            } else if (alignment == "Right") {
+                component.alignment = TextAlignment::Right;
+            } else {
+                SetError(error, "Scene Text alignment is invalid.");
+                return false;
+            }
+            if (component.text.size() > 4096u ||
+                component.text.find('\0') != std::string::npos ||
+                std::abs(component.position.x) > 1000000.0f ||
+                std::abs(component.position.y) > 1000000.0f ||
+                !std::isfinite(component.fontSize) || component.fontSize < 1.0f ||
+                component.fontSize > 512.0f || component.color.x < 0.0f ||
+                component.color.x > 1.0f || component.color.y < 0.0f ||
+                component.color.y > 1.0f || component.color.z < 0.0f ||
+                component.color.z > 1.0f || component.color.w < 0.0f ||
+                component.color.w > 1.0f) {
+                SetError(error, "Scene Text settings are invalid.");
+                return false;
+            }
+            entity.text = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

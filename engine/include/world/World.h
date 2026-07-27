@@ -158,6 +158,26 @@ struct AnimatorComponent {
     float runtimeTransitionProgress = 0.0f;
 };
 
+struct CanvasComponent {
+    bool enabled = true;
+    DirectX::XMFLOAT2 referenceResolution{1920.0f, 1080.0f};
+};
+
+enum class TextAlignment : uint8_t {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+};
+
+struct TextComponent {
+    bool enabled = true;
+    std::string text = "Text";
+    DirectX::XMFLOAT2 position{0.0f, 0.0f};
+    float fontSize = 32.0f;
+    DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    TextAlignment alignment = TextAlignment::Left;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -208,6 +228,8 @@ struct WorldEntity {
     std::optional<AudioSourceComponent> audioSource;
     std::optional<AudioListenerComponent> audioListener;
     std::optional<AnimatorComponent> animator;
+    std::optional<CanvasComponent> canvas;
+    std::optional<TextComponent> text;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;
