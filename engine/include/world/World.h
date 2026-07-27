@@ -178,6 +178,14 @@ struct TextComponent {
     TextAlignment alignment = TextAlignment::Left;
 };
 
+struct ImageComponent {
+    bool enabled = true;
+    std::string texturePath;
+    DirectX::XMFLOAT2 position{0.0f, 0.0f};
+    DirectX::XMFLOAT2 size{100.0f, 100.0f};
+    DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -230,6 +238,7 @@ struct WorldEntity {
     std::optional<AnimatorComponent> animator;
     std::optional<CanvasComponent> canvas;
     std::optional<TextComponent> text;
+    std::optional<ImageComponent> image;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

@@ -3626,8 +3626,16 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
                 : std::nullopt;
         const bool matchesAudio =
             audioReference && AssetPathMatches(*audioReference, relativePath, directory);
+        const std::optional<std::filesystem::path> imageReference =
+            entity.image
+                ? AssetRelativeFromReference(entity.image->texturePath)
+                : std::nullopt;
+        const bool matchesImage =
+            imageReference &&
+            AssetPathMatches(*imageReference, relativePath, directory);
         if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
-            !matchesMetallic && !matchesScript && !matchesAudio) {
+            !matchesMetallic && !matchesScript && !matchesAudio &&
+            !matchesImage) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -3699,6 +3707,12 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
             referencedByEntity =
                 referenced && AssetPathMatches(*referenced, relativePath, directory);
         }
+        if (!referencedByEntity && entity.image) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.image->texturePath);
+            referencedByEntity =
+                referenced && AssetPathMatches(*referenced, relativePath, directory);
+        }
         if (referencedByEntity) {
             ++references;
         }
@@ -3738,6 +3752,9 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
         }
         if (entity->audioSource) {
             updateReference(entity->audioSource->clipPath);
+        }
+        if (entity->image) {
+            updateReference(entity->image->texturePath);
         }
         for (BehaviorComponent& script : entity->scripts) {
             updateReference(script.scriptAssetPath);
@@ -4406,6 +4423,13 @@ void EditorScene::DrawInspectorPanel() {
             entity->text = TextComponent{};
             RecordImmediateEdit("Add Text", before, selectionBefore);
             status_ = "Added Text.";
+        }
+        if (!entity->image && ImGui::MenuItem("Image")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->image = ImageComponent{};
+            RecordImmediateEdit("Add Image", before, selectionBefore);
+            status_ = "Added Image.";
         }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -5719,6 +5743,137 @@ void EditorScene::DrawInspectorPanel() {
         }
     }
 
+    if (entity->image) {
+        ImGui::SeparatorText("Image");
+        if (ImGui::Button("Remove Image")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            const std::string previousPath = entity->image->texturePath;
+            entity->image.reset();
+            loadedTextures_.erase(previousPath);
+            RecordImmediateEdit("Remove Image", before, selectionBefore);
+            status_ = "Removed Image.";
+        } else {
+            ImageComponent& image = *entity->image;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Image", &image.enabled)) {
+                RecordImmediateEdit("Toggle Image", std::move(before),
+                                    selectionBefore);
+            }
+
+            const std::string textureLabel =
+                image.texturePath.empty() ? "None (solid color)"
+                                          : image.texturePath;
+            if (ImGui::Button((textureLabel + "##ImageTexture").c_str(),
+                              {-FLT_MIN, 0.0f})) {
+                ImGui::OpenPopup("ImageTexturePicker");
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kTextureAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() &&
+                    payload->DataSize > 1 &&
+                    static_cast<const char*>(
+                        payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignImageTexture(selection_,
+                                       static_cast<const char*>(payload->Data));
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopup("ImageTexturePicker")) {
+                if (ImGui::MenuItem("None (solid color)", nullptr,
+                                    image.texturePath.empty())) {
+                    const std::string clearBefore =
+                        WorldSerializer::Serialize(world_);
+                    const std::string previousPath = image.texturePath;
+                    image.texturePath.clear();
+                    loadedTextures_.erase(previousPath);
+                    RecordImmediateEdit("Clear Image Texture", clearBefore,
+                                        selectionBefore);
+                    status_ = "Cleared Image texture.";
+                }
+                ImGui::Separator();
+                for (const std::filesystem::path& textureAsset : textureAssets_) {
+                    const std::string reference =
+                        "asset://" +
+                        textureAsset.lexically_relative("assets").generic_string();
+                    const std::string label =
+                        textureAsset.filename().generic_string() + "##Image" +
+                        textureAsset.generic_string();
+                    if (ImGui::MenuItem(label.c_str(), nullptr,
+                                        image.texturePath == reference)) {
+                        AssignImageTexture(selection_, textureAsset);
+                    }
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::DragFloat2("Position##Image", &image.position.x, 1.0f,
+                                  -1000000.0f, 1000000.0f, "%.1f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Image position.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Image");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::DragFloat2("Size##Image", &image.size.x, 1.0f, 0.0f,
+                                  1000000.0f, "%.1f",
+                                  ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Image size.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Image");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (ImGui::ColorEdit4("Color##Image", &image.color.x)) {
+                RefreshDirty();
+                status_ = "Modified Image color.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit("Modify Image");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+
+            const TextureHandle texture =
+                image.texturePath.empty()
+                    ? TextureHandle{}
+                    : loadedTextures_.contains(image.texturePath)
+                          ? loadedTextures_.at(image.texturePath)
+                          : TextureHandle{};
+            if (texture.IsValid() && ctx_ != nullptr &&
+                ctx_->rendering.texture != nullptr &&
+                ctx_->rendering.texture->IsValidTexture(texture)) {
+                const D3D12_GPU_DESCRIPTOR_HANDLE handle =
+                    ctx_->rendering.texture->GetGpuHandle(texture);
+                ImGui::Image(static_cast<ImTextureID>(handle.ptr),
+                             {64.0f, 64.0f});
+            } else if (!image.texturePath.empty()) {
+                ImGui::TextDisabled("Texture is loading or unavailable.");
+            }
+
+            const WorldEntity* ancestor = entity;
+            while (ancestor != nullptr && !ancestor->canvas) {
+                ancestor = ancestor->parent.IsValid()
+                               ? world_.Find(ancestor->parent)
+                               : nullptr;
+            }
+            if (ancestor == nullptr) {
+                ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f},
+                                   "Image requires a Canvas on this Entity or an ancestor.");
+            }
+        }
+    }
+
     if (entity->materialOverride) {
         ImGui::SeparatorText("Material Override");
         if (ImGui::Button("Remove Material Override")) {
@@ -6821,6 +6976,28 @@ void EditorScene::AssignBaseColorTexture(EntityId entityId,
     status_ = "Assigned Base Color texture: " + assetPath;
 }
 
+void EditorScene::AssignImageTexture(EntityId entityId,
+                                     const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !entity->image) {
+        status_ = "The target Image component no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeTextureAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const std::string previousPath = entity->image->texturePath;
+    entity->image->texturePath = assetPath;
+    loadedTextures_.erase(previousPath);
+    loadedTextures_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Image Texture", before, selectionBefore);
+    status_ = "Assigned Image texture: " + assetPath;
+}
+
 void EditorScene::AssignNormalTexture(EntityId entityId,
                                       const std::filesystem::path& path) {
     WorldEntity* entity = world_.Find(entityId);
@@ -7746,6 +7923,20 @@ void EditorScene::ResolveMeshResources() {
             TextureHandle(ctx_->rendering.texture->LoadSrgb(resolved->wstring())));
     }
     for (const WorldEntity& entity : world_.Entities()) {
+        if (!entity.image || entity.image->texturePath.empty() ||
+            loadedTextures_.contains(entity.image->texturePath)) {
+            continue;
+        }
+        const std::optional<std::filesystem::path> resolved =
+            ResolveProjectAssetPath(entity.image->texturePath);
+        if (!resolved || !AssetImport::IsTextureFile(*resolved)) {
+            continue;
+        }
+        loadedTextures_.emplace(
+            entity.image->texturePath,
+            TextureHandle(ctx_->rendering.texture->LoadSrgb(resolved->wstring())));
+    }
+    for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.materialOverride) {
             continue;
         }
@@ -7980,7 +8171,9 @@ void EditorScene::DrawGameUi(int width, int height) {
     spriteRenderer.UpdateProjection(width, height);
     spriteRenderer.PreDraw(true);
     for (const WorldEntity& entity : world_.Entities()) {
-        if (!entity.text || !entity.text->enabled ||
+        const bool drawsText = entity.text && entity.text->enabled;
+        const bool drawsImage = entity.image && entity.image->enabled;
+        if ((!drawsText && !drawsImage) ||
             !world_.IsActiveInHierarchy(entity.id)) {
             continue;
         }
@@ -8009,6 +8202,28 @@ void EditorScene::DrawGameUi(int width, int height) {
             (static_cast<float>(width) - canvas->referenceResolution.x * scale) * 0.5f,
             (static_cast<float>(height) - canvas->referenceResolution.y * scale) * 0.5f,
         };
+        if (drawsImage) {
+            const ImageComponent& image = *entity.image;
+            Sprite sprite{};
+            sprite.position = {
+                canvasOrigin.x + image.position.x * scale,
+                canvasOrigin.y + image.position.y * scale,
+            };
+            sprite.size = {
+                image.size.x * scale,
+                image.size.y * scale,
+            };
+            sprite.color = image.color;
+            const auto loaded = loadedTextures_.find(image.texturePath);
+            sprite.textureId =
+                loaded != loadedTextures_.end() && loaded->second.IsValid()
+                    ? loaded->second.Get()
+                    : kInvalidResourceId;
+            spriteRenderer.Draw(sprite);
+        }
+        if (!drawsText) {
+            continue;
+        }
         const TextComponent& text = *entity.text;
         TextStyle style{};
         style.pixelSize = text.fontSize * scale;

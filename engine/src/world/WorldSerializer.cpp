@@ -242,6 +242,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             }
             encoded["components"]["Text"] = std::move(encodedText);
         }
+        if (entity.image) {
+            const ImageComponent& image = *entity.image;
+            Json encodedImage;
+            encodedImage["enabled"] = image.enabled;
+            encodedImage["texture"] = image.texturePath;
+            encodedImage["position"] = EncodeFloat2(image.position);
+            encodedImage["size"] = EncodeFloat2(image.size);
+            encodedImage["color"] = EncodeFloat4(image.color);
+            encoded["components"]["Image"] = std::move(encodedImage);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -786,6 +796,42 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.text = std::move(component);
+        }
+        if (encoded["components"].contains("Image")) {
+            const Json& encodedImage = encoded["components"]["Image"];
+            ImageComponent component{};
+            if (!encodedImage.is_object() ||
+                !encodedImage.contains("enabled") ||
+                !encodedImage["enabled"].is_boolean() ||
+                !encodedImage.contains("texture") ||
+                !encodedImage["texture"].is_string() ||
+                !encodedImage.contains("position") ||
+                !DecodeFloat2(encodedImage["position"], component.position) ||
+                !encodedImage.contains("size") ||
+                !DecodeFloat2(encodedImage["size"], component.size) ||
+                !encodedImage.contains("color") ||
+                !DecodeFloat4(encodedImage["color"], component.color)) {
+                SetError(error, "Scene Image component is invalid.");
+                return false;
+            }
+            component.enabled = encodedImage["enabled"].get<bool>();
+            component.texturePath =
+                encodedImage["texture"].get<std::string>();
+            if (component.texturePath.size() > 1024u ||
+                component.texturePath.find('\0') != std::string::npos ||
+                component.size.x < 0.0f || component.size.y < 0.0f ||
+                component.size.x > 1000000.0f ||
+                component.size.y > 1000000.0f ||
+                std::abs(component.position.x) > 1000000.0f ||
+                std::abs(component.position.y) > 1000000.0f ||
+                component.color.x < 0.0f || component.color.x > 1.0f ||
+                component.color.y < 0.0f || component.color.y > 1.0f ||
+                component.color.z < 0.0f || component.color.z > 1.0f ||
+                component.color.w < 0.0f || component.color.w > 1.0f) {
+                SetError(error, "Scene Image settings are invalid.");
+                return false;
+            }
+            entity.image = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

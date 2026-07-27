@@ -74,6 +74,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->animator = original.animator;
         duplicate->canvas = original.canvas;
         duplicate->text = original.text;
+        duplicate->image = original.image;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -639,6 +640,24 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 text.alignment < TextAlignment::Left ||
                 text.alignment > TextAlignment::Right) {
                 SetError(error, "Scene contains an invalid Text component.");
+                return false;
+            }
+        }
+        if (entity.image) {
+            const ImageComponent& image = *entity.image;
+            if (image.texturePath.size() > 1024u ||
+                image.texturePath.find('\0') != std::string::npos ||
+                !IsFinite(image.position) || !IsFinite(image.size) ||
+                image.size.x < 0.0f || image.size.y < 0.0f ||
+                image.size.x > 1000000.0f || image.size.y > 1000000.0f ||
+                std::abs(image.position.x) > 1000000.0f ||
+                std::abs(image.position.y) > 1000000.0f ||
+                !IsFinite(image.color) || image.color.x < 0.0f ||
+                image.color.x > 1.0f || image.color.y < 0.0f ||
+                image.color.y > 1.0f || image.color.z < 0.0f ||
+                image.color.z > 1.0f || image.color.w < 0.0f ||
+                image.color.w > 1.0f) {
+                SetError(error, "Scene contains an invalid Image component.");
                 return false;
             }
         }

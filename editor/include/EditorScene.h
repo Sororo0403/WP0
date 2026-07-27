@@ -136,6 +136,7 @@ private:
     void AssignNormalTexture(EntityId entity, const std::filesystem::path& path);
     void AssignRoughnessTexture(EntityId entity, const std::filesystem::path& path);
     void AssignMetallicTexture(EntityId entity, const std::filesystem::path& path);
+    void AssignImageTexture(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);

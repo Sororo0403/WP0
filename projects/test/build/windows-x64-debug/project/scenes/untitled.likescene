@@ -495,6 +495,125 @@
       "layer": 0,
       "name": "Audio Copy",
       "parent": null
+    },
+    {
+      "active": true,
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "referenceResolution": [
+            1920.0,
+            1080.0
+          ]
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "48dafa63-bd3f-c118-8008-f1708938eaab",
+      "layer": 0,
+      "name": "Canvas",
+      "parent": null
+    },
+    {
+      "active": true,
+      "components": {
+        "Text": {
+          "alignment": "Center",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontSize": 179.5,
+          "position": [
+            902.0,
+            294.0
+          ],
+          "text": "Hello LikeEngine!"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4a47692d-802a-7057-da29-2b3bf652d1a6",
+      "layer": 0,
+      "name": "Text",
+      "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
+    },
+    {
+      "active": true,
+      "components": {
+        "Image": {
+          "color": [
+            0.7142857313156128,
+            0.3998897075653076,
+            0.3998897075653076,
+            1.0
+          ],
+          "enabled": true,
+          "position": [
+            301.0,
+            195.0
+          ],
+          "size": [
+            400.0,
+            100.0
+          ],
+          "texture": "asset://LockPBR/Rock051.png"
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "406f9c73-f615-7ad7-374c-b6d2d8c173a4",
+      "layer": 0,
+      "name": "Image",
+      "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
     }
   ],
   "version": 1
