@@ -243,6 +243,7 @@ struct ImageComponent {
 
 enum class ButtonNavigationMode : uint8_t {
     Automatic,
+    Explicit,
     None,
 };
 
@@ -255,6 +256,10 @@ struct ButtonComponent {
     DirectX::XMFLOAT4 pressedColor{0.7f, 0.8f, 1.0f, 1.0f};
     DirectX::XMFLOAT4 disabledColor{0.5f, 0.5f, 0.5f, 1.0f};
     float fadeDuration = 0.1f;
+    EntityId selectOnLeft{};
+    EntityId selectOnRight{};
+    EntityId selectOnUp{};
+    EntityId selectOnDown{};
 };
 
 struct ToggleComponent {

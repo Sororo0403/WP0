@@ -6670,7 +6670,10 @@ void EditorScene::DrawInspectorPanel() {
             const char* navigation =
                 button.navigation == ButtonNavigationMode::None
                     ? "None"
-                    : "Automatic";
+                    : button.navigation ==
+                              ButtonNavigationMode::Explicit
+                          ? "Explicit"
+                          : "Automatic";
             if (ImGui::BeginCombo("Navigation##Button", navigation)) {
                 const auto selectNavigation =
                     [&](ButtonNavigationMode value, const char* label) {
@@ -6687,8 +6690,104 @@ void EditorScene::DrawInspectorPanel() {
                     };
                 selectNavigation(ButtonNavigationMode::Automatic,
                                  "Automatic");
+                selectNavigation(ButtonNavigationMode::Explicit,
+                                 "Explicit");
                 selectNavigation(ButtonNavigationMode::None, "None");
                 ImGui::EndCombo();
+            }
+            if (button.navigation ==
+                ButtonNavigationMode::Explicit) {
+                const auto editNavigationTarget =
+                    [&](const char* label, const char* popup,
+                        EntityId& target) {
+                        const WorldEntity* targetEntity =
+                            world_.Find(target);
+                        std::string targetLabel =
+                            targetEntity != nullptr
+                                ? targetEntity->name
+                                : target.IsValid() ? "Missing Entity"
+                                                   : "None";
+                        targetLabel += "##";
+                        targetLabel += label;
+                        ImGui::TextUnformatted(label);
+                        ImGui::SameLine();
+                        if (ImGui::Button(targetLabel.c_str(),
+                                          {-FLT_MIN, 0.0f})) {
+                            ImGui::OpenPopup(popup);
+                        }
+                        const auto assignTarget = [&](EntityId value) {
+                            if (target == value) {
+                                return;
+                            }
+                            const std::string targetBefore =
+                                WorldSerializer::Serialize(world_);
+                            target = value;
+                            RecordImmediateEdit(
+                                "Assign Button Navigation",
+                                targetBefore, selectionBefore);
+                            status_ =
+                                "Assigned Button navigation target.";
+                        };
+                        if (ImGui::BeginDragDropTarget()) {
+                            if (const ImGuiPayload* payload =
+                                    ImGui::AcceptDragDropPayload(
+                                        kEntityDragPayload);
+                                payload != nullptr &&
+                                payload->IsDelivery() &&
+                                payload->DataSize ==
+                                    sizeof(EntityId)) {
+                                EntityId dropped{};
+                                std::memcpy(&dropped, payload->Data,
+                                            sizeof(dropped));
+                                const WorldEntity* droppedEntity =
+                                    world_.Find(dropped);
+                                if (droppedEntity != nullptr &&
+                                    dropped != entity->id &&
+                                    (droppedEntity->button ||
+                                     droppedEntity->slider)) {
+                                    assignTarget(dropped);
+                                }
+                            }
+                            ImGui::EndDragDropTarget();
+                        }
+                        if (ImGui::BeginPopup(popup)) {
+                            if (ImGui::MenuItem(
+                                    "None", nullptr,
+                                    !target.IsValid())) {
+                                assignTarget({});
+                            }
+                            ImGui::Separator();
+                            for (const WorldEntity& candidate :
+                                 world_.Entities()) {
+                                if (candidate.id == entity->id ||
+                                    (!candidate.button &&
+                                     !candidate.slider)) {
+                                    continue;
+                                }
+                                const std::string candidateLabel =
+                                    candidate.name + "##" +
+                                    candidate.id.ToString();
+                                if (ImGui::MenuItem(
+                                        candidateLabel.c_str(), nullptr,
+                                        candidate.id == target)) {
+                                    assignTarget(candidate.id);
+                                }
+                            }
+                            ImGui::EndPopup();
+                        }
+                    };
+                editNavigationTarget(
+                    "Select On Left", "SelectOnLeftPicker",
+                    button.selectOnLeft);
+                editNavigationTarget(
+                    "Select On Right", "SelectOnRightPicker",
+                    button.selectOnRight);
+                editNavigationTarget(
+                    "Select On Up", "SelectOnUpPicker",
+                    button.selectOnUp);
+                editNavigationTarget(
+                    "Select On Down", "SelectOnDownPicker",
+                    button.selectOnDown);
             }
             const auto editButtonColor =
                 [&](const char* label, DirectX::XMFLOAT4& color) {
@@ -9485,8 +9584,8 @@ bool EditorScene::DrawGameUi(int width, int height,
                       : entity.button->interactable);
         const bool navigationEnabled =
             isSlider ||
-            entity.button->navigation ==
-                ButtonNavigationMode::Automatic;
+            entity.button->navigation !=
+                ButtonNavigationMode::None;
         if (controlInteractable && navigationEnabled) {
             selectableButtons.push_back(entity.id);
             float left = 0.0f;
@@ -9592,9 +9691,37 @@ bool EditorScene::DrawGameUi(int width, int height,
     if (navigationDirection != UiNavigationDirection::None &&
         !selectableButtons.empty() &&
         (focusedButton_.IsValid() || !gameCameraAvailable)) {
-        const auto currentCenter =
-            selectableCenters.find(focusedButton_);
-        if (currentCenter == selectableCenters.end()) {
+        const WorldEntity* currentControl =
+            world_.Find(focusedButton_);
+        const bool explicitNavigation =
+            currentControl != nullptr && currentControl->button &&
+            currentControl->button->navigation ==
+                ButtonNavigationMode::Explicit;
+        if (explicitNavigation) {
+            EntityId target{};
+            switch (navigationDirection) {
+            case UiNavigationDirection::Left:
+                target = currentControl->button->selectOnLeft;
+                break;
+            case UiNavigationDirection::Right:
+                target = currentControl->button->selectOnRight;
+                break;
+            case UiNavigationDirection::Up:
+                target = currentControl->button->selectOnUp;
+                break;
+            case UiNavigationDirection::Down:
+                target = currentControl->button->selectOnDown;
+                break;
+            case UiNavigationDirection::None:
+                break;
+            }
+            if (std::ranges::find(selectableButtons, target) !=
+                selectableButtons.end()) {
+                focusedButton_ = target;
+            }
+        } else if (const auto currentCenter =
+                       selectableCenters.find(focusedButton_);
+                   currentCenter == selectableCenters.end()) {
             focusedButton_ = selectableButtons.front();
         } else {
             EntityId best{};

@@ -215,7 +215,15 @@ bool DecodeSliderDirection(const Json& value,
 }
 
 const char* EncodeButtonNavigationMode(ButtonNavigationMode mode) {
-    return mode == ButtonNavigationMode::None ? "None" : "Automatic";
+    switch (mode) {
+    case ButtonNavigationMode::Automatic:
+        return "Automatic";
+    case ButtonNavigationMode::Explicit:
+        return "Explicit";
+    case ButtonNavigationMode::None:
+        return "None";
+    }
+    return "Automatic";
 }
 
 bool DecodeButtonNavigationMode(const Json& value,
@@ -226,6 +234,8 @@ bool DecodeButtonNavigationMode(const Json& value,
     const std::string encoded = value.get<std::string>();
     if (encoded == "Automatic") {
         mode = ButtonNavigationMode::Automatic;
+    } else if (encoded == "Explicit") {
+        mode = ButtonNavigationMode::Explicit;
     } else if (encoded == "None") {
         mode = ButtonNavigationMode::None;
     } else {
@@ -514,6 +524,22 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedButton["pressedColor"] = EncodeFloat4(button.pressedColor);
             encodedButton["disabledColor"] = EncodeFloat4(button.disabledColor);
             encodedButton["fadeDuration"] = button.fadeDuration;
+            encodedButton["selectOnLeft"] =
+                button.selectOnLeft.IsValid()
+                    ? Json(button.selectOnLeft.ToString())
+                    : Json(nullptr);
+            encodedButton["selectOnRight"] =
+                button.selectOnRight.IsValid()
+                    ? Json(button.selectOnRight.ToString())
+                    : Json(nullptr);
+            encodedButton["selectOnUp"] =
+                button.selectOnUp.IsValid()
+                    ? Json(button.selectOnUp.ToString())
+                    : Json(nullptr);
+            encodedButton["selectOnDown"] =
+                button.selectOnDown.IsValid()
+                    ? Json(button.selectOnDown.ToString())
+                    : Json(nullptr);
             encoded["components"]["Button"] = std::move(encodedButton);
         }
         if (entity.toggle) {
@@ -1337,6 +1363,30 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 !DecodeButtonNavigationMode(encodedButton["navigation"],
                                             component.navigation)) {
                 SetError(error, "Scene Button component is invalid.");
+                return false;
+            }
+            const auto decodeNavigationTarget =
+                [&](const char* name, EntityId& target) {
+                    if (!encodedButton.contains(name)) {
+                        return true;
+                    }
+                    const Json& encodedTarget = encodedButton[name];
+                    return encodedTarget.is_null() ||
+                           (encodedTarget.is_string() &&
+                            EntityId::TryParse(
+                                encodedTarget
+                                    .get_ref<const std::string&>(),
+                                target));
+                };
+            if (!decodeNavigationTarget(
+                    "selectOnLeft", component.selectOnLeft) ||
+                !decodeNavigationTarget(
+                    "selectOnRight", component.selectOnRight) ||
+                !decodeNavigationTarget(
+                    "selectOnUp", component.selectOnUp) ||
+                !decodeNavigationTarget(
+                    "selectOnDown", component.selectOnDown)) {
+                SetError(error, "Scene Button navigation is invalid.");
                 return false;
             }
             component.enabled = encodedButton["enabled"].get<bool>();

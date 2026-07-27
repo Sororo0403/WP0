@@ -125,6 +125,19 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
                 }
             }
         }
+        if (duplicate->button) {
+            const auto remapNavigation =
+                [&](EntityId& target) {
+                    const auto remapped = duplicateIds.find(target);
+                    if (remapped != duplicateIds.end()) {
+                        target = remapped->second;
+                    }
+                };
+            remapNavigation(duplicate->button->selectOnLeft);
+            remapNavigation(duplicate->button->selectOnRight);
+            remapNavigation(duplicate->button->selectOnUp);
+            remapNavigation(duplicate->button->selectOnDown);
+        }
     }
     return duplicateIds.at(source);
 }
@@ -191,6 +204,22 @@ bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
                                            : EntityId{};
             }
         }
+        if (instantiated.button) {
+            const auto remapNavigation =
+                [&](EntityId& target) {
+                    if (!target.IsValid()) {
+                        return;
+                    }
+                    const auto mapped = instantiatedIds.find(target);
+                    target = mapped != instantiatedIds.end()
+                                 ? mapped->second
+                                 : EntityId{};
+                };
+            remapNavigation(instantiated.button->selectOnLeft);
+            remapNavigation(instantiated.button->selectOnRight);
+            remapNavigation(instantiated.button->selectOnUp);
+            remapNavigation(instantiated.button->selectOnDown);
+        }
         combined.push_back(std::move(instantiated));
     }
     if (instantiatedRoots.empty() || !ReplaceEntities(std::move(combined), error)) {
@@ -237,6 +266,18 @@ bool World::DestroyEntity(EntityId id) {
                     property.entityValue = {};
                 }
             }
+        }
+        if (entity.button) {
+            const auto clearRemovedNavigation =
+                [&](EntityId& target) {
+                    if (removed.contains(target)) {
+                        target = {};
+                    }
+                };
+            clearRemovedNavigation(entity.button->selectOnLeft);
+            clearRemovedNavigation(entity.button->selectOnRight);
+            clearRemovedNavigation(entity.button->selectOnUp);
+            clearRemovedNavigation(entity.button->selectOnDown);
         }
     }
     return true;

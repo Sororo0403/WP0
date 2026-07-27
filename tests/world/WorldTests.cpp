@@ -1100,7 +1100,9 @@ int main() {
     childEntity->image->preserveAspect = true;
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
-    childEntity->button->navigation = ButtonNavigationMode::None;
+    childEntity->button->navigation = ButtonNavigationMode::Explicit;
+    childEntity->button->selectOnUp = root;
+    childEntity->button->selectOnDown = EntityId::New();
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
     childEntity->button->hoveredColor = {0.8f, 0.7f, 0.6f, 1.0f};
     childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
@@ -1271,6 +1273,10 @@ int main() {
             entity["components"]["Button"].erase("disabledColor");
             entity["components"]["Button"].erase("fadeDuration");
             entity["components"]["Button"].erase("navigation");
+            entity["components"]["Button"].erase("selectOnLeft");
+            entity["components"]["Button"].erase("selectOnRight");
+            entity["components"]["Button"].erase("selectOnUp");
+            entity["components"]["Button"].erase("selectOnDown");
         }
         if (entity["components"].contains("Text")) {
             entity["components"]["Text"].erase("font");
@@ -1434,6 +1440,22 @@ int main() {
                    invalidButtonNavigationWorld, &error),
                "An invalid Button navigation mode was accepted.")) {
         return 258;
+    }
+    nlohmann::json invalidButtonNavigationTargetScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity :
+         invalidButtonNavigationTargetScene["entities"]) {
+        if (entity["components"].contains("Button")) {
+            entity["components"]["Button"]["selectOnLeft"] =
+                "not-an-entity-id";
+        }
+    }
+    World invalidButtonNavigationTargetWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidButtonNavigationTargetScene.dump(),
+                   invalidButtonNavigationTargetWorld, &error),
+               "An invalid Button navigation target was accepted.")) {
+        return 265;
     }
     nlohmann::json invalidToggleScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidToggleScene["entities"]) {
@@ -1654,7 +1676,10 @@ int main() {
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
                    restoredChild->button->navigation ==
-                       ButtonNavigationMode::None &&
+                       ButtonNavigationMode::Explicit &&
+                   restoredChild->button->selectOnUp == root &&
+                   restoredChild->button->selectOnDown ==
+                       source.Find(child)->button->selectOnDown &&
                    restoredChild->button->normalColor.x == 0.9f &&
                    restoredChild->button->hoveredColor.y == 0.7f &&
                    restoredChild->button->pressedColor.z == 0.5f &&
@@ -1739,6 +1764,10 @@ int main() {
                        AnimatorComponent::RuntimeCommand::None &&
                    instanceChild->boxCollider &&
                    instanceChild->characterController && instanceChild->scripts.size() == 3u &&
+                   instanceChild->button &&
+                   instanceChild->button->selectOnUp ==
+                       instanceRoot->id &&
+                   !instanceChild->button->selectOnDown.IsValid() &&
                    instanceTarget != nullptr &&
                    instanceTarget->entityValue == instanceRoot->id &&
                    instanceExternalTarget != nullptr &&
@@ -1845,7 +1874,11 @@ int main() {
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
                    duplicateChild->button->navigation ==
-                       ButtonNavigationMode::None &&
+                       ButtonNavigationMode::Explicit &&
+                   duplicateChild->button->selectOnUp ==
+                       duplicateRoot &&
+                   duplicateChild->button->selectOnDown ==
+                       source.Find(child)->button->selectOnDown &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
                    duplicateChild->button->disabledColor.y == 0.3f &&
                    duplicateChild->button->fadeDuration == 0.25f &&
@@ -1890,12 +1923,19 @@ int main() {
     referenceWorld.Find(scriptOwner)->scripts.push_back(
         {true, "Configurable", "asset://Scripts/Configurable.cpp",
          {{"Target", ScriptPropertyType::Entity, 0.0f, referencedTarget}}});
+    referenceWorld.Find(scriptOwner)->button = ButtonComponent{};
+    referenceWorld.Find(scriptOwner)->button->navigation =
+        ButtonNavigationMode::Explicit;
+    referenceWorld.Find(scriptOwner)->button->selectOnRight =
+        referencedTarget;
     if (!Check(referenceWorld.DestroyEntity(referencedTarget) &&
                    !referenceWorld.Find(scriptOwner)
                         ->scripts[0]
                         .properties[0]
-                        .entityValue.IsValid(),
-               "Destroyed Entity remained assigned to a Script property.")) {
+                        .entityValue.IsValid() &&
+                   !referenceWorld.Find(scriptOwner)
+                        ->button->selectOnRight.IsValid(),
+               "Destroyed Entity remained assigned to a component.")) {
         return 148;
     }
 
