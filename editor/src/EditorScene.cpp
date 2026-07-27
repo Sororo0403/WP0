@@ -1532,7 +1532,8 @@ void EditorScene::DrawPanels() {
                                                   gameViewSurface_.GetDepthGpuHandle(), target);
                 const bool gameUiHovered =
                     DrawGameUi(gameViewSurface_.GetWidth(),
-                               gameViewSurface_.GetHeight());
+                               gameViewSurface_.GetHeight(),
+                               hasGameCamera);
                 gameViewSurface_.EndOutputPass();
                 gameViewSurface_.TransitionDepthToWrite();
                 ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
@@ -8431,7 +8432,8 @@ void EditorScene::UpdateAssetPreview() {
                                      distance + radius * 4.0f);
 }
 
-bool EditorScene::DrawGameUi(int width, int height) {
+bool EditorScene::DrawGameUi(int width, int height,
+                             bool gameCameraAvailable) {
     if (ctx_ == nullptr || ctx_->rendering.text == nullptr ||
         ctx_->rendering.spriteRenderer == nullptr || width <= 0 || height <= 0) {
         return false;
@@ -8540,23 +8542,41 @@ bool EditorScene::DrawGameUi(int width, int height) {
             selectableButtons.end()) {
         focusedButton_ = {};
     }
-    if (playModeState_ == PlayModeState::Playing &&
+    const bool canNavigateUi =
+        playModeState_ == PlayModeState::Playing &&
         !gameInputCaptured_ &&
         ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-        ImGui::IsKeyPressed(ImGuiKey_Tab, false) &&
-        !selectableButtons.empty()) {
+        !ImGui::GetIO().WantTextInput;
+    const Input* runtimeInput =
+        ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    const bool gamepadPrevious =
+        canNavigateUi && runtimeInput != nullptr &&
+        (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_LEFT) ||
+         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_UP));
+    const bool gamepadNext =
+        canNavigateUi && runtimeInput != nullptr &&
+        (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_RIGHT) ||
+         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_DOWN));
+    const bool keyboardNavigation =
+        canNavigateUi && ImGui::IsKeyPressed(ImGuiKey_Tab, false);
+    if ((keyboardNavigation || gamepadPrevious || gamepadNext) &&
+        !selectableButtons.empty() &&
+        (focusedButton_.IsValid() || keyboardNavigation ||
+         !gameCameraAvailable)) {
+        const bool selectPrevious =
+            gamepadPrevious ||
+            (keyboardNavigation && ImGui::GetIO().KeyShift);
         const auto focused =
             std::ranges::find(selectableButtons, focusedButton_);
         if (focused == selectableButtons.end()) {
-            focusedButton_ = ImGui::GetIO().KeyShift
+            focusedButton_ = selectPrevious
                                  ? selectableButtons.back()
                                  : selectableButtons.front();
         } else {
             const size_t index =
                 static_cast<size_t>(focused - selectableButtons.begin());
             focusedButton_ =
-                ImGui::GetIO().KeyShift
+                selectPrevious
                     ? selectableButtons[(index + selectableButtons.size() - 1u) %
                                         selectableButtons.size()]
                     : selectableButtons[(index + 1u) %
@@ -8583,13 +8603,18 @@ bool EditorScene::DrawGameUi(int width, int height) {
         }
         pressedButton_ = {};
     }
-    if (playModeState_ == PlayModeState::Playing &&
-        !gameInputCaptured_ && focusedButton_.IsValid() &&
-        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
+    const bool gamepadSubmit =
+        canNavigateUi && runtimeInput != nullptr &&
+        runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_A);
+    if (canNavigateUi && focusedButton_.IsValid() &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-         ImGui::IsKeyPressed(ImGuiKey_Space, false))) {
+         ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
+         gamepadSubmit)) {
         pendingButtonClicks_.push_back(focusedButton_);
+    }
+    if (canNavigateUi && runtimeInput != nullptr &&
+        runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_B)) {
+        focusedButton_ = {};
     }
 
     spriteRenderer.UpdateProjection(width, height);

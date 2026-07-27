@@ -209,7 +209,8 @@ private:
     void RefreshDirty();
     void BuildRenderScene();
     void BuildEditorOverlayScene();
-    [[nodiscard]] bool DrawGameUi(int width, int height);
+    [[nodiscard]] bool DrawGameUi(int width, int height,
+                                  bool gameCameraAvailable);
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();
