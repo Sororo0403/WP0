@@ -1510,11 +1510,14 @@ void EditorScene::DrawPanels() {
                 ctx_->rendering.model == nullptr) {
                 ReleaseGameInputCapture();
                 ImGui::TextDisabled("Game View RenderSurface is not ready.");
-            } else if (!UpdateGameViewCamera()) {
-                ReleaseGameInputCapture();
-                ImGui::TextDisabled("No enabled Primary Camera in the scene.");
             } else {
-                BuildRenderScene();
+                const bool hasGameCamera = UpdateGameViewCamera();
+                if (hasGameCamera) {
+                    BuildRenderScene();
+                } else {
+                    renderScene_.BeginFrame();
+                    ReleaseGameInputCapture();
+                }
                 sceneRenderer_.Render(renderScene_, gameViewCamera_, gameViewSurface_,
                                       {0.025f, 0.035f, 0.055f, 1.0f});
                 gameViewSurface_.TransitionDepthToShaderResource();
@@ -1544,7 +1547,8 @@ void EditorScene::DrawPanels() {
                 if (playModeState_ == PlayModeState::Edit) {
                     HandleGameUiEditing(gameImageMin, gameImageMax);
                 }
-                if (playModeState_ == PlayModeState::Playing && gameImageHovered &&
+                if (hasGameCamera &&
+                    playModeState_ == PlayModeState::Playing && gameImageHovered &&
                     !gameUiHovered &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                     !gameInputCaptured_) {
@@ -1570,7 +1574,22 @@ void EditorScene::DrawPanels() {
                                                (gameImageHovered || gameInputCaptured_),
                                            gameViewFocused);
                 }
-                if (playModeState_ == PlayModeState::Playing) {
+                if (!hasGameCamera && !playerMode_) {
+                    constexpr const char* kNoCameraHint =
+                        "No Primary Camera - displaying Runtime UI only";
+                    const ImVec2 hintSize = ImGui::CalcTextSize(kNoCameraHint);
+                    const ImVec2 hintMin{gameImageMin.x + 10.0f,
+                                         gameImageMin.y + 10.0f};
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    drawList->AddRectFilled(
+                        {hintMin.x - 4.0f, hintMin.y - 2.0f},
+                        {hintMin.x + hintSize.x + 4.0f,
+                         hintMin.y + hintSize.y + 2.0f},
+                        IM_COL32(20, 24, 32, 190), 3.0f);
+                    drawList->AddText(hintMin,
+                                      IM_COL32(255, 196, 90, 240),
+                                      kNoCameraHint);
+                } else if (playModeState_ == PlayModeState::Playing) {
                     const char* captureHint = gameInputCaptured_
                                                   ? "Input captured - Esc to release"
                                                   : "Click Game View to capture input";

@@ -1,7 +1,7 @@
 {
   "entities": [
     {
-      "active": true,
+      "active": false,
       "components": {
         "AudioListener": {
           "enabled": true
@@ -597,6 +597,12 @@
       "active": true,
       "components": {
         "Button": {
+          "disabledColor": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
           "enabled": true,
           "hoveredColor": [
             0.8500000238418579,
@@ -664,6 +670,12 @@
       "active": true,
       "components": {
         "Button": {
+          "disabledColor": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
           "enabled": true,
           "hoveredColor": [
             0.8500000238418579,
