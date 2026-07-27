@@ -143,6 +143,7 @@ private:
     void AssignRoughnessTexture(EntityId entity, const std::filesystem::path& path);
     void AssignMetallicTexture(EntityId entity, const std::filesystem::path& path);
     void AssignImageTexture(EntityId entity, const std::filesystem::path& path);
+    void AssignTextFont(EntityId entity, const std::filesystem::path& path);
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);
@@ -166,6 +167,8 @@ private:
                                          std::string& assetPath);
     bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,
                                            std::string& assetPath);
+    bool TryNormalizeFontAssetReference(const std::filesystem::path& path,
+                                        std::string& assetPath);
     bool TryNormalizeAudioAssetReference(const std::filesystem::path& path,
                                          std::string& assetPath);
     bool TryNormalizeScriptAssetReference(const std::filesystem::path& path,
@@ -430,9 +433,11 @@ private:
     std::unordered_map<std::string, ModelHandle> loadedModels_;
     std::unordered_map<std::string, TextureHandle> loadedTextures_;
     std::unordered_map<std::string, TextureHandle> loadedLinearTextures_;
+    std::unordered_map<std::string, FontHandle> loadedFonts_;
     std::vector<std::filesystem::path> modelAssets_;
     std::vector<std::filesystem::path> textureAssets_;
     std::vector<std::filesystem::path> audioAssets_;
+    std::vector<std::filesystem::path> fontAssets_;
     std::vector<std::filesystem::path> scriptAssets_;
     std::vector<std::filesystem::path> prefabAssets_;
     std::vector<std::filesystem::path> sceneAssets_;

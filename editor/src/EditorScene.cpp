@@ -64,6 +64,7 @@ constexpr const char* kEntityDragPayload = "EDITOR_ENTITY";
 constexpr const char* kModelAssetDragPayload = "EDITOR_MODEL_ASSET";
 constexpr const char* kTextureAssetDragPayload = "EDITOR_TEXTURE_ASSET";
 constexpr const char* kAudioAssetDragPayload = "EDITOR_AUDIO_ASSET";
+constexpr const char* kFontAssetDragPayload = "EDITOR_FONT_ASSET";
 constexpr const char* kScriptAssetDragPayload = "EDITOR_SCRIPT_ASSET";
 constexpr const char* kPrefabAssetDragPayload = "EDITOR_PREFAB_ASSET";
 constexpr size_t kMaxHistoryEntries = 128;
@@ -2662,9 +2663,10 @@ void EditorScene::DrawProjectPanel() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled(
-        "%zu model(s), %zu texture(s), %zu audio(s), %zu script(s), %zu prefab(s)",
+        "%zu model(s), %zu texture(s), %zu audio(s), %zu font(s), %zu script(s), "
+        "%zu prefab(s)",
         modelAssets_.size(), textureAssets_.size(), audioAssets_.size(),
-        scriptAssets_.size(), prefabAssets_.size());
+        fontAssets_.size(), scriptAssets_.size(), prefabAssets_.size());
     ImGui::Separator();
     if (!currentAssetDirectory_.empty()) {
         if (ImGui::Button("< Back")) {
@@ -2680,11 +2682,11 @@ void EditorScene::DrawProjectPanel() {
     constexpr const char* formatLabels[] = {
         "All formats", "Prefab", "C++ Script", "glTF", "GLB", "OBJ", "FBX", "DAE",
         "3DS", "PLY", "PNG", "JPG", "JPEG", "TGA", "BMP", "DDS", "HDR", "EXR",
-        "WAV", "MP3", "AAC", "M4A", "WMA"};
+        "WAV", "MP3", "AAC", "M4A", "WMA", "TTF", "OTF"};
     constexpr const char* formatExtensions[] = {
         "", ".likeprefab", ".cpp", ".gltf", ".glb", ".obj", ".fbx", ".dae", ".3ds",
         ".ply", ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds", ".hdr", ".exr",
-        ".wav", ".mp3", ".aac", ".m4a", ".wma"};
+        ".wav", ".mp3", ".aac", ".m4a", ".wma", ".ttf", ".otf"};
     constexpr const char* sortLabels[] = {"Name", "Type", "Size"};
     ImGui::SetNextItemWidth(105.0f);
     ImGui::Combo("##AssetFormat", &assetFormatFilter_, formatLabels,
@@ -2755,6 +2757,7 @@ void EditorScene::DrawProjectPanel() {
             appendMatches(modelAssets_);
             appendMatches(textureAssets_);
             appendMatches(audioAssets_);
+            appendMatches(fontAssets_);
             appendMatches(scriptAssets_);
             appendMatches(prefabAssets_);
             std::ranges::sort(matches, comparePaths);
@@ -2821,6 +2824,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const std::string id = logicalPath.generic_string();
     const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
     const bool audio = !directory && AssetImport::IsAudioFile(relativePath);
+    const bool font = !directory && AssetImport::IsFontFile(relativePath);
     const bool script = !directory && ScriptAssets::IsScriptFile(relativePath);
     const bool scriptSource =
         !directory && ScriptAssets::IsScriptSourceFile(relativePath);
@@ -2830,6 +2834,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
                                                      : prefab ? "[Prefab] "
                                                      : texture ? "[Texture] "
                                                      : audio ? "[Audio] "
+                                                     : font ? "[Font] "
                                                      : script ? "[Script] "
                                                      : scriptSource ? "[C++ Script] "
                                                                     : "[Model] ") +
@@ -2860,6 +2865,7 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         ImGui::SetDragDropPayload(prefab ? kPrefabAssetDragPayload
                                           : texture ? kTextureAssetDragPayload
                                           : audio ? kAudioAssetDragPayload
+                                          : font ? kFontAssetDragPayload
                                           : script ? kScriptAssetDragPayload
                                                    : kModelAssetDragPayload,
                                   id.c_str(), id.size() + 1u);
@@ -2886,6 +2892,11 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
         } else if (script && ImGui::MenuItem("Attach to Selected Entity", nullptr, false,
                                              selection_.IsValid())) {
             AssignScriptAsset(selection_, logicalPath);
+        } else if (font) {
+            if (ImGui::MenuItem("Assign to Selected Text", nullptr, false,
+                                selection_.IsValid())) {
+                AssignTextFont(selection_, logicalPath);
+            }
         } else if (!texture && ImGui::MenuItem("Create Entity")) {
             CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
         } else if (texture && ImGui::BeginMenu("Assign to Selected Material",
@@ -2965,6 +2976,8 @@ void EditorScene::DrawSelectedAssetDetails() {
                                       ? "Texture"
                                 : AssetImport::IsAudioFile(physical)
                                       ? "Audio"
+                                : AssetImport::IsFontFile(physical)
+                                      ? "Font"
                                       : ScriptAssets::IsScriptFile(physical)
                                             ? "Script"
                                             : ScriptAssets::IsScriptSourceFile(physical)
@@ -3726,9 +3739,16 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
         const bool matchesImage =
             imageReference &&
             AssetPathMatches(*imageReference, relativePath, directory);
+        const std::optional<std::filesystem::path> fontReference =
+            entity.text
+                ? AssetRelativeFromReference(entity.text->fontPath)
+                : std::nullopt;
+        const bool matchesFont =
+            fontReference &&
+            AssetPathMatches(*fontReference, relativePath, directory);
         if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
             !matchesMetallic && !matchesScript && !matchesAudio &&
-            !matchesImage) {
+            !matchesImage && !matchesFont) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -3806,6 +3826,13 @@ size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePa
             referencedByEntity =
                 referenced && AssetPathMatches(*referenced, relativePath, directory);
         }
+        if (!referencedByEntity && entity.text) {
+            const std::optional<std::filesystem::path> referenced =
+                AssetRelativeFromReference(entity.text->fontPath);
+            referencedByEntity =
+                referenced &&
+                AssetPathMatches(*referenced, relativePath, directory);
+        }
         if (referencedByEntity) {
             ++references;
         }
@@ -3848,6 +3875,9 @@ size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelati
         }
         if (entity->image) {
             updateReference(entity->image->texturePath);
+        }
+        if (entity->text) {
+            updateReference(entity->text->fontPath);
         }
         for (BehaviorComponent& script : entity->scripts) {
             updateReference(script.scriptAssetPath);
@@ -5941,6 +5971,66 @@ void EditorScene::DrawInspectorPanel() {
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 CommitHistoryEdit();
             }
+            const std::string fontLabel =
+                text.fontPath.empty() ? "Default" : text.fontPath;
+            if (ImGui::Button((fontLabel + "##TextFont").c_str(),
+                              {-FLT_MIN, 0.0f})) {
+                ImGui::OpenPopup("TextFontPicker");
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload(kFontAssetDragPayload);
+                    payload != nullptr && payload->IsDelivery() &&
+                    payload->DataSize > 1 &&
+                    static_cast<const char*>(
+                        payload->Data)[payload->DataSize - 1] == '\0') {
+                    AssignTextFont(selection_,
+                                   static_cast<const char*>(payload->Data));
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (ImGui::BeginPopup("TextFontPicker")) {
+                if (ImGui::MenuItem("Default", nullptr,
+                                    text.fontPath.empty())) {
+                    const std::string clearBefore =
+                        WorldSerializer::Serialize(world_);
+                    text.fontPath.clear();
+                    RecordImmediateEdit("Clear Text Font", clearBefore,
+                                        selectionBefore);
+                    status_ = "Reset Text to the default font.";
+                }
+                ImGui::Separator();
+                for (const std::filesystem::path& fontAsset : fontAssets_) {
+                    const std::string reference =
+                        "asset://" +
+                        fontAsset.lexically_relative("assets").generic_string();
+                    const std::string label =
+                        fontAsset.filename().generic_string() + "##TextFont" +
+                        fontAsset.generic_string();
+                    if (ImGui::MenuItem(label.c_str(), nullptr,
+                                        text.fontPath == reference)) {
+                        AssignTextFont(selection_, fontAsset);
+                    }
+                }
+                ImGui::EndPopup();
+            }
+            if (!text.fontPath.empty()) {
+                const std::optional<std::filesystem::path> resolvedFont =
+                    ResolveProjectAssetPath(text.fontPath);
+                if (!resolvedFont ||
+                    !AssetImport::IsFontFile(*resolvedFont)) {
+                    ImGui::TextColored(
+                        {1.0f, 0.4f, 0.3f, 1.0f},
+                        "The assigned font asset is missing or invalid.");
+                } else if (const auto loadedFont =
+                               loadedFonts_.find(text.fontPath);
+                           loadedFont != loadedFonts_.end() &&
+                           !loadedFont->second.IsValid()) {
+                    ImGui::TextColored(
+                        {1.0f, 0.72f, 0.25f, 1.0f},
+                        "The font could not be loaded; using the default.");
+                }
+            }
             if (ImGui::DragFloat("Font Size##Text", &text.fontSize, 0.5f,
                                  1.0f, 512.0f, "%.1f",
                                  ImGuiSliderFlags_AlwaysClamp)) {
@@ -7469,6 +7559,26 @@ void EditorScene::AssignImageTexture(EntityId entityId,
     status_ = "Assigned Image texture: " + assetPath;
 }
 
+void EditorScene::AssignTextFont(EntityId entityId,
+                                 const std::filesystem::path& path) {
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !entity->text) {
+        status_ = "The target Text component no longer exists.";
+        return;
+    }
+    std::string assetPath;
+    if (!TryNormalizeFontAssetReference(path, assetPath)) {
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    entity->text->fontPath = assetPath;
+    loadedFonts_.erase(assetPath);
+    selection_ = entityId;
+    RecordImmediateEdit("Assign Text Font", before, selectionBefore);
+    status_ = "Assigned Text font: " + assetPath;
+}
+
 void EditorScene::AssignNormalTexture(EntityId entityId,
                                       const std::filesystem::path& path) {
     WorldEntity* entity = world_.Find(entityId);
@@ -8015,6 +8125,35 @@ bool EditorScene::SaveSelectionAsPrefab() {
     return true;
 }
 
+bool EditorScene::TryNormalizeFontAssetReference(
+    const std::filesystem::path& path, std::string& assetPath) {
+    if (!AssetImport::IsFontFile(path)) {
+        status_ = "The dropped font asset is invalid.";
+        return false;
+    }
+    const std::optional<std::filesystem::path> resolvedPath =
+        ResolveProjectAssetPath(path);
+    std::error_code error;
+    if (!resolvedPath ||
+        !std::filesystem::is_regular_file(*resolvedPath, error) || error) {
+        status_ = "The dropped font asset no longer exists.";
+        return false;
+    }
+    const std::filesystem::path normalized = path.lexically_normal();
+    assetPath = normalized.generic_string();
+    if (normalized.begin() != normalized.end() &&
+        *normalized.begin() == "assets") {
+        assetPath =
+            "asset://" +
+            normalized.lexically_relative("assets").generic_string();
+    }
+    if (assetPath.size() > 1024u) {
+        status_ = "The dropped font asset path is too long.";
+        return false;
+    }
+    return true;
+}
+
 bool EditorScene::TryNormalizeAudioAssetReference(const std::filesystem::path& path,
                                                   std::string& assetPath) {
     if (!AssetImport::IsAudioFile(path)) {
@@ -8090,6 +8229,7 @@ void EditorScene::RefreshAssetBrowser() {
     modelAssets_.clear();
     textureAssets_.clear();
     audioAssets_.clear();
+    fontAssets_.clear();
     scriptAssets_.clear();
     prefabAssets_.clear();
     sceneAssets_.clear();
@@ -8143,6 +8283,7 @@ void EditorScene::RefreshAssetBrowser() {
                    (AssetImport::IsModelFile(entry.path()) ||
                     AssetImport::IsTextureFile(entry.path()) ||
                     AssetImport::IsAudioFile(entry.path()) ||
+                    AssetImport::IsFontFile(entry.path()) ||
                     IsPrefabAsset(entry.path()) ||
                     ScriptAssets::IsScriptFile(entry.path()) ||
                     ScriptAssets::IsScriptSourceFile(entry.path()))) {
@@ -8172,6 +8313,7 @@ void EditorScene::RefreshAssetBrowser() {
             (AssetImport::IsModelFile(iterator->path()) ||
              AssetImport::IsTextureFile(iterator->path()) ||
              AssetImport::IsAudioFile(iterator->path()) ||
+             AssetImport::IsFontFile(iterator->path()) ||
              IsPrefabAsset(iterator->path()) ||
              ScriptAssets::IsScriptFile(iterator->path()))) {
             std::filesystem::path relative =
@@ -8183,6 +8325,8 @@ void EditorScene::RefreshAssetBrowser() {
                                    ? textureAssets_
                                : AssetImport::IsAudioFile(iterator->path())
                                    ? audioAssets_
+                               : AssetImport::IsFontFile(iterator->path())
+                                   ? fontAssets_
                                : ScriptAssets::IsScriptFile(iterator->path())
                                          ? scriptAssets_
                                          : modelAssets_;
@@ -8198,6 +8342,9 @@ void EditorScene::RefreshAssetBrowser() {
         return path.generic_string();
     });
     std::ranges::sort(audioAssets_, {}, [](const std::filesystem::path& path) {
+        return path.generic_string();
+    });
+    std::ranges::sort(fontAssets_, {}, [](const std::filesystem::path& path) {
         return path.generic_string();
     });
     std::ranges::sort(scriptAssets_, {}, [](const std::filesystem::path& path) {
@@ -8406,6 +8553,22 @@ void EditorScene::ResolveMeshResources() {
         loadedTextures_.emplace(
             entity.image->texturePath,
             TextureHandle(ctx_->rendering.texture->LoadSrgb(resolved->wstring())));
+    }
+    if (ctx_->rendering.font != nullptr) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (!entity.text || entity.text->fontPath.empty() ||
+                loadedFonts_.contains(entity.text->fontPath)) {
+                continue;
+            }
+            const std::optional<std::filesystem::path> resolved =
+                ResolveProjectAssetPath(entity.text->fontPath);
+            if (!resolved || !AssetImport::IsFontFile(*resolved)) {
+                continue;
+            }
+            loadedFonts_.emplace(
+                entity.text->fontPath,
+                ctx_->rendering.font->LoadFont(resolved->wstring()));
+        }
     }
     for (const WorldEntity& entity : world_.Entities()) {
         if (!entity.materialOverride) {
@@ -8932,6 +9095,10 @@ bool EditorScene::DrawGameUi(int width, int height,
         }
         const TextComponent& text = *entity.text;
         TextStyle style{};
+        if (const auto loadedFont = loadedFonts_.find(text.fontPath);
+            loadedFont != loadedFonts_.end()) {
+            style.font = loadedFont->second;
+        }
         style.pixelSize = text.fontSize * scale;
         style.lineSpacing = text.lineSpacing * scale;
         style.wrapWidth = text.wrapWidth * scale;
@@ -9058,6 +9225,11 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
                 textRenderer != nullptr && textRenderer->IsReady()) {
                 const TextComponent& text = *entity.text;
                 TextStyle style{};
+                if (const auto loadedFont =
+                        loadedFonts_.find(text.fontPath);
+                    loadedFont != loadedFonts_.end()) {
+                    style.font = loadedFont->second;
+                }
                 style.pixelSize = text.fontSize * scale;
                 style.lineSpacing = text.lineSpacing * scale;
                 style.wrapWidth = text.wrapWidth * scale;
@@ -11726,9 +11898,9 @@ std::vector<std::filesystem::path> EditorScene::ShowImportAssetDialog() const {
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFilter =
-        L"Model, Texture, and Audio Assets\0"
+        L"Model, Texture, Audio, and Font Assets\0"
         L"*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.ply;*.bin;*.mtl;*.png;*.jpg;*.jpeg;"
-        L"*.tga;*.bmp;*.dds;*.hdr;*.exr;*.wav;*.mp3;*.aac;*.m4a;*.wma\0";
+        L"*.tga;*.bmp;*.dds;*.hdr;*.exr;*.wav;*.mp3;*.aac;*.m4a;*.wma;*.ttf;*.otf\0";
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |

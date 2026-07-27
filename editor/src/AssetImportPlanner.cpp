@@ -65,8 +65,16 @@ bool IsAudioAsset(const std::filesystem::path& path) {
     return std::ranges::find(extensions, extension) != std::end(extensions);
 }
 
+bool IsFontAsset(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    constexpr std::string_view extensions[] = {".ttf", ".otf"};
+    return std::ranges::find(extensions, extension) != std::end(extensions);
+}
+
 bool IsImportableAssetFile(const std::filesystem::path& path) {
-    if (IsModelAsset(path) || IsAudioAsset(path)) {
+    if (IsModelAsset(path) || IsAudioAsset(path) || IsFontAsset(path)) {
         return true;
     }
     std::string extension = path.extension().string();
@@ -476,6 +484,10 @@ bool IsAudioFile(const std::filesystem::path& path) {
     return IsAudioAsset(path);
 }
 
+bool IsFontFile(const std::filesystem::path& path) {
+    return IsFontAsset(path);
+}
+
 bool IsSelectableFile(const std::filesystem::path& path) {
     return IsImportableAssetFile(path);
 }
@@ -490,10 +502,12 @@ bool BuildPlan(const std::vector<std::filesystem::path>& selectedFiles,
         });
     const bool standaloneAssetsOnly = !selectedFiles.empty() &&
         std::ranges::all_of(selectedFiles, [](const auto& path) {
-            return IsTextureAsset(path) || IsAudioAsset(path);
+            return IsTextureAsset(path) || IsAudioAsset(path) ||
+                   IsFontAsset(path);
         });
     if (selectedFiles.empty() || (!containsModel && !standaloneAssetsOnly)) {
-        errorMessage = "Asset import requires a supported model, texture, or audio file.";
+        errorMessage =
+            "Asset import requires a supported model, texture, audio, or font file.";
         return false;
     }
     for (const std::filesystem::path& source : selectedFiles) {

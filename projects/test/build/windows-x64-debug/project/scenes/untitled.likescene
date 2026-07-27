@@ -564,6 +564,7 @@
             1.0
           ],
           "enabled": true,
+          "font": "asset://FiraMono-Medium.ttf",
           "fontSize": 179.5,
           "lineSpacing": 126.5,
           "position": [
@@ -854,6 +855,7 @@
             1.0
           ],
           "enabled": true,
+          "font": "",
           "fontSize": 179.5,
           "lineSpacing": 0.0,
           "position": [

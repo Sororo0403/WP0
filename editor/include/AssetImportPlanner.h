@@ -14,6 +14,7 @@ struct File {
 [[nodiscard]] bool IsModelFile(const std::filesystem::path& path);
 [[nodiscard]] bool IsTextureFile(const std::filesystem::path& path);
 [[nodiscard]] bool IsAudioFile(const std::filesystem::path& path);
+[[nodiscard]] bool IsFontFile(const std::filesystem::path& path);
 [[nodiscard]] bool IsSelectableFile(const std::filesystem::path& path);
 bool BuildPlan(const std::vector<std::filesystem::path>& selectedFiles,
                std::vector<File>& files, std::string& errorMessage);

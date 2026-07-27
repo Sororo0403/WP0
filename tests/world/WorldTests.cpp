@@ -1029,6 +1029,7 @@ int main() {
     childEntity->characterController->height = 1.8f;
     childEntity->text = TextComponent{};
     childEntity->text->text = "HP: 100";
+    childEntity->text->fontPath = "asset://fonts/Hud.ttf";
     childEntity->text->position = {48.0f, 32.0f};
     childEntity->text->fontSize = 40.0f;
     childEntity->text->lineSpacing = 12.0f;
@@ -1196,6 +1197,7 @@ int main() {
             entity["components"]["Button"].erase("disabledColor");
         }
         if (entity["components"].contains("Text")) {
+            entity["components"]["Text"].erase("font");
             entity["components"]["Text"].erase("lineSpacing");
             entity["components"]["Text"].erase("wrapWidth");
         }
@@ -1222,6 +1224,7 @@ int main() {
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
                    legacyButtonWorld.Find(child)->text &&
+                   legacyButtonWorld.Find(child)->text->fontPath.empty() &&
                    legacyButtonWorld.Find(child)->text->lineSpacing == 0.0f &&
                    legacyButtonWorld.Find(child)->text->wrapWidth == 0.0f &&
                    legacyButtonWorld.Find(child)->image->type ==
@@ -1281,6 +1284,19 @@ int main() {
                                              invalidTextWrapWorld, &error),
                "An out-of-range Text wrap width was accepted.")) {
         return 254;
+    }
+    nlohmann::json invalidTextFontScene = nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidTextFontScene["entities"]) {
+        if (entity["components"].contains("Text")) {
+            entity["components"]["Text"]["font"] =
+                std::string(1025u, 'a');
+        }
+    }
+    World invalidTextFontWorld;
+    if (!Check(!WorldSerializer::Deserialize(invalidTextFontScene.dump(),
+                                             invalidTextFontWorld, &error),
+               "An overlong Text font path was accepted.")) {
+        return 255;
     }
     const WorldEntity* restoredChild = restored.Find(child);
     const bool hasRestoredScript =
@@ -1408,6 +1424,8 @@ int main() {
                    restoredChild->characterController->height == 1.8f &&
                    restoredChild->text && restoredChild->text->enabled &&
                    restoredChild->text->text == "HP: 100" &&
+                   restoredChild->text->fontPath ==
+                       "asset://fonts/Hud.ttf" &&
                    restoredChild->text->position.x == 48.0f &&
                    restoredChild->text->position.y == 32.0f &&
                    restoredChild->text->fontSize == 40.0f &&
@@ -1580,6 +1598,8 @@ int main() {
                    duplicateChild->characterController->height == 1.8f &&
                    duplicateChild->text &&
                    duplicateChild->text->text == "HP: 100" &&
+                   duplicateChild->text->fontPath ==
+                       "asset://fonts/Hud.ttf" &&
                    duplicateChild->text->lineSpacing == 12.0f &&
                    duplicateChild->text->wrapWidth == 360.0f &&
                    duplicateChild->text->alignment == TextAlignment::Center &&
@@ -2339,7 +2359,8 @@ int main() {
                   "bump ../textures/normal.png\n") &&
         writeFile(importDirectory / "obj/textures/diffuse image.png", "diffuse") &&
         writeFile(importDirectory / "obj/textures/normal.png", "normal") &&
-        writeFile(importDirectory / "preview.wav", "audio-data");
+        writeFile(importDirectory / "preview.wav", "audio-data") &&
+        writeFile(importDirectory / "interface.ttf", "font-data");
     if (!Check(importFilesCreated, "Asset import test files could not be created.")) {
         std::filesystem::remove_all(importDirectory, importFilesystemError);
         return 31;
@@ -2363,6 +2384,15 @@ int main() {
                "Standalone audio import plan failed.")) {
         std::filesystem::remove_all(importDirectory, importFilesystemError);
         return 158;
+    }
+    if (!Check(AssetImport::IsFontFile(importDirectory / "interface.ttf") &&
+                   AssetImport::BuildPlan(
+                       {importDirectory / "interface.ttf"}, importPlan,
+                       importError) &&
+                   importPlan.size() == 1u,
+               "Standalone font import plan failed.")) {
+        std::filesystem::remove_all(importDirectory, importFilesystemError);
+        return 256;
     }
     const bool gltfPlanBuilt = AssetImport::BuildPlan(
         {importDirectory / "gltf/model.gltf"}, importPlan, importError);

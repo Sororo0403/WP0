@@ -195,6 +195,7 @@ enum class ImageFillMethod : uint8_t {
 struct TextComponent {
     bool enabled = true;
     std::string text = "Text";
+    std::string fontPath;
     DirectX::XMFLOAT2 position{0.0f, 0.0f};
     float fontSize = 32.0f;
     float lineSpacing = 0.0f;

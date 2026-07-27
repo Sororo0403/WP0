@@ -632,6 +632,8 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
             const TextComponent& text = *entity.text;
             if (text.text.size() > 4096u ||
                 text.text.find('\0') != std::string::npos ||
+                text.fontPath.size() > 1024u ||
+                text.fontPath.find('\0') != std::string::npos ||
                 !IsFinite(text.position) || std::abs(text.position.x) > 1000000.0f ||
                 std::abs(text.position.y) > 1000000.0f ||
                 !std::isfinite(text.fontSize) || text.fontSize < 1.0f ||

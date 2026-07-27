@@ -343,6 +343,7 @@ std::string WorldSerializer::Serialize(const World& world) {
             Json encodedText;
             encodedText["enabled"] = text.enabled;
             encodedText["text"] = text.text;
+            encodedText["font"] = text.fontPath;
             encodedText["position"] = EncodeFloat2(text.position);
             encodedText["fontSize"] = text.fontSize;
             encodedText["lineSpacing"] = text.lineSpacing;
@@ -934,6 +935,13 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             }
             component.enabled = encodedText["enabled"].get<bool>();
             component.text = encodedText["text"].get<std::string>();
+            if (encodedText.contains("font")) {
+                if (!encodedText["font"].is_string()) {
+                    SetError(error, "Scene Text font is invalid.");
+                    return false;
+                }
+                component.fontPath = encodedText["font"].get<std::string>();
+            }
             component.fontSize = encodedText["fontSize"].get<float>();
             const std::string alignment =
                 encodedText["alignment"].get<std::string>();
@@ -969,6 +977,8 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
             }
             if (component.text.size() > 4096u ||
                 component.text.find('\0') != std::string::npos ||
+                component.fontPath.size() > 1024u ||
+                component.fontPath.find('\0') != std::string::npos ||
                 std::abs(component.position.x) > 1000000.0f ||
                 std::abs(component.position.y) > 1000000.0f ||
                 !std::isfinite(component.fontSize) || component.fontSize < 1.0f ||
