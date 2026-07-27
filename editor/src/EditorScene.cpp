@@ -1498,8 +1498,9 @@ void EditorScene::DrawPanels() {
                 };
                 gameViewPostProcess_.DrawToTarget(gameViewSurface_.GetSceneColorGpuHandle(),
                                                   gameViewSurface_.GetDepthGpuHandle(), target);
-                DrawGameUi(gameViewSurface_.GetWidth(),
-                           gameViewSurface_.GetHeight());
+                const bool gameUiHovered =
+                    DrawGameUi(gameViewSurface_.GetWidth(),
+                               gameViewSurface_.GetHeight());
                 gameViewSurface_.EndOutputPass();
                 gameViewSurface_.TransitionDepthToWrite();
                 ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
@@ -1512,6 +1513,7 @@ void EditorScene::DrawPanels() {
                 const ImVec2 gameImageMax = ImGui::GetItemRectMax();
                 const bool gameImageHovered = ImGui::IsItemHovered();
                 if (playModeState_ == PlayModeState::Playing && gameImageHovered &&
+                    !gameUiHovered &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                     !gameInputCaptured_) {
                     POINT cursor{};
@@ -4431,6 +4433,13 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add Image", before, selectionBefore);
             status_ = "Added Image.";
         }
+        if (!entity->button && ImGui::MenuItem("Button")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->button = ButtonComponent{};
+            RecordImmediateEdit("Add Button", before, selectionBefore);
+            status_ = "Added Button.";
+        }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
             const EntityId selectionBefore = selection_;
@@ -5870,6 +5879,58 @@ void EditorScene::DrawInspectorPanel() {
             if (ancestor == nullptr) {
                 ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f},
                                    "Image requires a Canvas on this Entity or an ancestor.");
+            }
+        }
+    }
+
+    if (entity->button) {
+        ImGui::SeparatorText("Button");
+        if (ImGui::Button("Remove Button")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->button.reset();
+            RecordImmediateEdit("Remove Button", before, selectionBefore);
+            status_ = "Removed Button.";
+        } else {
+            ButtonComponent& button = *entity->button;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Button", &button.enabled)) {
+                RecordImmediateEdit("Toggle Button", std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Button.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Interactable##Button",
+                                &button.interactable)) {
+                RecordImmediateEdit("Toggle Button Interactable",
+                                    std::move(before), selectionBefore);
+                status_ = "Toggled Button interactable.";
+            }
+            const auto editButtonColor =
+                [&](const char* label, DirectX::XMFLOAT4& color) {
+                    if (ImGui::ColorEdit4(label, &color.x)) {
+                        RefreshDirty();
+                        status_ = "Modified Button colors.";
+                    }
+                    if (ImGui::IsItemActivated()) {
+                        BeginHistoryEdit("Modify Button Color");
+                    }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        CommitHistoryEdit();
+                    }
+                };
+            editButtonColor("Normal Color##Button", button.normalColor);
+            editButtonColor("Hovered Color##Button", button.hoveredColor);
+            editButtonColor("Pressed Color##Button", button.pressedColor);
+            if (!entity->image) {
+                ImGui::TextColored(
+                    {1.0f, 0.72f, 0.25f, 1.0f},
+                    "Button requires an Image on the same Entity.");
+            }
+            if (entity->scripts.empty()) {
+                ImGui::TextDisabled(
+                    "Add a Script and override OnButtonClick to handle clicks.");
             }
         }
     }
@@ -8157,15 +8218,90 @@ void EditorScene::UpdateAssetPreview() {
                                      distance + radius * 4.0f);
 }
 
-void EditorScene::DrawGameUi(int width, int height) {
+bool EditorScene::DrawGameUi(int width, int height) {
     if (ctx_ == nullptr || ctx_->rendering.text == nullptr ||
         ctx_->rendering.spriteRenderer == nullptr || width <= 0 || height <= 0) {
-        return;
+        return false;
     }
     TextRenderer& textRenderer = *ctx_->rendering.text;
     SpriteRenderer& spriteRenderer = *ctx_->rendering.spriteRenderer;
     if (!textRenderer.IsReady() || !spriteRenderer.IsReady()) {
-        return;
+        return false;
+    }
+
+    const auto resolveCanvasLayout =
+        [&](const WorldEntity& entity, float& scale,
+            DirectX::XMFLOAT2& origin) {
+            const CanvasComponent* canvas = nullptr;
+            const WorldEntity* canvasEntity = &entity;
+            while (canvasEntity != nullptr) {
+                if (canvasEntity->canvas) {
+                    if (canvasEntity->canvas->enabled) {
+                        canvas = &*canvasEntity->canvas;
+                    }
+                    break;
+                }
+                canvasEntity = canvasEntity->parent.IsValid()
+                                   ? world_.Find(canvasEntity->parent)
+                                   : nullptr;
+            }
+            if (canvas == nullptr) {
+                return false;
+            }
+            scale =
+                (std::min)(static_cast<float>(width) /
+                               canvas->referenceResolution.x,
+                           static_cast<float>(height) /
+                               canvas->referenceResolution.y);
+            origin = {
+                (static_cast<float>(width) -
+                 canvas->referenceResolution.x * scale) *
+                    0.5f,
+                (static_cast<float>(height) -
+                 canvas->referenceResolution.y * scale) *
+                    0.5f,
+            };
+            return true;
+        };
+
+    const ImVec2 imageScreenMin = ImGui::GetCursorScreenPos();
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const bool canPoint =
+        playModeState_ == PlayModeState::Playing && !gameInputCaptured_ &&
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+        requestedGameWidth_ > 0 && requestedGameHeight_ > 0 &&
+        mouse.x >= imageScreenMin.x && mouse.y >= imageScreenMin.y &&
+        mouse.x <= imageScreenMin.x + requestedGameWidth_ &&
+        mouse.y <= imageScreenMin.y + requestedGameHeight_;
+    const DirectX::XMFLOAT2 pointer{
+        (mouse.x - imageScreenMin.x) * static_cast<float>(width) /
+            static_cast<float>((std::max)(1, requestedGameWidth_)),
+        (mouse.y - imageScreenMin.y) * static_cast<float>(height) /
+            static_cast<float>((std::max)(1, requestedGameHeight_)),
+    };
+    EntityId hoveredButton{};
+    if (canPoint) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (!entity.button || !entity.button->enabled || !entity.image ||
+                !entity.image->enabled ||
+                !world_.IsActiveInHierarchy(entity.id)) {
+                continue;
+            }
+            float scale = 1.0f;
+            DirectX::XMFLOAT2 origin{};
+            if (!resolveCanvasLayout(entity, scale, origin)) {
+                continue;
+            }
+            const ImageComponent& image = *entity.image;
+            const float left = origin.x + image.position.x * scale;
+            const float top = origin.y + image.position.y * scale;
+            const float right = left + image.size.x * scale;
+            const float bottom = top + image.size.y * scale;
+            if (pointer.x >= left && pointer.x <= right &&
+                pointer.y >= top && pointer.y <= bottom) {
+                hoveredButton = entity.id;
+            }
+        }
     }
 
     spriteRenderer.UpdateProjection(width, height);
@@ -8178,30 +8314,11 @@ void EditorScene::DrawGameUi(int width, int height) {
             continue;
         }
 
-        const CanvasComponent* canvas = nullptr;
-        const WorldEntity* canvasEntity = &entity;
-        while (canvasEntity != nullptr) {
-            if (canvasEntity->canvas) {
-                if (canvasEntity->canvas->enabled) {
-                    canvas = &*canvasEntity->canvas;
-                }
-                break;
-            }
-            canvasEntity = canvasEntity->parent.IsValid()
-                               ? world_.Find(canvasEntity->parent)
-                               : nullptr;
-        }
-        if (canvas == nullptr) {
+        float scale = 1.0f;
+        DirectX::XMFLOAT2 canvasOrigin{};
+        if (!resolveCanvasLayout(entity, scale, canvasOrigin)) {
             continue;
         }
-
-        const float scale =
-            (std::min)(static_cast<float>(width) / canvas->referenceResolution.x,
-                       static_cast<float>(height) / canvas->referenceResolution.y);
-        const DirectX::XMFLOAT2 canvasOrigin{
-            (static_cast<float>(width) - canvas->referenceResolution.x * scale) * 0.5f,
-            (static_cast<float>(height) - canvas->referenceResolution.y * scale) * 0.5f,
-        };
         if (drawsImage) {
             const ImageComponent& image = *entity.image;
             Sprite sprite{};
@@ -8213,7 +8330,23 @@ void EditorScene::DrawGameUi(int width, int height) {
                 image.size.x * scale,
                 image.size.y * scale,
             };
-            sprite.color = image.color;
+            DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
+            if (entity.button && entity.button->enabled) {
+                const ButtonComponent& button = *entity.button;
+                stateColor = button.normalColor;
+                if (button.interactable && entity.id == hoveredButton) {
+                    stateColor =
+                        ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                            ? button.pressedColor
+                            : button.hoveredColor;
+                }
+            }
+            sprite.color = {
+                image.color.x * stateColor.x,
+                image.color.y * stateColor.y,
+                image.color.z * stateColor.z,
+                image.color.w * stateColor.w,
+            };
             const auto loaded = loadedTextures_.find(image.texturePath);
             sprite.textureId =
                 loaded != loadedTextures_.end() && loaded->second.IsValid()
@@ -8247,6 +8380,14 @@ void EditorScene::DrawGameUi(int width, int height) {
         spriteRenderer.UpdateProjection(ctx_->systems.winApp->GetWidth(),
                                         ctx_->systems.winApp->GetHeight());
     }
+
+    const WorldEntity* hoveredEntity = world_.Find(hoveredButton);
+    if (hoveredEntity != nullptr && hoveredEntity->button &&
+        hoveredEntity->button->interactable &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        pendingButtonClicks_.push_back(hoveredButton);
+    }
+    return hoveredButton.IsValid();
 }
 
 void EditorScene::BuildRenderScene() {
@@ -8785,6 +8926,20 @@ bool EditorScene::TryNormalizeScriptAssetReference(
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+    std::vector<EntityId> buttonClicks = std::move(pendingButtonClicks_);
+    pendingButtonClicks_.clear();
+    for (const EntityId entityId : buttonClicks) {
+        const WorldEntity* entity = world_.Find(entityId);
+        if (entity == nullptr || !entity->button || !entity->button->enabled ||
+            !entity->button->interactable ||
+            !world_.IsActiveInHierarchy(entityId)) {
+            continue;
+        }
+        runtimeBehaviors_.DispatchButtonClick(entityId);
+        if (ApplyPendingRuntimeSceneLoad()) {
+            return;
+        }
+    }
     runtimeBehaviors_.Update(safeDeltaTime);
     if (ApplyPendingRuntimeSceneLoad()) {
         return;
@@ -8835,6 +8990,7 @@ void EditorScene::EndRuntimeWorld() {
     EndRuntimeAudio();
     runtimeTriggers_.Clear();
     runtimeBehaviors_.Clear();
+    pendingButtonClicks_.clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;
 }

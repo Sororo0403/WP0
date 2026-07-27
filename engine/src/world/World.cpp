@@ -75,6 +75,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->canvas = original.canvas;
         duplicate->text = original.text;
         duplicate->image = original.image;
+        duplicate->button = original.button;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -658,6 +659,21 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 image.color.z > 1.0f || image.color.w < 0.0f ||
                 image.color.w > 1.0f) {
                 SetError(error, "Scene contains an invalid Image component.");
+                return false;
+            }
+        }
+        if (entity.button) {
+            const ButtonComponent& button = *entity.button;
+            const auto validColor = [](const DirectX::XMFLOAT4& color) {
+                return IsFinite(color) && color.x >= 0.0f && color.x <= 1.0f &&
+                       color.y >= 0.0f && color.y <= 1.0f &&
+                       color.z >= 0.0f && color.z <= 1.0f &&
+                       color.w >= 0.0f && color.w <= 1.0f;
+            };
+            if (!validColor(button.normalColor) ||
+                !validColor(button.hoveredColor) ||
+                !validColor(button.pressedColor)) {
+                SetError(error, "Scene contains an invalid Button component.");
                 return false;
             }
         }

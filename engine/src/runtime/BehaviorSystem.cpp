@@ -76,6 +76,21 @@ void BehaviorSystem::DispatchTriggerEvent(TriggerEvent event, EntityId entity,
     }
 }
 
+void BehaviorSystem::DispatchButtonClick(EntityId entity) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnButtonClick(*world_, entity);
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;

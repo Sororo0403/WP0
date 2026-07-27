@@ -202,7 +202,7 @@ private:
     void RefreshDirty();
     void BuildRenderScene();
     void BuildEditorOverlayScene();
-    void DrawGameUi(int width, int height);
+    [[nodiscard]] bool DrawGameUi(int width, int height);
     void UpdateAssetPreview();
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
@@ -312,6 +312,7 @@ private:
     BehaviorRegistry behaviorRegistry_;
     BehaviorSystem runtimeBehaviors_;
     TriggerSystem runtimeTriggers_;
+    std::vector<EntityId> pendingButtonClicks_;
     struct RuntimeAudioSource {
         EntityId entity{};
         uint32_t soundId = kInvalidResourceId;

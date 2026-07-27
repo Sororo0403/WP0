@@ -14,6 +14,7 @@ public:
     bool Attach(EntityId entity, std::unique_ptr<Behavior> behavior);
     void Start(World& world);
     void Update(float deltaTime);
+    void DispatchButtonClick(EntityId entity);
     void Stop();
     void Clear();
 

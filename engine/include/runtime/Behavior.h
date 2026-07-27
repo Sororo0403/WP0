@@ -38,6 +38,10 @@ public:
         (void)entity;
         (void)other;
     }
+    virtual void OnButtonClick(World& world, EntityId entity) {
+        (void)world;
+        (void)entity;
+    }
     virtual void OnStop(World& world, EntityId entity) {
         (void)world;
         (void)entity;

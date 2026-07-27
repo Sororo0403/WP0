@@ -118,6 +118,18 @@ private:
     TriggerEventCounts& counts_;
 };
 
+class ButtonBehavior final : public Behavior {
+public:
+    explicit ButtonBehavior(int& clicks) : clicks_(clicks) {}
+
+    void OnButtonClick(World&, EntityId) override {
+        ++clicks_;
+    }
+
+private:
+    int& clicks_;
+};
+
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
@@ -712,6 +724,24 @@ int main() {
         return 182;
     }
 
+    int buttonClicks = 0;
+    BehaviorSystem buttonBehaviors;
+    if (!Check(buttonBehaviors.Attach(
+                   behaviorEntity,
+                   std::make_unique<ButtonBehavior>(buttonClicks)),
+               "Button Runtime Behavior could not be attached.")) {
+        return 224;
+    }
+    buttonBehaviors.Start(behaviorWorld);
+    buttonBehaviors.DispatchButtonClick(behaviorEntity);
+    behaviorWorld.Find(behaviorEntity)->active = false;
+    buttonBehaviors.DispatchButtonClick(behaviorEntity);
+    buttonBehaviors.Stop();
+    if (!Check(buttonClicks == 1,
+               "Button click dispatch ignored lifecycle or activation state.")) {
+        return 225;
+    }
+
     World triggerWorld;
     const EntityId triggerActor = triggerWorld.CreateEntity("Trigger Actor");
     const EntityId triggerZone = triggerWorld.CreateEntity("Trigger Zone");
@@ -1007,6 +1037,11 @@ int main() {
     childEntity->image->position = {24.0f, 16.0f};
     childEntity->image->size = {320.0f, 48.0f};
     childEntity->image->color = {0.1f, 0.8f, 0.25f, 0.75f};
+    childEntity->button = ButtonComponent{};
+    childEntity->button->interactable = false;
+    childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
+    childEntity->button->hoveredColor = {0.8f, 0.7f, 0.6f, 1.0f};
+    childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1283,6 +1318,11 @@ int main() {
                    restoredChild->image->size.y == 48.0f &&
                    restoredChild->image->color.y == 0.8f &&
                    restoredChild->image->color.w == 0.75f &&
+                   restoredChild->button &&
+                   !restoredChild->button->interactable &&
+                   restoredChild->button->normalColor.x == 0.9f &&
+                   restoredChild->button->hoveredColor.y == 0.7f &&
+                   restoredChild->button->pressedColor.z == 0.5f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1425,6 +1465,9 @@ int main() {
                    duplicateChild->image->texturePath ==
                        "asset://textures/hud.png" &&
                    duplicateChild->image->size.x == 320.0f &&
+                   duplicateChild->button &&
+                   !duplicateChild->button->interactable &&
+                   duplicateChild->button->pressedColor.x == 0.7f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

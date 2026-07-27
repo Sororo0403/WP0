@@ -574,6 +574,28 @@
     {
       "active": true,
       "components": {
+        "Button": {
+          "enabled": true,
+          "hoveredColor": [
+            0.8500000238418579,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "normalColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pressedColor": [
+            0.699999988079071,
+            0.800000011920929,
+            1.0,
+            1.0
+          ]
+        },
         "Image": {
           "color": [
             0.7142857313156128,
@@ -613,6 +635,54 @@
       "id": "406f9c73-f615-7ad7-374c-b6d2d8c173a4",
       "layer": 0,
       "name": "Image",
+      "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
+    },
+    {
+      "active": true,
+      "components": {
+        "Button": {
+          "enabled": true,
+          "hoveredColor": [
+            0.8500000238418579,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "normalColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pressedColor": [
+            0.699999988079071,
+            0.800000011920929,
+            1.0,
+            1.0
+          ]
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4fa178d5-c694-b828-76ef-814ff2ad37a6",
+      "layer": 0,
+      "name": "Button",
       "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
     }
   ],

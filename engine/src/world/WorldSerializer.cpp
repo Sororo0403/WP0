@@ -252,6 +252,16 @@ std::string WorldSerializer::Serialize(const World& world) {
             encodedImage["color"] = EncodeFloat4(image.color);
             encoded["components"]["Image"] = std::move(encodedImage);
         }
+        if (entity.button) {
+            const ButtonComponent& button = *entity.button;
+            Json encodedButton;
+            encodedButton["enabled"] = button.enabled;
+            encodedButton["interactable"] = button.interactable;
+            encodedButton["normalColor"] = EncodeFloat4(button.normalColor);
+            encodedButton["hoveredColor"] = EncodeFloat4(button.hoveredColor);
+            encodedButton["pressedColor"] = EncodeFloat4(button.pressedColor);
+            encoded["components"]["Button"] = std::move(encodedButton);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -832,6 +842,43 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.image = std::move(component);
+        }
+        if (encoded["components"].contains("Button")) {
+            const Json& encodedButton = encoded["components"]["Button"];
+            ButtonComponent component{};
+            if (!encodedButton.is_object() ||
+                !encodedButton.contains("enabled") ||
+                !encodedButton["enabled"].is_boolean() ||
+                !encodedButton.contains("interactable") ||
+                !encodedButton["interactable"].is_boolean() ||
+                !encodedButton.contains("normalColor") ||
+                !DecodeFloat4(encodedButton["normalColor"],
+                              component.normalColor) ||
+                !encodedButton.contains("hoveredColor") ||
+                !DecodeFloat4(encodedButton["hoveredColor"],
+                              component.hoveredColor) ||
+                !encodedButton.contains("pressedColor") ||
+                !DecodeFloat4(encodedButton["pressedColor"],
+                              component.pressedColor)) {
+                SetError(error, "Scene Button component is invalid.");
+                return false;
+            }
+            component.enabled = encodedButton["enabled"].get<bool>();
+            component.interactable =
+                encodedButton["interactable"].get<bool>();
+            const auto validColor = [](const DirectX::XMFLOAT4& color) {
+                return color.x >= 0.0f && color.x <= 1.0f &&
+                       color.y >= 0.0f && color.y <= 1.0f &&
+                       color.z >= 0.0f && color.z <= 1.0f &&
+                       color.w >= 0.0f && color.w <= 1.0f;
+            };
+            if (!validColor(component.normalColor) ||
+                !validColor(component.hoveredColor) ||
+                !validColor(component.pressedColor)) {
+                SetError(error, "Scene Button settings are invalid.");
+                return false;
+            }
+            entity.button = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {

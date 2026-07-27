@@ -186,6 +186,14 @@ struct ImageComponent {
     DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
+struct ButtonComponent {
+    bool enabled = true;
+    bool interactable = true;
+    DirectX::XMFLOAT4 normalColor{1.0f, 1.0f, 1.0f, 1.0f};
+    DirectX::XMFLOAT4 hoveredColor{0.85f, 0.9f, 1.0f, 1.0f};
+    DirectX::XMFLOAT4 pressedColor{0.7f, 0.8f, 1.0f, 1.0f};
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -239,6 +247,7 @@ struct WorldEntity {
     std::optional<CanvasComponent> canvas;
     std::optional<TextComponent> text;
     std::optional<ImageComponent> image;
+    std::optional<ButtonComponent> button;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;
