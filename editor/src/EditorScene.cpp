@@ -8947,6 +8947,52 @@ void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
         gameUiDragEntity_ = {};
     }
 
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!gameUiDragEntity_.IsValid() &&
+        !gameUiResizeEntity_.IsValid() &&
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+        DirectX::XMFLOAT2 nudge{};
+        const float distance = io.KeyShift ? 10.0f : 1.0f;
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) {
+            nudge.x -= distance;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) {
+            nudge.x += distance;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
+            nudge.y -= distance;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
+            nudge.y += distance;
+        }
+        WorldEntity* entity = world_.Find(selection_);
+        ImVec2 selectedRectMin{};
+        ImVec2 selectedRectMax{};
+        if ((nudge.x != 0.0f || nudge.y != 0.0f) &&
+            entity != nullptr &&
+            calculateRect(*entity, selectedRectMin, selectedRectMax)) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            const auto movePosition =
+                [&nudge](DirectX::XMFLOAT2& position) {
+                    position.x = std::clamp(
+                        position.x + nudge.x, -1000000.0f, 1000000.0f);
+                    position.y = std::clamp(
+                        position.y + nudge.y, -1000000.0f, 1000000.0f);
+                };
+            if (entity->image) {
+                movePosition(entity->image->position);
+            }
+            if (entity->text) {
+                movePosition(entity->text->position);
+            }
+            RecordImmediateEdit("Nudge UI Element", before, selection_);
+            status_ = io.KeyShift
+                          ? "Moved UI element by 10 pixels."
+                          : "Moved UI element by 1 pixel.";
+        }
+    }
+
     const WorldEntity* selected = world_.Find(selection_);
     ImVec2 selectedMin{};
     ImVec2 selectedMax{};
