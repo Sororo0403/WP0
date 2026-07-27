@@ -3902,6 +3902,26 @@ bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, Entity
         }
         ImGui::EndMenu();
     }
+    if (ImGui::BeginMenu("UI")) {
+        if (ImGui::MenuItem("Canvas")) {
+            CreateUiEntity(UiEntityPreset::Canvas, parent);
+            created = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Text")) {
+            CreateUiEntity(UiEntityPreset::Text, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Image")) {
+            CreateUiEntity(UiEntityPreset::Image, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Button")) {
+            CreateUiEntity(UiEntityPreset::Button, parent);
+            created = true;
+        }
+        ImGui::EndMenu();
+    }
     return created;
 }
 
@@ -3953,6 +3973,110 @@ void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
     selection_ = entityId;
     RecordImmediateEdit("Create Primitive Entity", before, selectionBefore);
     status_ = std::string("Created primitive: ") + kPrimitiveNames[primitiveIndex];
+}
+
+void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+
+    if (preset == UiEntityPreset::Canvas) {
+        const EntityId canvasId = world_.CreateEntity("Canvas");
+        WorldEntity* canvas = world_.Find(canvasId);
+        if (canvas == nullptr) {
+            status_ = "Could not create a Canvas.";
+            return;
+        }
+        canvas->canvas = CanvasComponent{};
+        if (parent.IsValid() && !world_.SetParent(canvasId, parent)) {
+            world_.DestroyEntity(canvasId);
+            status_ = "Could not parent the new Canvas.";
+            return;
+        }
+        selection_ = canvasId;
+        RecordImmediateEdit("Create UI Canvas", before, selectionBefore);
+        status_ = "Created a UI Canvas.";
+        return;
+    }
+
+    EntityId uiParent = parent;
+    bool hasCanvasAncestor = false;
+    for (EntityId current = parent; current.IsValid();) {
+        const WorldEntity* entity = world_.Find(current);
+        if (entity == nullptr) {
+            break;
+        }
+        if (entity->canvas) {
+            hasCanvasAncestor = true;
+            break;
+        }
+        current = entity->parent;
+    }
+    if (!hasCanvasAncestor) {
+        uiParent = {};
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (entity.canvas) {
+                uiParent = entity.id;
+                break;
+            }
+        }
+    }
+
+    EntityId createdCanvas{};
+    if (!uiParent.IsValid()) {
+        createdCanvas = world_.CreateEntity("Canvas");
+        WorldEntity* canvas = world_.Find(createdCanvas);
+        if (canvas == nullptr) {
+            status_ = "Could not create a Canvas for the UI element.";
+            return;
+        }
+        canvas->canvas = CanvasComponent{};
+        uiParent = createdCanvas;
+    }
+
+    const char* name =
+        preset == UiEntityPreset::Text
+            ? "Text"
+            : preset == UiEntityPreset::Image ? "Image" : "Button";
+    const EntityId entityId = world_.CreateEntity(name);
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !world_.SetParent(entityId, uiParent)) {
+        world_.DestroyEntity(entityId);
+        if (createdCanvas.IsValid()) {
+            world_.DestroyEntity(createdCanvas);
+        }
+        status_ = "Could not create the UI element.";
+        return;
+    }
+
+    if (preset == UiEntityPreset::Text) {
+        entity->text = TextComponent{};
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+    } else if (preset == UiEntityPreset::Image) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->size = {200.0f, 100.0f};
+    } else {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->size = {240.0f, 64.0f};
+        entity->image->color = {0.22f, 0.38f, 0.65f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->text = TextComponent{};
+        entity->text->text = "Button";
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+        entity->text->fontSize = 28.0f;
+    }
+
+    selection_ = entityId;
+    RecordImmediateEdit(
+        preset == UiEntityPreset::Text
+            ? "Create UI Text"
+            : preset == UiEntityPreset::Image ? "Create UI Image"
+                                               : "Create UI Button",
+        before, selectionBefore);
+    status_ = std::string("Created a UI ") + name + ".";
 }
 
 void EditorScene::DeleteSelection() {

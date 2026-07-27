@@ -110,6 +110,12 @@ private:
     void StartScriptCompilation();
     void FinishScriptCompilation();
     bool ReloadProjectScripts(std::string& error);
+    enum class UiEntityPreset : uint8_t {
+        Canvas,
+        Text,
+        Image,
+        Button,
+    };
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
     void SynchronizeHierarchySelection();
@@ -148,6 +154,7 @@ private:
     void CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position,
                                EntityId parent = {});
+    void CreateUiEntity(UiEntityPreset preset, EntityId parent = {});
     void DeleteSelection();
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);

@@ -686,6 +686,51 @@
       "layer": 0,
       "name": "Button",
       "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
+    },
+    {
+      "active": true,
+      "components": {
+        "Image": {
+          "anchor": "Center",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "position": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            200.0,
+            100.0
+          ],
+          "texture": ""
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "4c89f5a6-6557-ad59-f005-3beb7360beb6",
+      "layer": 0,
+      "name": "Image",
+      "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
     }
   ],
   "version": 1
