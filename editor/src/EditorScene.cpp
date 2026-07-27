@@ -9464,6 +9464,8 @@ bool EditorScene::DrawGameUi(int width, int height,
 
     EntityId hoveredButton{};
     std::vector<EntityId> selectableButtons;
+    std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>
+        selectableCenters;
     for (const OrderedUiEntity& entry : orderedUiEntities) {
         const WorldEntity& entity = *entry.entity;
         const bool isButton =
@@ -9487,6 +9489,16 @@ bool EditorScene::DrawGameUi(int width, int height,
                 ButtonNavigationMode::Automatic;
         if (controlInteractable && navigationEnabled) {
             selectableButtons.push_back(entity.id);
+            float left = 0.0f;
+            float top = 0.0f;
+            float right = 0.0f;
+            float bottom = 0.0f;
+            if (calculateImageRect(entity, left, top, right, bottom)) {
+                selectableCenters.emplace(
+                    entity.id,
+                    DirectX::XMFLOAT2{(left + right) * 0.5f,
+                                     (top + bottom) * 0.5f});
+            }
         }
         if (canPoint && groupState.blocksRaycasts) {
             float left = 0.0f;
@@ -9519,26 +9531,11 @@ bool EditorScene::DrawGameUi(int width, int height,
         focusedEntity != nullptr && focusedEntity->slider &&
         focusedEntity->slider->enabled &&
         focusedEntity->slider->interactable;
-    const bool gamepadPrevious =
-        canNavigateUi && runtimeInput != nullptr &&
-        !focusedSlider &&
-        (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_LEFT) ||
-         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_UP));
-    const bool gamepadNext =
-        canNavigateUi && runtimeInput != nullptr &&
-        !focusedSlider &&
-        (runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_RIGHT) ||
-         runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_DOWN));
     const bool keyboardNavigation =
         canNavigateUi && ImGui::IsKeyPressed(ImGuiKey_Tab, false);
     bool navigatedUi = false;
-    if ((keyboardNavigation || gamepadPrevious || gamepadNext) &&
-        !selectableButtons.empty() &&
-        (focusedButton_.IsValid() || keyboardNavigation ||
-         !gameCameraAvailable)) {
-        const bool selectPrevious =
-            gamepadPrevious ||
-            (keyboardNavigation && ImGui::GetIO().KeyShift);
+    if (keyboardNavigation && !selectableButtons.empty()) {
+        const bool selectPrevious = ImGui::GetIO().KeyShift;
         const auto focused =
             std::ranges::find(selectableButtons, focusedButton_);
         if (focused == selectableButtons.end()) {
@@ -9554,6 +9551,107 @@ bool EditorScene::DrawGameUi(int width, int height,
                                         selectableButtons.size()]
                     : selectableButtons[(index + 1u) %
                                         selectableButtons.size()];
+        }
+        navigatedUi = true;
+    }
+    enum class UiNavigationDirection : uint8_t {
+        None,
+        Left,
+        Right,
+        Up,
+        Down,
+    };
+    UiNavigationDirection navigationDirection =
+        UiNavigationDirection::None;
+    if (canNavigateUi && !focusedSlider) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_LEFT))) {
+            navigationDirection = UiNavigationDirection::Left;
+        } else if (
+            ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_RIGHT))) {
+            navigationDirection = UiNavigationDirection::Right;
+        } else if (
+            ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_UP))) {
+            navigationDirection = UiNavigationDirection::Up;
+        } else if (
+            ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_DOWN))) {
+            navigationDirection = UiNavigationDirection::Down;
+        }
+    }
+    if (navigationDirection != UiNavigationDirection::None &&
+        !selectableButtons.empty() &&
+        (focusedButton_.IsValid() || !gameCameraAvailable)) {
+        const auto currentCenter =
+            selectableCenters.find(focusedButton_);
+        if (currentCenter == selectableCenters.end()) {
+            focusedButton_ = selectableButtons.front();
+        } else {
+            EntityId best{};
+            float bestScore =
+                (std::numeric_limits<float>::max)();
+            for (const EntityId candidate : selectableButtons) {
+                if (candidate == focusedButton_) {
+                    continue;
+                }
+                const auto candidateCenter =
+                    selectableCenters.find(candidate);
+                if (candidateCenter == selectableCenters.end()) {
+                    continue;
+                }
+                const float deltaX =
+                    candidateCenter->second.x -
+                    currentCenter->second.x;
+                const float deltaY =
+                    candidateCenter->second.y -
+                    currentCenter->second.y;
+                float forward = 0.0f;
+                float perpendicular = 0.0f;
+                switch (navigationDirection) {
+                case UiNavigationDirection::Left:
+                    forward = -deltaX;
+                    perpendicular = std::abs(deltaY);
+                    break;
+                case UiNavigationDirection::Right:
+                    forward = deltaX;
+                    perpendicular = std::abs(deltaY);
+                    break;
+                case UiNavigationDirection::Up:
+                    forward = -deltaY;
+                    perpendicular = std::abs(deltaX);
+                    break;
+                case UiNavigationDirection::Down:
+                    forward = deltaY;
+                    perpendicular = std::abs(deltaX);
+                    break;
+                case UiNavigationDirection::None:
+                    break;
+                }
+                if (forward <= 0.0f) {
+                    continue;
+                }
+                const float score =
+                    forward +
+                    perpendicular * perpendicular /
+                        (forward + 0.001f);
+                if (score < bestScore) {
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+            if (best.IsValid()) {
+                focusedButton_ = best;
+            }
         }
         navigatedUi = true;
     }
