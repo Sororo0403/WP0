@@ -80,6 +80,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         duplicate->button = original.button;
         duplicate->toggle = original.toggle;
         duplicate->slider = original.slider;
+        duplicate->dropdown = original.dropdown;
         if (duplicate->audioSource) {
             duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
             duplicate->audioSource->pendingOneShots = 0u;
@@ -831,6 +832,36 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 slider.handleSize > 1000000.0f) {
                 SetError(error,
                          "Scene contains an invalid Slider component.");
+                return false;
+            }
+        }
+        if (entity.dropdown) {
+            const DropdownComponent& dropdown = *entity.dropdown;
+            const auto validColor = [](const DirectX::XMFLOAT4& color) {
+                return IsFinite(color) && color.x >= 0.0f &&
+                       color.x <= 1.0f && color.y >= 0.0f &&
+                       color.y <= 1.0f && color.z >= 0.0f &&
+                       color.z <= 1.0f && color.w >= 0.0f &&
+                       color.w <= 1.0f;
+            };
+            const bool validOptions =
+                !dropdown.options.empty() &&
+                dropdown.options.size() <= 256u &&
+                std::ranges::all_of(
+                    dropdown.options, [](const std::string& option) {
+                        return !option.empty() && option.size() <= 256u &&
+                               option.find('\0') == std::string::npos;
+                    });
+            if (!validOptions || dropdown.value < 0 ||
+                static_cast<size_t>(dropdown.value) >=
+                    dropdown.options.size() ||
+                !validColor(dropdown.itemColor) ||
+                !validColor(dropdown.highlightedColor) ||
+                !std::isfinite(dropdown.itemHeight) ||
+                dropdown.itemHeight <= 0.0f ||
+                dropdown.itemHeight > 1000000.0f) {
+                SetError(error,
+                         "Scene contains an invalid Dropdown component.");
                 return false;
             }
         }

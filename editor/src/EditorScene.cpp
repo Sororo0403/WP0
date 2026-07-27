@@ -4091,6 +4091,10 @@ bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, Entity
             CreateUiEntity(UiEntityPreset::Slider, parent);
             created = true;
         }
+        if (ImGui::MenuItem("Dropdown")) {
+            CreateUiEntity(UiEntityPreset::Dropdown, parent);
+            created = true;
+        }
         ImGui::EndMenu();
     }
     return created;
@@ -4232,6 +4236,8 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         name = "Toggle";
     } else if (preset == UiEntityPreset::Slider) {
         name = "Slider";
+    } else if (preset == UiEntityPreset::Dropdown) {
+        name = "Dropdown";
     }
     const EntityId entityId = world_.CreateEntity(name);
     WorldEntity* entity = world_.Find(entityId);
@@ -4276,13 +4282,26 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
         entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
         entity->button = ButtonComponent{};
         entity->toggle = ToggleComponent{};
-    } else {
+    } else if (preset == UiEntityPreset::Slider) {
         entity->image = ImageComponent{};
         entity->image->anchor = UiAnchor::Center;
         entity->image->pivot = {0.5f, 0.5f};
         entity->image->size = {240.0f, 24.0f};
         entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
         entity->slider = SliderComponent{};
+    } else {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {280.0f, 56.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->dropdown = DropdownComponent{};
+        entity->text = TextComponent{};
+        entity->text->text = entity->dropdown->options.front();
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+        entity->text->fontSize = 26.0f;
     }
 
     selection_ = entityId;
@@ -4295,7 +4314,9 @@ void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
                         ? "Create UI Toggle"
                         : preset == UiEntityPreset::Slider
                               ? "Create UI Slider"
-                              : "Create UI Button",
+                              : preset == UiEntityPreset::Dropdown
+                                    ? "Create UI Dropdown"
+                                    : "Create UI Button",
         before, selectionBefore);
     status_ = std::string("Created a UI ") + name + ".";
 }
@@ -4849,6 +4870,15 @@ void EditorScene::DrawInspectorPanel() {
             RecordImmediateEdit("Add Slider", before,
                                 selectionBefore);
             status_ = "Added Slider.";
+        }
+        if (!entity->dropdown && ImGui::MenuItem("Dropdown")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->dropdown = DropdownComponent{};
+            RecordImmediateEdit("Add Dropdown", before,
+                                selectionBefore);
+            status_ = "Added Dropdown.";
         }
         if (!entity->boxCollider && ImGui::MenuItem("Box Collider")) {
             const std::string before = WorldSerializer::Serialize(world_);
@@ -7219,6 +7249,230 @@ void EditorScene::DrawInspectorPanel() {
             if (entity->scripts.empty()) {
                 ImGui::TextDisabled(
                     "Override OnSliderValueChanged to handle value changes.");
+            }
+        }
+    }
+
+    if (entity->dropdown) {
+        ImGui::SeparatorText("Dropdown");
+        if (ImGui::Button("Remove Dropdown")) {
+            const std::string before =
+                WorldSerializer::Serialize(world_);
+            const EntityId selectionBefore = selection_;
+            entity->dropdown.reset();
+            RecordImmediateEdit("Remove Dropdown", before,
+                                selectionBefore);
+            status_ = "Removed Dropdown.";
+        } else {
+            DropdownComponent& dropdown = *entity->dropdown;
+            const EntityId selectionBefore = selection_;
+            std::string before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Enabled##Dropdown",
+                                &dropdown.enabled)) {
+                RecordImmediateEdit("Toggle Dropdown",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Dropdown.";
+            }
+            before = WorldSerializer::Serialize(world_);
+            if (ImGui::Checkbox("Interactable##Dropdown",
+                                &dropdown.interactable)) {
+                RecordImmediateEdit("Toggle Dropdown Interactable",
+                                    std::move(before),
+                                    selectionBefore);
+                status_ = "Toggled Dropdown interaction.";
+            }
+            const char* selectedOption =
+                dropdown.options[static_cast<size_t>(
+                    std::clamp(dropdown.value, 0,
+                               static_cast<int32_t>(
+                                   dropdown.options.size() - 1u)))]
+                    .c_str();
+            if (ImGui::BeginCombo("Value##Dropdown",
+                                  selectedOption)) {
+                for (size_t optionIndex = 0;
+                     optionIndex < dropdown.options.size();
+                     ++optionIndex) {
+                    const bool selected =
+                        dropdown.value ==
+                        static_cast<int32_t>(optionIndex);
+                    if (ImGui::Selectable(
+                            dropdown.options[optionIndex].c_str(),
+                            selected)) {
+                        const std::string valueBefore =
+                            WorldSerializer::Serialize(world_);
+                        dropdown.value =
+                            static_cast<int32_t>(optionIndex);
+                        RecordImmediateEdit(
+                            "Change Dropdown Value",
+                            std::move(valueBefore),
+                            selectionBefore);
+                        status_ = "Changed Dropdown value.";
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SeparatorText("Options");
+            for (size_t optionIndex = 0;
+                 optionIndex < dropdown.options.size();) {
+                ImGui::PushID(
+                    static_cast<int>(optionIndex));
+                std::array<char, 257> optionBuffer{};
+                const std::string& option =
+                    dropdown.options[optionIndex];
+                std::copy_n(
+                    option.data(),
+                    (std::min)(option.size(),
+                               optionBuffer.size() - 1u),
+                    optionBuffer.data());
+                ImGui::SetNextItemWidth(-150.0f);
+                if (ImGui::InputText("##Option",
+                                     optionBuffer.data(),
+                                     optionBuffer.size()) &&
+                    optionBuffer[0] != '\0') {
+                    dropdown.options[optionIndex] =
+                        optionBuffer.data();
+                    RefreshDirty();
+                    status_ = "Modified Dropdown option.";
+                }
+                if (ImGui::IsItemActivated()) {
+                    BeginHistoryEdit(
+                        "Modify Dropdown Option");
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    CommitHistoryEdit();
+                }
+                ImGui::SameLine();
+                if (optionIndex == 0u) {
+                    ImGui::BeginDisabled();
+                }
+                const bool moveUp =
+                    ImGui::SmallButton("Up");
+                if (optionIndex == 0u) {
+                    ImGui::EndDisabled();
+                }
+                ImGui::SameLine();
+                if (optionIndex + 1u >=
+                    dropdown.options.size()) {
+                    ImGui::BeginDisabled();
+                }
+                const bool moveDown =
+                    ImGui::SmallButton("Down");
+                if (optionIndex + 1u >=
+                    dropdown.options.size()) {
+                    ImGui::EndDisabled();
+                }
+                ImGui::SameLine();
+                const bool canRemove =
+                    dropdown.options.size() > 1u;
+                if (!canRemove) {
+                    ImGui::BeginDisabled();
+                }
+                const bool remove =
+                    ImGui::SmallButton("Remove");
+                if (!canRemove) {
+                    ImGui::EndDisabled();
+                }
+                ImGui::PopID();
+                if (moveUp || moveDown) {
+                    const std::string moveBefore =
+                        WorldSerializer::Serialize(world_);
+                    const size_t destination =
+                        moveUp ? optionIndex - 1u
+                               : optionIndex + 1u;
+                    std::swap(dropdown.options[optionIndex],
+                              dropdown.options[destination]);
+                    if (dropdown.value ==
+                        static_cast<int32_t>(optionIndex)) {
+                        dropdown.value =
+                            static_cast<int32_t>(destination);
+                    } else if (
+                        dropdown.value ==
+                        static_cast<int32_t>(destination)) {
+                        dropdown.value =
+                            static_cast<int32_t>(optionIndex);
+                    }
+                    RecordImmediateEdit(
+                        "Move Dropdown Option",
+                        std::move(moveBefore),
+                        selectionBefore);
+                    status_ = "Moved Dropdown option.";
+                    break;
+                }
+                if (remove) {
+                    const std::string removeBefore =
+                        WorldSerializer::Serialize(world_);
+                    dropdown.options.erase(
+                        dropdown.options.begin() +
+                        static_cast<std::ptrdiff_t>(
+                            optionIndex));
+                    dropdown.value = std::clamp(
+                        dropdown.value, 0,
+                        static_cast<int32_t>(
+                            dropdown.options.size() - 1u));
+                    RecordImmediateEdit(
+                        "Remove Dropdown Option",
+                        std::move(removeBefore),
+                        selectionBefore);
+                    status_ = "Removed Dropdown option.";
+                    continue;
+                }
+                ++optionIndex;
+            }
+            if (dropdown.options.size() < 256u &&
+                ImGui::Button("Add Option##Dropdown")) {
+                const std::string addBefore =
+                    WorldSerializer::Serialize(world_);
+                dropdown.options.push_back("Option");
+                RecordImmediateEdit(
+                    "Add Dropdown Option",
+                    std::move(addBefore), selectionBefore);
+                status_ = "Added Dropdown option.";
+            }
+            const auto editDropdownColor =
+                [&](const char* label,
+                    DirectX::XMFLOAT4& color) {
+                    if (ImGui::ColorEdit4(label, &color.x)) {
+                        RefreshDirty();
+                        status_ = "Modified Dropdown colors.";
+                    }
+                    if (ImGui::IsItemActivated()) {
+                        BeginHistoryEdit(
+                            "Modify Dropdown Color");
+                    }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        CommitHistoryEdit();
+                    }
+                };
+            editDropdownColor("Item Color##Dropdown",
+                              dropdown.itemColor);
+            editDropdownColor(
+                "Highlighted Color##Dropdown",
+                dropdown.highlightedColor);
+            if (ImGui::DragFloat(
+                    "Item Height##Dropdown",
+                    &dropdown.itemHeight, 1.0f, 1.0f,
+                    1000000.0f, "%.1f",
+                    ImGuiSliderFlags_AlwaysClamp)) {
+                RefreshDirty();
+                status_ = "Modified Dropdown item height.";
+            }
+            if (ImGui::IsItemActivated()) {
+                BeginHistoryEdit(
+                    "Modify Dropdown Item Height");
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                CommitHistoryEdit();
+            }
+            if (!entity->button || !entity->image ||
+                !entity->text) {
+                ImGui::TextColored(
+                    {1.0f, 0.72f, 0.25f, 1.0f},
+                    "Dropdown requires Button, Image, and Text on the same Entity.");
+            }
+            if (entity->scripts.empty()) {
+                ImGui::TextDisabled(
+                    "Override OnDropdownValueChanged to handle value changes.");
             }
         }
     }
@@ -9740,7 +9994,8 @@ bool EditorScene::DrawGameUi(int width, int height,
         const WorldEntity& entity = *entry.entity;
         const bool isButton =
             entity.button && entity.button->enabled &&
-            (!entity.toggle || entity.toggle->enabled);
+            (!entity.toggle || entity.toggle->enabled) &&
+            (!entity.dropdown || entity.dropdown->enabled);
         const bool isSlider =
             entity.slider && entity.slider->enabled;
         if ((!isButton && !isSlider) || !entity.image ||
@@ -9752,7 +10007,9 @@ bool EditorScene::DrawGameUi(int width, int height,
         const bool controlInteractable =
             groupState.interactable &&
             (isSlider ? entity.slider->interactable
-                      : entity.button->interactable);
+                      : entity.button->interactable &&
+                            (!entity.dropdown ||
+                             entity.dropdown->interactable));
         const bool navigationEnabled =
             isSlider ||
             entity.button->navigation !=
@@ -9782,6 +10039,59 @@ bool EditorScene::DrawGameUi(int width, int height,
             }
         }
     }
+
+    WorldEntity* openDropdownEntity =
+        world_.Find(openDropdown_);
+    if (openDropdownEntity == nullptr ||
+        !openDropdownEntity->dropdown ||
+        !openDropdownEntity->dropdown->enabled ||
+        !openDropdownEntity->dropdown->interactable ||
+        !openDropdownEntity->button ||
+        !openDropdownEntity->button->enabled ||
+        !openDropdownEntity->button->interactable ||
+        !openDropdownEntity->image ||
+        !GetUiGroupState(world_, *openDropdownEntity)
+             .interactable) {
+        openDropdown_ = {};
+        openDropdownEntity = nullptr;
+    }
+    int32_t hoveredDropdownOption = -1;
+    float dropdownLeft = 0.0f;
+    float dropdownTop = 0.0f;
+    float dropdownRight = 0.0f;
+    float dropdownBottom = 0.0f;
+    float dropdownScale = 1.0f;
+    if (openDropdownEntity != nullptr &&
+        calculateImageRect(*openDropdownEntity, dropdownLeft,
+                           dropdownTop, dropdownRight,
+                           dropdownBottom)) {
+        DirectX::XMFLOAT2 dropdownOrigin{};
+        DirectX::XMFLOAT2 dropdownResolution{};
+        resolveCanvasLayout(*openDropdownEntity, dropdownScale,
+                            dropdownOrigin, dropdownResolution);
+        const DropdownComponent& dropdown =
+            *openDropdownEntity->dropdown;
+        const float rowHeight =
+            dropdown.itemHeight * dropdownScale;
+        if (canPoint && pointer.x >= dropdownLeft &&
+            pointer.x <= dropdownRight &&
+            pointer.y >= dropdownBottom &&
+            pointer.y <
+                dropdownBottom +
+                    rowHeight *
+                        static_cast<float>(
+                            dropdown.options.size())) {
+            hoveredDropdownOption =
+                static_cast<int32_t>(
+                    (pointer.y - dropdownBottom) /
+                    rowHeight);
+            dropdownHighlightedIndex_ =
+                hoveredDropdownOption;
+            hoveredButton = {};
+        }
+    }
+    const bool dropdownWasOpen =
+        openDropdownEntity != nullptr;
 
     if (focusedButton_.IsValid() &&
         std::ranges::find(selectableButtons, focusedButton_) ==
@@ -9838,6 +10148,30 @@ bool EditorScene::DrawGameUi(int width, int height,
         }
         navigatedUi = true;
     }
+    if (canNavigateUi && openDropdownEntity != nullptr) {
+        const int32_t optionCount = static_cast<int32_t>(
+            openDropdownEntity->dropdown->options.size());
+        const bool selectPrevious =
+            ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_UP));
+        const bool selectNext =
+            ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+            (runtimeInput != nullptr &&
+             runtimeInput->IsGamepadButtonTrigger(
+                 XINPUT_GAMEPAD_DPAD_DOWN));
+        if (selectPrevious) {
+            dropdownHighlightedIndex_ =
+                (dropdownHighlightedIndex_ + optionCount - 1) %
+                optionCount;
+            navigatedUi = true;
+        } else if (selectNext) {
+            dropdownHighlightedIndex_ =
+                (dropdownHighlightedIndex_ + 1) % optionCount;
+            navigatedUi = true;
+        }
+    }
     enum class UiNavigationDirection : uint8_t {
         None,
         Left,
@@ -9847,7 +10181,8 @@ bool EditorScene::DrawGameUi(int width, int height,
     };
     UiNavigationDirection navigationDirection =
         UiNavigationDirection::None;
-    if (canNavigateUi && !focusedSlider) {
+    if (canNavigateUi && !focusedSlider &&
+        openDropdownEntity == nullptr) {
         if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
             (runtimeInput != nullptr &&
              runtimeInput->IsGamepadButtonTrigger(
@@ -9973,6 +10308,9 @@ bool EditorScene::DrawGameUi(int width, int height,
         hoveredEntity != nullptr && hoveredEntity->button &&
         hoveredEntity->button->enabled &&
         hoveredEntity->button->interactable &&
+        (!hoveredEntity->dropdown ||
+         (hoveredEntity->dropdown->enabled &&
+          hoveredEntity->dropdown->interactable)) &&
         GetUiGroupState(world_, *hoveredEntity).interactable;
     const bool hoveredSliderInteractable =
         hoveredEntity != nullptr && hoveredEntity->slider &&
@@ -9980,13 +10318,32 @@ bool EditorScene::DrawGameUi(int width, int height,
         hoveredEntity->slider->interactable &&
         GetUiGroupState(world_, *hoveredEntity).interactable;
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (hoveredSliderInteractable) {
+        if (openDropdownEntity != nullptr &&
+            hoveredDropdownOption >= 0) {
+            DropdownComponent& dropdown =
+                *openDropdownEntity->dropdown;
+            if (dropdown.value != hoveredDropdownOption) {
+                dropdown.value = hoveredDropdownOption;
+                pendingDropdownValueChanges_.push_back(
+                    {openDropdown_, dropdown.value});
+            }
+            focusedButton_ = openDropdown_;
+            openDropdown_ = {};
+            openDropdownEntity = nullptr;
+            pressedButton_ = {};
+            activeSlider_ = {};
+        } else if (hoveredSliderInteractable) {
             activeSlider_ = hoveredButton;
             pressedButton_ = {};
             focusedButton_ = hoveredButton;
             setSliderValueFromPointer(*world_.Find(activeSlider_));
         } else {
             activeSlider_ = {};
+            if (openDropdownEntity != nullptr &&
+                hoveredButton != openDropdown_) {
+                openDropdown_ = {};
+                openDropdownEntity = nullptr;
+            }
             pressedButton_ =
                 hoveredButtonInteractable ? hoveredButton
                                           : EntityId{};
@@ -10011,7 +10368,24 @@ bool EditorScene::DrawGameUi(int width, int height,
         if (pressedButton_.IsValid() &&
             pressedButton_ == hoveredButton &&
             hoveredButtonInteractable) {
-            pendingButtonClicks_.push_back(pressedButton_);
+            WorldEntity* clicked =
+                world_.Find(pressedButton_);
+            if (clicked != nullptr && clicked->dropdown &&
+                clicked->dropdown->enabled &&
+                clicked->dropdown->interactable) {
+                if (openDropdown_ == pressedButton_) {
+                    openDropdown_ = {};
+                    openDropdownEntity = nullptr;
+                } else {
+                    openDropdown_ = pressedButton_;
+                    openDropdownEntity = clicked;
+                    dropdownHighlightedIndex_ =
+                        clicked->dropdown->value;
+                }
+            } else {
+                pendingButtonClicks_.push_back(
+                    pressedButton_);
+            }
         }
         pressedButton_ = {};
         activeSlider_ = {};
@@ -10031,7 +10405,31 @@ bool EditorScene::DrawGameUi(int width, int height,
         (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
          ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
          gamepadSubmit)) {
-        pendingButtonClicks_.push_back(focusedButton_);
+        if (submitEntity->dropdown &&
+            submitEntity->dropdown->enabled &&
+            submitEntity->dropdown->interactable) {
+            if (openDropdown_ == focusedButton_) {
+                DropdownComponent& dropdown =
+                    *world_.Find(openDropdown_)->dropdown;
+                if (dropdown.value !=
+                    dropdownHighlightedIndex_) {
+                    dropdown.value =
+                        dropdownHighlightedIndex_;
+                    pendingDropdownValueChanges_.push_back(
+                        {openDropdown_, dropdown.value});
+                }
+                openDropdown_ = {};
+                openDropdownEntity = nullptr;
+            } else {
+                openDropdown_ = focusedButton_;
+                openDropdownEntity =
+                    world_.Find(openDropdown_);
+                dropdownHighlightedIndex_ =
+                    submitEntity->dropdown->value;
+            }
+        } else {
+            pendingButtonClicks_.push_back(focusedButton_);
+        }
     }
     WorldEntity* keyboardSlider = world_.Find(focusedButton_);
     if (canNavigateUi && !navigatedUi &&
@@ -10078,9 +10476,16 @@ bool EditorScene::DrawGameUi(int width, int height,
                                visualDirection * (reverse ? -step : step));
         }
     }
-    if (canNavigateUi && runtimeInput != nullptr &&
-        runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_B)) {
-        focusedButton_ = {};
+    if (canNavigateUi &&
+        (ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
+         (runtimeInput != nullptr &&
+          runtimeInput->IsGamepadButtonTrigger(
+              XINPUT_GAMEPAD_B)))) {
+        if (openDropdown_.IsValid()) {
+            openDropdown_ = {};
+        } else {
+            focusedButton_ = {};
+        }
     }
 
     spriteRenderer.UpdateProjection(width, height);
@@ -10358,6 +10763,17 @@ bool EditorScene::DrawGameUi(int width, int height,
             continue;
         }
         const TextComponent& text = *entity.text;
+        const std::string& displayText =
+            entity.dropdown && entity.dropdown->enabled &&
+                    !entity.dropdown->options.empty() &&
+                    entity.dropdown->value >= 0 &&
+                    static_cast<size_t>(
+                        entity.dropdown->value) <
+                        entity.dropdown->options.size()
+                ? entity.dropdown->options[
+                      static_cast<size_t>(
+                          entity.dropdown->value)]
+                : text.text;
         TextStyle style{};
         if (const auto loadedFont = loadedFonts_.find(text.fontPath);
             loadedFont != loadedFonts_.end()) {
@@ -10386,7 +10802,7 @@ bool EditorScene::DrawGameUi(int width, int height,
         };
         if (text.alignment != TextAlignment::Left || anchor.y > 0.0f) {
             const TextLayoutMetrics metrics =
-                textRenderer.MeasureText(text.text, style);
+                textRenderer.MeasureText(displayText, style);
             if (text.alignment != TextAlignment::Left) {
                 position.x -= text.alignment == TextAlignment::Center
                                   ? metrics.size.x * 0.5f
@@ -10394,7 +10810,78 @@ bool EditorScene::DrawGameUi(int width, int height,
             }
             position.y -= metrics.size.y * anchor.y;
         }
-        textRenderer.DrawText(text.text, position, style);
+        textRenderer.DrawText(displayText, position, style);
+    }
+
+    openDropdownEntity = world_.Find(openDropdown_);
+    if (openDropdownEntity != nullptr &&
+        openDropdownEntity->dropdown &&
+        openDropdownEntity->text &&
+        calculateImageRect(*openDropdownEntity, dropdownLeft,
+                           dropdownTop, dropdownRight,
+                           dropdownBottom)) {
+        const DropdownComponent& dropdown =
+            *openDropdownEntity->dropdown;
+        const TextComponent& text =
+            *openDropdownEntity->text;
+        const UiGroupState groupState =
+            GetUiGroupState(world_, *openDropdownEntity);
+        float popupScale = 1.0f;
+        DirectX::XMFLOAT2 popupOrigin{};
+        DirectX::XMFLOAT2 popupResolution{};
+        resolveCanvasLayout(*openDropdownEntity, popupScale,
+                            popupOrigin, popupResolution);
+        TextStyle popupStyle{};
+        if (const auto loadedFont =
+                loadedFonts_.find(text.fontPath);
+            loadedFont != loadedFonts_.end()) {
+            popupStyle.font = loadedFont->second;
+        }
+        popupStyle.pixelSize = text.fontSize * popupScale;
+        popupStyle.horizontalAlignment =
+            TextHorizontalAlignment::Center;
+        popupStyle.color = text.color;
+        popupStyle.color.w *= groupState.alpha;
+        const float rowHeight =
+            dropdown.itemHeight * popupScale;
+        for (size_t optionIndex = 0;
+             optionIndex < dropdown.options.size();
+             ++optionIndex) {
+            Sprite item{};
+            item.position = {
+                dropdownLeft,
+                dropdownBottom +
+                    rowHeight *
+                        static_cast<float>(optionIndex),
+            };
+            item.size = {
+                dropdownRight - dropdownLeft,
+                rowHeight,
+            };
+            item.color =
+                static_cast<int32_t>(optionIndex) ==
+                        dropdownHighlightedIndex_
+                    ? dropdown.highlightedColor
+                    : dropdown.itemColor;
+            item.color.w *= groupState.alpha;
+            item.textureId = kInvalidResourceId;
+            spriteRenderer.Draw(item);
+
+            const TextLayoutMetrics metrics =
+                textRenderer.MeasureText(
+                    dropdown.options[optionIndex],
+                    popupStyle);
+            const DirectX::XMFLOAT2 labelPosition{
+                (dropdownLeft + dropdownRight -
+                 metrics.size.x) *
+                    0.5f,
+                item.position.y +
+                    (rowHeight - metrics.size.y) * 0.5f,
+            };
+            textRenderer.DrawText(
+                dropdown.options[optionIndex],
+                labelPosition, popupStyle);
+        }
     }
     spriteRenderer.PostDraw();
 
@@ -10403,7 +10890,10 @@ bool EditorScene::DrawGameUi(int width, int height,
                                         ctx_->systems.winApp->GetHeight());
     }
 
-    return hoveredButton.IsValid();
+    return hoveredButton.IsValid() ||
+           hoveredDropdownOption >= 0 ||
+           (dropdownWasOpen &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left));
 }
 
 void EditorScene::HandleGameUiEditing(const ImVec2& imageMin,
@@ -11354,6 +11844,27 @@ bool EditorScene::TryNormalizeScriptAssetReference(
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
+    std::vector<DropdownValueChange> dropdownChanges =
+        std::move(pendingDropdownValueChanges_);
+    pendingDropdownValueChanges_.clear();
+    for (const DropdownValueChange& change :
+         dropdownChanges) {
+        WorldEntity* entity = world_.Find(change.entity);
+        if (entity == nullptr || !entity->dropdown ||
+            !entity->dropdown->enabled ||
+            !entity->dropdown->interactable ||
+            !entity->button || !entity->button->enabled ||
+            !entity->button->interactable ||
+            !GetUiGroupState(world_, *entity).interactable ||
+            !world_.IsActiveInHierarchy(change.entity)) {
+            continue;
+        }
+        runtimeBehaviors_.DispatchDropdownValueChanged(
+            change.entity, change.value);
+        if (ApplyPendingRuntimeSceneLoad()) {
+            return;
+        }
+    }
     std::vector<SliderValueChange> sliderChanges =
         std::move(pendingSliderValueChanges_);
     pendingSliderValueChanges_.clear();
@@ -11449,9 +11960,12 @@ void EditorScene::EndRuntimeWorld() {
     focusedButton_ = {};
     pressedButton_ = {};
     activeSlider_ = {};
+    openDropdown_ = {};
+    dropdownHighlightedIndex_ = 0;
     runtimeInitialUiSelectionApplied_ = false;
     pendingButtonClicks_.clear();
     pendingSliderValueChanges_.clear();
+    pendingDropdownValueChanges_.clear();
     buttonColorTransitions_.clear();
     runtimeFrameCount_ = 0;
     runtimeElapsedSeconds_ = 0.0;

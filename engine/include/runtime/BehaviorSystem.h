@@ -17,6 +17,7 @@ public:
     void DispatchButtonClick(EntityId entity);
     void DispatchToggleValueChanged(EntityId entity, bool isOn);
     void DispatchSliderValueChanged(EntityId entity, float value);
+    void DispatchDropdownValueChanged(EntityId entity, int32_t value);
     void Stop();
     void Clear();
 

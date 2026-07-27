@@ -162,6 +162,22 @@ private:
     float& lastValue_;
 };
 
+class DropdownBehavior final : public Behavior {
+public:
+    DropdownBehavior(int& changes, int32_t& lastValue)
+        : changes_(changes), lastValue_(lastValue) {}
+
+    void OnDropdownValueChanged(World&, EntityId,
+                                int32_t value) override {
+        ++changes_;
+        lastValue_ = value;
+    }
+
+private:
+    int& changes_;
+    int32_t& lastValue_;
+};
+
 class ConfigurableBehavior final : public Behavior {
 public:
     ConfigurableBehavior(float& speed, EntityId& target, bool& enabled, int32_t& count,
@@ -761,6 +777,8 @@ int main() {
     bool lastToggleValue = false;
     int sliderChanges = 0;
     float lastSliderValue = 0.0f;
+    int dropdownChanges = 0;
+    int32_t lastDropdownValue = -1;
     BehaviorSystem buttonBehaviors;
     if (!Check(buttonBehaviors.Attach(
                    behaviorEntity,
@@ -772,7 +790,12 @@ int main() {
                    buttonBehaviors.Attach(
                        behaviorEntity,
                        std::make_unique<SliderBehavior>(
-                           sliderChanges, lastSliderValue)),
+                           sliderChanges, lastSliderValue)) &&
+                   buttonBehaviors.Attach(
+                       behaviorEntity,
+                       std::make_unique<DropdownBehavior>(
+                           dropdownChanges,
+                           lastDropdownValue)),
                "Button Runtime Behavior could not be attached.")) {
         return 224;
     }
@@ -780,14 +803,18 @@ int main() {
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, true);
     buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.75f);
+    buttonBehaviors.DispatchDropdownValueChanged(behaviorEntity, 2);
     behaviorWorld.Find(behaviorEntity)->active = false;
     buttonBehaviors.DispatchButtonClick(behaviorEntity);
     buttonBehaviors.DispatchToggleValueChanged(behaviorEntity, false);
     buttonBehaviors.DispatchSliderValueChanged(behaviorEntity, 0.25f);
+    buttonBehaviors.DispatchDropdownValueChanged(behaviorEntity, 1);
     buttonBehaviors.Stop();
     if (!Check(buttonClicks == 1 && toggleChanges == 1 &&
                    lastToggleValue && sliderChanges == 1 &&
-                   lastSliderValue == 0.75f,
+                   lastSliderValue == 0.75f &&
+                   dropdownChanges == 1 &&
+                   lastDropdownValue == 2,
                "UI event dispatch ignored lifecycle or activation state.")) {
         return 225;
     }
@@ -1122,6 +1149,16 @@ int main() {
     childEntity->slider->fillColor = {0.1f, 0.2f, 0.9f, 0.8f};
     childEntity->slider->handleColor = {0.9f, 0.8f, 0.2f, 0.7f};
     childEntity->slider->handleSize = 24.0f;
+    childEntity->dropdown = DropdownComponent{};
+    childEntity->dropdown->interactable = false;
+    childEntity->dropdown->options =
+        {"Low", "Medium", "High"};
+    childEntity->dropdown->value = 2;
+    childEntity->dropdown->itemColor =
+        {0.1f, 0.2f, 0.3f, 0.8f};
+    childEntity->dropdown->highlightedColor =
+        {0.4f, 0.5f, 0.6f, 0.9f};
+    childEntity->dropdown->itemHeight = 42.0f;
     if (WorldEntity* rootEntity = source.Find(root)) {
         rootEntity->transform.position = {4.0f, 0.0f, 0.0f};
         rootEntity->camera = CameraComponent{};
@@ -1417,6 +1454,21 @@ int main() {
                    &error),
                "An invalid Slider value range was accepted.")) {
         return 264;
+    }
+    nlohmann::json invalidDropdownScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity :
+         invalidDropdownScene["entities"]) {
+        if (entity["components"].contains("Dropdown")) {
+            entity["components"]["Dropdown"]["value"] = 99;
+        }
+    }
+    World invalidDropdownWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidDropdownScene.dump(),
+                   invalidDropdownWorld, &error),
+               "An invalid Dropdown value was accepted.")) {
+        return 267;
     }
     nlohmann::json invalidButtonScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidButtonScene["entities"]) {
@@ -1720,6 +1772,16 @@ int main() {
                    restoredChild->slider->fillColor.z == 0.9f &&
                    restoredChild->slider->handleColor.x == 0.9f &&
                    restoredChild->slider->handleSize == 24.0f &&
+                   restoredChild->dropdown &&
+                   !restoredChild->dropdown->interactable &&
+                   restoredChild->dropdown->options ==
+                       std::vector<std::string>(
+                           {"Low", "Medium", "High"}) &&
+                   restoredChild->dropdown->value == 2 &&
+                   restoredChild->dropdown->itemColor.z == 0.3f &&
+                   restoredChild->dropdown->highlightedColor.w ==
+                       0.9f &&
+                   restoredChild->dropdown->itemHeight == 42.0f &&
                    restored.Find(root)->camera && restored.Find(root)->camera->primary &&
                    restored.Find(root)->audioListener &&
                    restored.Find(root)->audioListener->enabled &&
@@ -1923,6 +1985,12 @@ int main() {
                    duplicateChild->slider->direction ==
                        SliderDirection::BottomToTop &&
                    duplicateChild->slider->handleSize == 24.0f &&
+                   duplicateChild->dropdown &&
+                   !duplicateChild->dropdown->interactable &&
+                   duplicateChild->dropdown->options.size() == 3u &&
+                   duplicateChild->dropdown->options[2] == "High" &&
+                   duplicateChild->dropdown->value == 2 &&
+                   duplicateChild->dropdown->itemHeight == 42.0f &&
                    duplicateRootEntity->camera && !duplicateRootEntity->camera->primary &&
                    duplicateRootEntity->audioListener &&
                    duplicateRootEntity->canvas &&

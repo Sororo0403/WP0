@@ -54,6 +54,12 @@ public:
         (void)entity;
         (void)value;
     }
+    virtual void OnDropdownValueChanged(World& world, EntityId entity,
+                                        int32_t value) {
+        (void)world;
+        (void)entity;
+        (void)value;
+    }
     virtual void OnStop(World& world, EntityId entity) {
         (void)world;
         (void)entity;

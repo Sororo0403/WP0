@@ -295,6 +295,16 @@ struct SliderComponent {
     float handleSize = 16.0f;
 };
 
+struct DropdownComponent {
+    bool enabled = true;
+    bool interactable = true;
+    std::vector<std::string> options{"Option A", "Option B", "Option C"};
+    int32_t value = 0;
+    DirectX::XMFLOAT4 itemColor{0.18f, 0.22f, 0.28f, 1.0f};
+    DirectX::XMFLOAT4 highlightedColor{0.25f, 0.55f, 1.0f, 1.0f};
+    float itemHeight = 48.0f;
+};
+
 struct ScriptPropertyValue {
     std::string name;
     ScriptPropertyType type = ScriptPropertyType::Float;
@@ -353,6 +363,7 @@ struct WorldEntity {
     std::optional<ButtonComponent> button;
     std::optional<ToggleComponent> toggle;
     std::optional<SliderComponent> slider;
+    std::optional<DropdownComponent> dropdown;
     std::vector<BehaviorComponent> scripts;
     std::optional<BoxColliderComponent> boxCollider;
     std::optional<CharacterControllerComponent> characterController;

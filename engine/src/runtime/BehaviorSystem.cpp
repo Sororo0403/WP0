@@ -122,6 +122,22 @@ void BehaviorSystem::DispatchSliderValueChanged(EntityId entity,
     }
 }
 
+void BehaviorSystem::DispatchDropdownValueChanged(EntityId entity,
+                                                  int32_t value) {
+    if (world_ == nullptr || !world_->IsActiveInHierarchy(entity)) {
+        return;
+    }
+    for (Entry& entry : entries_) {
+        if (!entry.started || entry.entity != entity) {
+            continue;
+        }
+        entry.behavior->OnDropdownValueChanged(*world_, entity, value);
+        if (!world_->Contains(entity)) {
+            return;
+        }
+    }
+}
+
 void BehaviorSystem::Stop() {
     if (world_ == nullptr) {
         return;

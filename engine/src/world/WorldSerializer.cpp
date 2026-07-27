@@ -585,6 +585,21 @@ std::string WorldSerializer::Serialize(const World& world) {
             encoded["components"]["Slider"] =
                 std::move(encodedSlider);
         }
+        if (entity.dropdown) {
+            const DropdownComponent& dropdown = *entity.dropdown;
+            Json encodedDropdown;
+            encodedDropdown["enabled"] = dropdown.enabled;
+            encodedDropdown["interactable"] = dropdown.interactable;
+            encodedDropdown["options"] = dropdown.options;
+            encodedDropdown["value"] = dropdown.value;
+            encodedDropdown["itemColor"] =
+                EncodeFloat4(dropdown.itemColor);
+            encodedDropdown["highlightedColor"] =
+                EncodeFloat4(dropdown.highlightedColor);
+            encodedDropdown["itemHeight"] = dropdown.itemHeight;
+            encoded["components"]["Dropdown"] =
+                std::move(encodedDropdown);
+        }
         if (!entity.scripts.empty()) {
             Json scripts = Json::array();
             for (const BehaviorComponent& script : entity.scripts) {
@@ -1558,6 +1573,79 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 return false;
             }
             entity.slider = std::move(component);
+        }
+        if (encoded["components"].contains("Dropdown")) {
+            const Json& encodedDropdown =
+                encoded["components"]["Dropdown"];
+            DropdownComponent component{};
+            if (!encodedDropdown.is_object() ||
+                !encodedDropdown.contains("enabled") ||
+                !encodedDropdown["enabled"].is_boolean() ||
+                !encodedDropdown.contains("interactable") ||
+                !encodedDropdown["interactable"].is_boolean() ||
+                !encodedDropdown.contains("options") ||
+                !encodedDropdown["options"].is_array() ||
+                encodedDropdown["options"].empty() ||
+                encodedDropdown["options"].size() > 256u ||
+                !encodedDropdown.contains("value") ||
+                !encodedDropdown["value"].is_number_integer() ||
+                !encodedDropdown.contains("itemColor") ||
+                !DecodeFloat4(encodedDropdown["itemColor"],
+                              component.itemColor) ||
+                !encodedDropdown.contains("highlightedColor") ||
+                !DecodeFloat4(encodedDropdown["highlightedColor"],
+                              component.highlightedColor) ||
+                !encodedDropdown.contains("itemHeight") ||
+                !encodedDropdown["itemHeight"].is_number()) {
+                SetError(error, "Scene Dropdown component is invalid.");
+                return false;
+            }
+            component.options.clear();
+            for (const Json& encodedOption :
+                 encodedDropdown["options"]) {
+                if (!encodedOption.is_string()) {
+                    SetError(error,
+                             "Scene Dropdown option is invalid.");
+                    return false;
+                }
+                std::string option =
+                    encodedOption.get<std::string>();
+                if (option.empty() || option.size() > 256u ||
+                    option.find('\0') != std::string::npos) {
+                    SetError(error,
+                             "Scene Dropdown option is invalid.");
+                    return false;
+                }
+                component.options.push_back(std::move(option));
+            }
+            component.enabled =
+                encodedDropdown["enabled"].get<bool>();
+            component.interactable =
+                encodedDropdown["interactable"].get<bool>();
+            component.value =
+                encodedDropdown["value"].get<int32_t>();
+            component.itemHeight =
+                encodedDropdown["itemHeight"].get<float>();
+            const auto validColor =
+                [](const DirectX::XMFLOAT4& color) {
+                    return color.x >= 0.0f && color.x <= 1.0f &&
+                           color.y >= 0.0f && color.y <= 1.0f &&
+                           color.z >= 0.0f && color.z <= 1.0f &&
+                           color.w >= 0.0f && color.w <= 1.0f;
+                };
+            if (component.value < 0 ||
+                static_cast<size_t>(component.value) >=
+                    component.options.size() ||
+                !validColor(component.itemColor) ||
+                !validColor(component.highlightedColor) ||
+                !std::isfinite(component.itemHeight) ||
+                component.itemHeight <= 0.0f ||
+                component.itemHeight > 1000000.0f) {
+                SetError(error,
+                         "Scene Dropdown settings are invalid.");
+                return false;
+            }
+            entity.dropdown = std::move(component);
         }
         const auto decodeScript = [&](const Json& behavior, BehaviorComponent& component,
                                       bool allowUnassigned) -> bool {
