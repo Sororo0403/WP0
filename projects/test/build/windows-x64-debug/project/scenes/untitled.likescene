@@ -1246,6 +1246,137 @@
       "layer": 0,
       "name": "Button",
       "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
+    },
+    {
+      "active": true,
+      "components": {
+        "Button": {
+          "disabledColor": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
+          "enabled": true,
+          "fadeDuration": 0.10000000149011612,
+          "hoveredColor": [
+            0.8500000238418579,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "navigation": "Automatic",
+          "normalColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pressedColor": [
+            0.699999988079071,
+            0.800000011920929,
+            1.0,
+            1.0
+          ],
+          "selectOnDown": null,
+          "selectOnLeft": null,
+          "selectOnRight": null,
+          "selectOnUp": null
+        },
+        "Dropdown": {
+          "enabled": true,
+          "highlightedColor": [
+            0.25,
+            0.550000011920929,
+            1.0,
+            1.0
+          ],
+          "interactable": true,
+          "itemColor": [
+            0.18000000715255737,
+            0.2199999988079071,
+            0.2800000011920929,
+            1.0
+          ],
+          "itemHeight": 48.0,
+          "options": [
+            "Option A",
+            "Option B",
+            "Option C"
+          ],
+          "value": 0
+        },
+        "Image": {
+          "anchor": "Center",
+          "color": [
+            0.18000000715255737,
+            0.2199999988079071,
+            0.2800000011920929,
+            1.0
+          ],
+          "enabled": true,
+          "fillAmount": 1.0,
+          "fillMethod": "Horizontal",
+          "fillReverse": false,
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "position": [
+            405.0000305175781,
+            -333.67926025390625
+          ],
+          "preserveAspect": false,
+          "size": [
+            280.0,
+            56.0
+          ],
+          "texture": "",
+          "type": "Simple"
+        },
+        "Text": {
+          "alignment": "Center",
+          "anchor": "Center",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font": "",
+          "fontSize": 26.0,
+          "lineSpacing": 0.0,
+          "position": [
+            405.0000305175781,
+            -333.67926025390625
+          ],
+          "text": "Option A",
+          "wrapWidth": 0.0
+        },
+        "Transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": "43b1cc4e-7354-a47c-c286-404a83048895",
+      "layer": 0,
+      "name": "Dropdown",
+      "parent": "48dafa63-bd3f-c118-8008-f1708938eaab"
     }
   ],
   "version": 1
