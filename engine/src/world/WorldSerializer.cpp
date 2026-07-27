@@ -180,6 +180,26 @@ bool DecodeImageFillMethod(const Json& value, ImageFillMethod& method) {
     return true;
 }
 
+const char* EncodeButtonNavigationMode(ButtonNavigationMode mode) {
+    return mode == ButtonNavigationMode::None ? "None" : "Automatic";
+}
+
+bool DecodeButtonNavigationMode(const Json& value,
+                                ButtonNavigationMode& mode) {
+    if (!value.is_string()) {
+        return false;
+    }
+    const std::string encoded = value.get<std::string>();
+    if (encoded == "Automatic") {
+        mode = ButtonNavigationMode::Automatic;
+    } else if (encoded == "None") {
+        mode = ButtonNavigationMode::None;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SetError(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -386,6 +406,8 @@ std::string WorldSerializer::Serialize(const World& world) {
             Json encodedButton;
             encodedButton["enabled"] = button.enabled;
             encodedButton["interactable"] = button.interactable;
+            encodedButton["navigation"] =
+                EncodeButtonNavigationMode(button.navigation);
             encodedButton["normalColor"] = EncodeFloat4(button.normalColor);
             encodedButton["hoveredColor"] = EncodeFloat4(button.hoveredColor);
             encodedButton["pressedColor"] = EncodeFloat4(button.pressedColor);
@@ -1124,6 +1146,12 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 component.fadeDuration =
                     encodedButton["fadeDuration"].get<float>();
             }
+            if (encodedButton.contains("navigation") &&
+                !DecodeButtonNavigationMode(encodedButton["navigation"],
+                                            component.navigation)) {
+                SetError(error, "Scene Button component is invalid.");
+                return false;
+            }
             component.enabled = encodedButton["enabled"].get<bool>();
             component.interactable =
                 encodedButton["interactable"].get<bool>();
@@ -1137,6 +1165,8 @@ bool WorldSerializer::Deserialize(std::string_view text, World& world, std::stri
                 !validColor(component.hoveredColor) ||
                 !validColor(component.pressedColor) ||
                 !validColor(component.disabledColor) ||
+                component.navigation < ButtonNavigationMode::Automatic ||
+                component.navigation > ButtonNavigationMode::None ||
                 !std::isfinite(component.fadeDuration) ||
                 component.fadeDuration < 0.0f ||
                 component.fadeDuration > 10.0f) {

@@ -6406,6 +6406,29 @@ void EditorScene::DrawInspectorPanel() {
                                     std::move(before), selectionBefore);
                 status_ = "Toggled Button interactable.";
             }
+            const char* navigation =
+                button.navigation == ButtonNavigationMode::None
+                    ? "None"
+                    : "Automatic";
+            if (ImGui::BeginCombo("Navigation##Button", navigation)) {
+                const auto selectNavigation =
+                    [&](ButtonNavigationMode value, const char* label) {
+                        if (ImGui::Selectable(label,
+                                              button.navigation == value)) {
+                            const std::string navigationBefore =
+                                WorldSerializer::Serialize(world_);
+                            button.navigation = value;
+                            RecordImmediateEdit(
+                                "Change Button Navigation",
+                                std::move(navigationBefore), selectionBefore);
+                            status_ = "Changed Button navigation.";
+                        }
+                    };
+                selectNavigation(ButtonNavigationMode::Automatic,
+                                 "Automatic");
+                selectNavigation(ButtonNavigationMode::None, "None");
+                ImGui::EndCombo();
+            }
             const auto editButtonColor =
                 [&](const char* label, DirectX::XMFLOAT4& color) {
                     if (ImGui::ColorEdit4(label, &color.x)) {
@@ -8884,7 +8907,9 @@ bool EditorScene::DrawGameUi(int width, int height,
                                  referenceResolution)) {
             continue;
         }
-        if (entity.button->interactable) {
+        if (entity.button->interactable &&
+            entity.button->navigation ==
+                ButtonNavigationMode::Automatic) {
             selectableButtons.push_back(entity.id);
         }
         if (canPoint) {

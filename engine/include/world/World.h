@@ -220,9 +220,15 @@ struct ImageComponent {
     bool preserveAspect = false;
 };
 
+enum class ButtonNavigationMode : uint8_t {
+    Automatic,
+    None,
+};
+
 struct ButtonComponent {
     bool enabled = true;
     bool interactable = true;
+    ButtonNavigationMode navigation = ButtonNavigationMode::Automatic;
     DirectX::XMFLOAT4 normalColor{1.0f, 1.0f, 1.0f, 1.0f};
     DirectX::XMFLOAT4 hoveredColor{0.85f, 0.9f, 1.0f, 1.0f};
     DirectX::XMFLOAT4 pressedColor{0.7f, 0.8f, 1.0f, 1.0f};

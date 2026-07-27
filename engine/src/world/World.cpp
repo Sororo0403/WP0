@@ -696,6 +696,8 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
                 !validColor(button.hoveredColor) ||
                 !validColor(button.pressedColor) ||
                 !validColor(button.disabledColor) ||
+                button.navigation < ButtonNavigationMode::Automatic ||
+                button.navigation > ButtonNavigationMode::None ||
                 !std::isfinite(button.fadeDuration) ||
                 button.fadeDuration < 0.0f ||
                 button.fadeDuration > 10.0f) {

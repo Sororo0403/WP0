@@ -1051,6 +1051,7 @@ int main() {
     childEntity->image->preserveAspect = true;
     childEntity->button = ButtonComponent{};
     childEntity->button->interactable = false;
+    childEntity->button->navigation = ButtonNavigationMode::None;
     childEntity->button->normalColor = {0.9f, 0.8f, 0.7f, 1.0f};
     childEntity->button->hoveredColor = {0.8f, 0.7f, 0.6f, 1.0f};
     childEntity->button->pressedColor = {0.7f, 0.6f, 0.5f, 1.0f};
@@ -1197,6 +1198,7 @@ int main() {
         if (entity["components"].contains("Button")) {
             entity["components"]["Button"].erase("disabledColor");
             entity["components"]["Button"].erase("fadeDuration");
+            entity["components"]["Button"].erase("navigation");
         }
         if (entity["components"].contains("Text")) {
             entity["components"]["Text"].erase("font");
@@ -1224,6 +1226,8 @@ int main() {
                        0.5f &&
                    legacyButtonWorld.Find(child)->button->fadeDuration ==
                        0.1f &&
+                   legacyButtonWorld.Find(child)->button->navigation ==
+                       ButtonNavigationMode::Automatic &&
                    legacyButtonWorld.Find(child)->image &&
                    legacyButtonWorld.Find(child)->image->pivot.x == 1.0f &&
                    legacyButtonWorld.Find(child)->image->pivot.y == 1.0f &&
@@ -1264,6 +1268,20 @@ int main() {
                                              invalidButtonWorld, &error),
                "An out-of-range Button fade duration was accepted.")) {
         return 257;
+    }
+    nlohmann::json invalidButtonNavigationScene =
+        nlohmann::json::parse(serialized);
+    for (nlohmann::json& entity : invalidButtonNavigationScene["entities"]) {
+        if (entity["components"].contains("Button")) {
+            entity["components"]["Button"]["navigation"] = "Diagonal";
+        }
+    }
+    World invalidButtonNavigationWorld;
+    if (!Check(!WorldSerializer::Deserialize(
+                   invalidButtonNavigationScene.dump(),
+                   invalidButtonNavigationWorld, &error),
+               "An invalid Button navigation mode was accepted.")) {
+        return 258;
     }
     nlohmann::json invalidImageScene = nlohmann::json::parse(serialized);
     for (nlohmann::json& entity : invalidImageScene["entities"]) {
@@ -1471,6 +1489,8 @@ int main() {
                    restoredChild->image->preserveAspect &&
                    restoredChild->button &&
                    !restoredChild->button->interactable &&
+                   restoredChild->button->navigation ==
+                       ButtonNavigationMode::None &&
                    restoredChild->button->normalColor.x == 0.9f &&
                    restoredChild->button->hoveredColor.y == 0.7f &&
                    restoredChild->button->pressedColor.z == 0.5f &&
@@ -1636,6 +1656,8 @@ int main() {
                    duplicateChild->image->preserveAspect &&
                    duplicateChild->button &&
                    !duplicateChild->button->interactable &&
+                   duplicateChild->button->navigation ==
+                       ButtonNavigationMode::None &&
                    duplicateChild->button->pressedColor.x == 0.7f &&
                    duplicateChild->button->disabledColor.y == 0.3f &&
                    duplicateChild->button->fadeDuration == 0.25f &&
