@@ -291,6 +291,13 @@ private:
     void DrawSelectedAssetDetails();
     void DrawAssetPreviewPopup();
     void DrawAudioAssetPreview(const std::filesystem::path& physicalPath);
+    void SynchronizeAudioPreviewSelection();
+    bool IsAudioPreviewPlaying(const ISoundService* sound) const;
+    void DrawAudioPreviewControls(ISoundService* sound,
+                                  const std::filesystem::path& physicalPath, bool playing);
+    void StartAudioAssetPreview(ISoundService& sound,
+                                const std::filesystem::path& physicalPath);
+    void DrawAudioPreviewInfo(const ISoundService* sound) const;
     void StopAudioAssetPreview();
     void DrawAssetOperationDialogs();
     void RequestAssetRename(const std::filesystem::path& relativePath, bool directory);

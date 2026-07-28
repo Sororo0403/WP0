@@ -55,6 +55,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
 - `EditorSceneAssetPreview.cpp`: Preview状態、Model読込、Cameraフレーミング
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
+- `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
@@ -184,6 +185,12 @@ Player Preview起動は起動可否、Project検証、Editor実行ファイル�
 プロセス起動へ分割して専用ファイルへ移した。`LaunchPlayerPreview` は
 49 NLOC / CCN 13から11 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
 1,156行となった。Player Previewには CCN 8 / 関数長19の回帰上限を
+設定している。
+
+Audio Preview描画は選択同期、再生判定、操作UI、音声読込・再生、情報表示へ
+分割して専用ファイルへ移した。`DrawAudioAssetPreview` は
+44 NLOC / CCN 13から7 NLOC / CCN 2へ縮小し、`EditorScene.cpp` は
+1,102行となった。Audio Previewには CCN 5 / 関数長18の回帰上限を
 設定している。
 
 ## 初回結果

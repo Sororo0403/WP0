@@ -493,60 +493,6 @@ void EditorScene::AssignAudioAsset(EntityId entityId, const std::filesystem::pat
     status_ = "Assigned audio asset: " + assetPath;
 }
 
-void EditorScene::DrawAudioAssetPreview(const std::filesystem::path& physicalPath) {
-    const std::filesystem::path selected = selectedAsset_.lexically_normal();
-    if (assetPreviewAsset_ != selected) {
-        StopAudioAssetPreview();
-        audioPreviewSoundId_ = ISoundService::kInvalidSoundId;
-        assetPreviewAsset_ = selected;
-        assetPreviewModel_ = {};
-        assetPreviewPlan_.clear();
-        assetPreviewError_.clear();
-    }
-    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
-    const bool playing = sound != nullptr &&
-                         audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle &&
-                         sound->IsPlaying(audioPreviewVoice_);
-    ImGui::BeginDisabled(sound == nullptr);
-    if (ImGui::SmallButton(playing ? "Restart Preview" : "Play Preview")) {
-        StopAudioAssetPreview();
-        uint32_t soundId = ISoundService::kInvalidSoundId;
-        if (!sound->TryLoad(physicalPath.wstring(), soundId)) {
-            status_ = "Audio preview failed: the file could not be decoded.";
-        } else {
-            audioPreviewSoundId_ = soundId;
-            audioPreviewVoice_ = sound->Play(soundId);
-            status_ = audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle
-                          ? "Playing audio preview: " + physicalPath.filename().string()
-                          : "Audio preview failed: the audio device is unavailable.";
-        }
-    }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!playing);
-    if (ImGui::SmallButton("Stop Preview")) {
-        StopAudioAssetPreview();
-        status_ = "Stopped audio preview.";
-    }
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
-
-    if (sound != nullptr && audioPreviewSoundId_ != ISoundService::kInvalidSoundId) {
-        if (const ISoundService::SoundInfo* info = sound->GetInfo(audioPreviewSoundId_)) {
-            ImGui::TextDisabled("Duration: %.2f s   Channels: %u   Sample Rate: %u Hz",
-                                info->durationSeconds, static_cast<unsigned>(info->channels),
-                                info->sampleRate);
-        }
-    }
-}
-
-void EditorScene::StopAudioAssetPreview() {
-    ISoundService* sound = ctx_ != nullptr ? ctx_->systems.sound : nullptr;
-    if (sound != nullptr && audioPreviewVoice_ != ISoundService::kInvalidVoiceHandle) {
-        sound->Stop(audioPreviewVoice_);
-    }
-    audioPreviewVoice_ = ISoundService::kInvalidVoiceHandle;
-}
-
 void EditorScene::AssignScriptAsset(EntityId entityId, const std::filesystem::path& path,
                                     std::optional<size_t> scriptIndex) {
     WorldEntity* entity = world_.Find(entityId);
