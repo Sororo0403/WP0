@@ -134,6 +134,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Rendering exceeded its refactored complexity ceiling."
 }
 
+$assetDiscoveryLizardReport =
+    Join-Path $reportDirectory "lizard-editor-asset-discovery-final.txt"
+& lizard "editor/src/EditorSceneAssetDiscovery.cpp" -l cpp -t 1 -C 18 -L 33 -w -i 0 `
+    -o $assetDiscoveryLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene asset discovery exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -191,4 +199,5 @@ Write-Output "EditorScene Panels Lizard regressions: 0"
 Write-Output "EditorScene main menu Lizard regressions: 0"
 Write-Output "EditorScene Update Lizard regressions: 0"
 Write-Output "EditorScene Rendering Lizard regressions: 0"
+Write-Output "EditorScene asset discovery Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

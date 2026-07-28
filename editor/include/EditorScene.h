@@ -238,6 +238,13 @@ private:
                                           std::string& assetPath,
                                           std::filesystem::path& physicalPath);
     void RefreshAssetBrowser();
+    void ResetAssetBrowserCache();
+    void RefreshSceneAssetList();
+    std::filesystem::path ResolveAssetBrowserDirectory();
+    void RefreshAssetBrowserEntries(const std::filesystem::path& currentDirectory);
+    void RefreshProjectAssetLists();
+    void AddProjectAsset(const std::filesystem::path& physicalPath,
+                         const std::filesystem::path& relativePath);
     void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
     void DrawAssetBrowserBreadcrumbs();
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,

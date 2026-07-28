@@ -51,6 +51,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorScenePersistence.cpp`: Scene の New/Open/Save、履歴、ファイルダイアログ
 - `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator、Audio
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
+- `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
@@ -122,6 +123,12 @@ Previewリソースへ分割して専用ファイルへ移した。`Update` は
 `SubmitRenderMesh` は90 NLOC / CCN 22から26 NLOC / CCN 6へ縮小した。
 `EditorScene.cpp` は2,039行となり、描画処理には CCN 21 / 関数長45の
 回帰上限を設定している。
+
+Asset Browser の更新処理はキャッシュ初期化、Scene一覧、現在フォルダー、
+全Asset一覧、種類別分類へ分け、走査処理を専用ファイルへ移した。
+`RefreshAssetBrowser` は115 NLOC / CCN 47から11 NLOC / CCN 3へ縮小し、
+`EditorScene.cpp` は1,902行となった。Asset走査処理には
+CCN 18 / 関数長33の回帰上限を設定している。
 
 ## 初回結果
 
