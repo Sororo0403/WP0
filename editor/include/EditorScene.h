@@ -32,6 +32,7 @@
 struct ImVec2;
 class ModelManager;
 struct Model;
+struct Sprite;
 struct PlayerPackageRequest;
 struct ProjectDescriptor;
 struct SceneLighting;
@@ -391,6 +392,19 @@ private:
     void HandleGameUiCancel(bool canNavigateUi);
     void DrawGameUiDropdownPopup(int width, int height);
     void DrawGameUiVisuals(int width, int height, EntityId hoveredButton, bool submitHeld);
+    void PreserveGameUiImageAspect(Sprite& sprite, const ImageComponent& image,
+                                   TextureHandle texture) const;
+    void ApplyGameUiImageFill(Sprite& sprite, const ImageComponent& image) const;
+    DirectX::XMFLOAT4 UpdateGameUiButtonColor(const WorldEntity& entity,
+                                              bool groupInteractable,
+                                              EntityId hoveredButton, bool submitHeld);
+    void DrawGameUiToggle(const WorldEntity& entity, const Sprite& sprite, float groupAlpha);
+    void DrawGameUiSlider(const WorldEntity& entity, const Sprite& sliderTrack, float scale,
+                          float groupAlpha, bool groupInteractable);
+    std::string ResolveGameUiDisplayText(const WorldEntity& entity) const;
+    void DrawGameUiText(const WorldEntity& entity, float scale,
+                        const DirectX::XMFLOAT2& canvasOrigin,
+                        const DirectX::XMFLOAT2& referenceResolution, float groupAlpha);
     bool NavigateGameUiDirection(
         const std::vector<EntityId>& selectableButtons,
         const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters,

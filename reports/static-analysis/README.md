@@ -80,6 +80,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneRendering.cpp`: 描画リソース解決、メッシュ送信、Scene Grid
 - `EditorSceneUpdate.cpp`: シミュレーションとViewリソースのフレーム更新
 - `EditorSceneGameUiInteraction.cpp`: Game UIの入力、選択、Control操作、Popup描画
+- `EditorSceneGameUiVisuals.cpp`: Game UIの画像、文字、Control固有表現の描画
 - `EditorSceneViewportNavigation.cpp`: Scene Viewのカメラ操作、フォーカス、位置合わせ
 - `EditorSceneViewportSelection.cpp`: Scene Viewのコンポーネント選択、Mesh Raycast
 - `internal/EditorSceneGameUiUtils.h`: Canvas配置、UI矩形、描画順の共有計算
@@ -101,10 +102,14 @@ Game UI の表示ループも独立させ、`DrawGameUi` は
 529 NLOC / CCN 249まで縮小した。続いて入力収集、選択・Navigation、
 Button・Slider・Dropdown・InputField操作、Popup描画を
 `EditorSceneGameUiInteraction.cpp` へ分離し、`DrawGameUi` を
-50 NLOC / CCN 13まで縮小した。Gizmo はカメラ・ライト・音響ガイドと
+50 NLOC / CCN 13まで縮小した。さらに画像のAspect・Fill、Button色遷移、
+Toggle、Slider、Text描画を `EditorSceneGameUiVisuals.cpp` へ分離し、
+`DrawGameUiVisuals` を276 NLOC / CCN 81から64 NLOC / CCN 12へ縮小した。
+Gizmo はカメラ・ライト・音響ガイドと
 物理形状を分離し、統括関数を 361 NLOC / CCN 101 から
 121 NLOC / CCN 48へ縮小した。現在の回帰上限はGame UI描画が
-CCN 81 / 関数長278、Game UI操作が CCN 32 / 関数長70、
+CCN 43 / 関数長116、Game UI固有表現が CCN 20 / 関数長61、
+Game UI操作が CCN 32 / 関数長70、
 Gizmo 群が CCN 48 / 関数長148である。
 
 Game UI編集処理は専用ファイルへ分離し、Canvas配置・UI矩形計算を共通

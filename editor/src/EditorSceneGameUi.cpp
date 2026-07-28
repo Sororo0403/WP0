@@ -230,19 +230,7 @@ bool EditorScene::NavigateGameUiDirection(
 
 void EditorScene::DrawGameUiVisuals(int width, int height, EntityId hoveredButton,
                                     bool submitHeld) {
-    TextRenderer& textRenderer = *ctx_->rendering.text;
     SpriteRenderer& spriteRenderer = *ctx_->rendering.spriteRenderer;
-    const auto resolveCanvasLayout = [&](const WorldEntity& entity, float& scale,
-                                         DirectX::XMFLOAT2& origin,
-                                         DirectX::XMFLOAT2& referenceResolution) {
-        const CanvasComponent* canvas = FindEnabledCanvas(world_, entity);
-        if (canvas == nullptr) {
-            return false;
-        }
-        CalculateCanvasLayout(*canvas, static_cast<float>(width), static_cast<float>(height), 0.0f,
-                              0.0f, scale, origin, referenceResolution);
-        return true;
-    };
     const std::vector<OrderedUiEntity> orderedUiEntities = GetOrderedUiEntities(world_);
     spriteRenderer.UpdateProjection(width, height);
     spriteRenderer.PreDraw(true);
@@ -257,7 +245,8 @@ void EditorScene::DrawGameUiVisuals(int width, int height, EntityId hoveredButto
         float scale = 1.0f;
         DirectX::XMFLOAT2 canvasOrigin{};
         DirectX::XMFLOAT2 referenceResolution{};
-        if (!resolveCanvasLayout(entity, scale, canvasOrigin, referenceResolution)) {
+        if (!TryCalculateRuntimeGameUiCanvasLayout(entity, width, height, scale, canvasOrigin,
+                                                   referenceResolution)) {
             continue;
         }
         const UiGroupState groupState = GetUiGroupState(world_, entity);
@@ -281,94 +270,11 @@ void EditorScene::DrawGameUiVisuals(int width, int height, EntityId hoveredButto
                 image.size.x * scale,
                 image.size.y * scale,
             };
-            if (image.preserveAspect && texture.IsValid() && ctx_->rendering.texture != nullptr &&
-                ctx_->rendering.texture->IsValidTexture(texture)) {
-                const float textureWidth =
-                    static_cast<float>(ctx_->rendering.texture->GetWidth(texture));
-                const float textureHeight =
-                    static_cast<float>(ctx_->rendering.texture->GetHeight(texture));
-                if (textureWidth > 0.0f && textureHeight > 0.0f && sprite.size.x > 0.0f &&
-                    sprite.size.y > 0.0f) {
-                    const DirectX::XMFLOAT2 availableSize = sprite.size;
-                    const float textureAspect = textureWidth / textureHeight;
-                    const float availableAspect = availableSize.x / availableSize.y;
-                    if (availableAspect > textureAspect) {
-                        sprite.size.x = availableSize.y * textureAspect;
-                    } else {
-                        sprite.size.y = availableSize.x / textureAspect;
-                    }
-                    sprite.position.x += (availableSize.x - sprite.size.x) * image.pivot.x;
-                    sprite.position.y += (availableSize.y - sprite.size.y) * image.pivot.y;
-                }
-            }
+            PreserveGameUiImageAspect(sprite, image, texture);
             const Sprite sliderTrack = sprite;
-            if (image.type == ImageType::Filled) {
-                const float fillAmount = std::clamp(image.fillAmount, 0.0f, 1.0f);
-                if (image.fillMethod == ImageFillMethod::Horizontal) {
-                    const float fullWidth = sprite.size.x;
-                    const float fullUvWidth = sprite.uvSize.x;
-                    sprite.size.x = fullWidth * fillAmount;
-                    sprite.uvSize.x = fullUvWidth * fillAmount;
-                    if (image.fillReverse) {
-                        sprite.position.x += fullWidth * (1.0f - fillAmount);
-                        sprite.uvLeftTop.x += fullUvWidth * (1.0f - fillAmount);
-                    }
-                } else {
-                    const float fullHeight = sprite.size.y;
-                    const float fullUvHeight = sprite.uvSize.y;
-                    sprite.size.y = fullHeight * fillAmount;
-                    sprite.uvSize.y = fullUvHeight * fillAmount;
-                    if (!image.fillReverse) {
-                        sprite.position.y += fullHeight * (1.0f - fillAmount);
-                        sprite.uvLeftTop.y += fullUvHeight * (1.0f - fillAmount);
-                    }
-                }
-            }
-            DirectX::XMFLOAT4 stateColor{1.0f, 1.0f, 1.0f, 1.0f};
-            if (entity.button && entity.button->enabled) {
-                const ButtonComponent& button = *entity.button;
-                const bool interactable = button.interactable && groupState.interactable;
-                DirectX::XMFLOAT4 targetColor =
-                    interactable ? button.normalColor : button.disabledColor;
-                if (interactable && (entity.id == hoveredButton || entity.id == focusedButton_)) {
-                    const bool pointerPressed = entity.id == hoveredButton &&
-                                                entity.id == pressedButton_ &&
-                                                ImGui::IsMouseDown(ImGuiMouseButton_Left);
-                    const bool navigationPressed = entity.id == focusedButton_ && submitHeld;
-                    targetColor = pointerPressed || navigationPressed ? button.pressedColor
-                                                                      : button.hoveredColor;
-                }
-                ButtonColorTransition& transition = buttonColorTransitions_[entity.id];
-                const auto colorsEqual = [](const DirectX::XMFLOAT4& lhs,
-                                            const DirectX::XMFLOAT4& rhs) {
-                    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
-                };
-                if (!transition.initialized) {
-                    transition.current = targetColor;
-                    transition.start = targetColor;
-                    transition.target = targetColor;
-                    transition.initialized = true;
-                } else if (!colorsEqual(transition.target, targetColor)) {
-                    transition.start = transition.current;
-                    transition.target = targetColor;
-                    transition.elapsed = 0.0f;
-                }
-                if (button.fadeDuration <= 0.0f) {
-                    transition.current = targetColor;
-                } else if (!colorsEqual(transition.current, transition.target)) {
-                    const float deltaTime = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.1f);
-                    transition.elapsed += deltaTime;
-                    const float amount =
-                        std::clamp(transition.elapsed / button.fadeDuration, 0.0f, 1.0f);
-                    transition.current = {
-                        std::lerp(transition.start.x, transition.target.x, amount),
-                        std::lerp(transition.start.y, transition.target.y, amount),
-                        std::lerp(transition.start.z, transition.target.z, amount),
-                        std::lerp(transition.start.w, transition.target.w, amount),
-                    };
-                }
-                stateColor = transition.current;
-            }
+            ApplyGameUiImageFill(sprite, image);
+            const DirectX::XMFLOAT4 stateColor =
+                UpdateGameUiButtonColor(entity, groupState.interactable, hoveredButton, submitHeld);
             sprite.color = {
                 image.color.x * stateColor.x,
                 image.color.y * stateColor.y,
@@ -377,132 +283,13 @@ void EditorScene::DrawGameUiVisuals(int width, int height, EntityId hoveredButto
             };
             sprite.textureId = texture.IsValid() ? texture.Get() : kInvalidResourceId;
             spriteRenderer.Draw(sprite);
-            if (entity.toggle && entity.toggle->enabled && entity.toggle->isOn) {
-                const ToggleComponent& toggle = *entity.toggle;
-                Sprite checkmark{};
-                checkmark.size = {
-                    sprite.size.x * toggle.checkmarkScale,
-                    sprite.size.y * toggle.checkmarkScale,
-                };
-                checkmark.position = {
-                    sprite.position.x + (sprite.size.x - checkmark.size.x) * 0.5f,
-                    sprite.position.y + (sprite.size.y - checkmark.size.y) * 0.5f,
-                };
-                checkmark.color = toggle.checkmarkColor;
-                checkmark.color.w *= groupState.alpha;
-                checkmark.textureId = kInvalidResourceId;
-                spriteRenderer.Draw(checkmark);
-            }
-            if (entity.slider && entity.slider->enabled) {
-                const SliderComponent& slider = *entity.slider;
-                const float normalized = std::clamp((slider.value - slider.minValue) /
-                                                        (slider.maxValue - slider.minValue),
-                                                    0.0f, 1.0f);
-                const float interactionAlpha =
-                    slider.interactable && groupState.interactable ? 1.0f : 0.5f;
-                Sprite fill = sliderTrack;
-                fill.textureId = kInvalidResourceId;
-                fill.color = slider.fillColor;
-                fill.color.w *= groupState.alpha * interactionAlpha;
-                if (slider.direction == SliderDirection::LeftToRight ||
-                    slider.direction == SliderDirection::RightToLeft) {
-                    const float fullWidth = fill.size.x;
-                    fill.size.x *= normalized;
-                    if (slider.direction == SliderDirection::RightToLeft) {
-                        fill.position.x += fullWidth - fill.size.x;
-                    }
-                } else {
-                    const float fullHeight = fill.size.y;
-                    fill.size.y *= normalized;
-                    if (slider.direction == SliderDirection::BottomToTop) {
-                        fill.position.y += fullHeight - fill.size.y;
-                    }
-                }
-                if (fill.size.x > 0.0f && fill.size.y > 0.0f) {
-                    spriteRenderer.Draw(fill);
-                }
-
-                Sprite handle{};
-                const float handleSize = slider.handleSize * scale;
-                handle.size = {handleSize, handleSize};
-                if (slider.direction == SliderDirection::LeftToRight ||
-                    slider.direction == SliderDirection::RightToLeft) {
-                    float position = normalized;
-                    if (slider.direction == SliderDirection::RightToLeft) {
-                        position = 1.0f - position;
-                    }
-                    handle.position = {
-                        sliderTrack.position.x + sliderTrack.size.x * position - handleSize * 0.5f,
-                        sliderTrack.position.y + (sliderTrack.size.y - handleSize) * 0.5f,
-                    };
-                } else {
-                    float position = normalized;
-                    if (slider.direction == SliderDirection::BottomToTop) {
-                        position = 1.0f - position;
-                    }
-                    handle.position = {
-                        sliderTrack.position.x + (sliderTrack.size.x - handleSize) * 0.5f,
-                        sliderTrack.position.y + sliderTrack.size.y * position - handleSize * 0.5f,
-                    };
-                }
-                handle.color = slider.handleColor;
-                handle.color.w *= groupState.alpha * interactionAlpha;
-                handle.textureId = kInvalidResourceId;
-                if (handleSize > 0.0f) {
-                    spriteRenderer.Draw(handle);
-                }
-            }
+            DrawGameUiToggle(entity, sprite, groupState.alpha);
+            DrawGameUiSlider(entity, sliderTrack, scale, groupState.alpha,
+                             groupState.interactable);
         }
         if (!drawsText) {
             continue;
         }
-        const TextComponent& text = *entity.text;
-        std::string displayText = text.text;
-        if (entity.inputField && entity.inputField->enabled) {
-            const InputFieldComponent& inputField = *entity.inputField;
-            if (inputField.text.empty()) {
-                displayText =
-                    entity.id == activeInputField_ ? std::string{} : inputField.placeholder;
-            } else if (inputField.contentType == InputFieldContentType::Password) {
-                displayText.assign(CountUtf8Codepoints(inputField.text), '*');
-            } else {
-                displayText = inputField.text;
-            }
-            if (entity.id == activeInputField_) {
-                displayText.push_back('|');
-            }
-        } else if (entity.dropdown && entity.dropdown->enabled &&
-                   !entity.dropdown->options.empty() && entity.dropdown->value >= 0 &&
-                   static_cast<size_t>(entity.dropdown->value) < entity.dropdown->options.size()) {
-            displayText = entity.dropdown->options[static_cast<size_t>(entity.dropdown->value)];
-        }
-        TextStyle style{};
-        if (const auto loadedFont = loadedFonts_.find(text.fontPath);
-            loadedFont != loadedFonts_.end()) {
-            style.font = loadedFont->second;
-        }
-        style.pixelSize = text.fontSize * scale;
-        style.lineSpacing = text.lineSpacing * scale;
-        style.wrapWidth = text.wrapWidth * scale;
-        style.horizontalAlignment =
-            text.alignment == TextAlignment::Center  ? TextHorizontalAlignment::Center
-            : text.alignment == TextAlignment::Right ? TextHorizontalAlignment::Right
-                                                     : TextHorizontalAlignment::Left;
-        style.color = text.color;
-        style.color.w *= groupState.alpha;
-        const DirectX::XMFLOAT2 anchor = GetUiAnchorChoice(text.anchor).factor;
-        DirectX::XMFLOAT2 position{
-            canvasOrigin.x + (referenceResolution.x * anchor.x + text.position.x) * scale,
-            canvasOrigin.y + (referenceResolution.y * anchor.y + text.position.y) * scale,
-        };
-        if (text.alignment != TextAlignment::Left || anchor.y > 0.0f) {
-            const TextLayoutMetrics metrics = textRenderer.MeasureText(displayText, style);
-            if (text.alignment != TextAlignment::Left) {
-                position.x -= text.alignment == TextAlignment::Center ? metrics.size.x * 0.5f
-                                                                      : metrics.size.x;
-            }
-            position.y -= metrics.size.y * anchor.y;
-        }
-        textRenderer.DrawText(displayText, position, style);
+        DrawGameUiText(entity, scale, canvasOrigin, referenceResolution, groupState.alpha);
     }
 }
