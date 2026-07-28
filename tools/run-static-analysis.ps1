@@ -198,6 +198,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Lighting exceeded its refactored complexity ceiling."
 }
 
+$playerPreviewLizardReport =
+    Join-Path $reportDirectory "lizard-editor-player-preview-final.txt"
+& lizard "editor/src/EditorScenePlayerPreview.cpp" -l cpp -t 1 -C 8 -L 19 -w -i 0 `
+    -o $playerPreviewLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Player Preview exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -263,4 +271,5 @@ Write-Output "EditorScene Prefab saving Lizard regressions: 0"
 Write-Output "EditorScene Player build Lizard regressions: 0"
 Write-Output "EditorScene Asset Preview Lizard regressions: 0"
 Write-Output "EditorScene Lighting Lizard regressions: 0"
+Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

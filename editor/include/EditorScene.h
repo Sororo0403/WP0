@@ -85,6 +85,10 @@ private:
     void DrawRuntimeControls();
     void DrawEditorTitle();
     bool LaunchPlayerPreview();
+    bool CanLaunchPlayerPreview();
+    bool ValidatePlayerPreviewProject();
+    bool TryLocateEditorExecutable(std::filesystem::path& executable);
+    bool StartPlayerPreviewProcess(const std::filesystem::path& executable);
     bool BuildPlayerPackage(std::filesystem::path* destination = nullptr);
     bool CanBuildPlayerPackage();
     bool TryLoadPlayerBuildProject(ProjectDescriptor& project, std::string& error);

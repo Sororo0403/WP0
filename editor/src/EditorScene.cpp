@@ -287,56 +287,6 @@ void EditorScene::OnFilesDropped(std::span<const std::filesystem::path> files, i
     ImportAssetFiles(std::vector<std::filesystem::path>(files.begin(), files.end()));
 }
 
-bool EditorScene::LaunchPlayerPreview() {
-    if (IsInPlayMode()) {
-        status_ = "Stop Play Mode before running the Player Preview.";
-        return false;
-    }
-    if (dirty_) {
-        status_ = "Save the scene before running the Player Preview.";
-        return false;
-    }
-    if (playerSettingsDirty_ || physicsSettingsDirty_ || inputSettingsDirty_) {
-        status_ = "Save Project Settings before running the Player Preview.";
-        return false;
-    }
-    if (scriptBuildInProgress_ || scriptBuildPending_) {
-        status_ = "Wait for Project Script compilation before running the Player Preview.";
-        return false;
-    }
-    ProjectDescriptor project;
-    std::string validationError;
-    if (!ProjectDescriptor::Load(projectRoot_, project, validationError) ||
-        !PlayerProjectValidator::Validate(project, validationError)) {
-        status_ = "Could not run Player Preview: " + validationError;
-        return false;
-    }
-    std::array<wchar_t, 32768> executableBuffer{};
-    const DWORD executableLength = GetModuleFileNameW(nullptr, executableBuffer.data(),
-                                                      static_cast<DWORD>(executableBuffer.size()));
-    if (executableLength == 0u || executableLength >= executableBuffer.size()) {
-        status_ = "Could not locate the Editor executable.";
-        return false;
-    }
-    const std::filesystem::path executable(std::wstring(executableBuffer.data(), executableLength));
-    std::wstring command =
-        L"\"" + executable.wstring() + L"\" --player --project \"" + projectRoot_.wstring() + L"\"";
-    std::vector<wchar_t> mutableCommand(command.begin(), command.end());
-    mutableCommand.push_back(L'\0');
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process{};
-    if (!CreateProcessW(executable.c_str(), mutableCommand.data(), nullptr, nullptr, FALSE, 0u,
-                        nullptr, projectRoot_.c_str(), &startup, &process)) {
-        status_ = "Could not launch the Player Preview.";
-        return false;
-    }
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
-    status_ = "Launched Player Preview.";
-    return true;
-}
-
 bool EditorScene::LaunchPackagedPlayer(const std::filesystem::path& package) {
     const std::filesystem::path executable = package / L"Game.exe";
     std::error_code filesystemError;

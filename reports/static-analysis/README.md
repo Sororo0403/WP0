@@ -72,6 +72,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
 - `EditorSceneProjectSettings.cpp`: General、Player、Physics、Input設定
 - `EditorScenePlayerBuild.cpp`: Player構築の検証、出力設定、Package生成
+- `EditorScenePlayerPreview.cpp`: Preview起動条件、Project検証、Process起動
 - `EditorSceneRendering.cpp`: 描画リソース解決、メッシュ送信、Scene Grid
 - `EditorSceneUpdate.cpp`: シミュレーションとViewリソースのフレーム更新
 - `EditorSceneViewportNavigation.cpp`: Scene Viewのカメラ操作、フォーカス、位置合わせ
@@ -177,6 +178,12 @@ Lighting送信は有効性とWorld変換の解決、Directional、Point、Spot�
 分割して専用ファイルへ移した。`SubmitLighting` は
 52 NLOC / CCN 14から26 NLOC / CCN 6へ縮小し、`EditorScene.cpp` は
 1,206行となった。Lighting処理には CCN 7 / 関数長26の回帰上限を
+設定している。
+
+Player Preview起動は起動可否、Project検証、Editor実行ファイル解決、
+プロセス起動へ分割して専用ファイルへ移した。`LaunchPlayerPreview` は
+49 NLOC / CCN 13から11 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
+1,156行となった。Player Previewには CCN 8 / 関数長19の回帰上限を
 設定している。
 
 ## 初回結果
