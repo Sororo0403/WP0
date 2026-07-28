@@ -60,6 +60,9 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneInspectorUi.cpp`: Canvas、Event System
 - `EditorSceneInspectorUiGraphics.cpp`: Text、Image
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
+- `EditorSceneGameUi.cpp`: Game View のUI入力、描画、編集
+- `EditorSceneGizmos.cpp`: Scene View のコンポーネント表示、選択枠、Gizmo
+- `internal/EditorSceneViewportUtils.h`: Ray、投影、モデル境界などの共有計算
 
 元の実装ファイルは 14,090 行から約 6,700 行まで縮小した。さらに
 3,500 行規模だった Inspector は、最大 1,010 行の7ファイルへ分割した。
@@ -68,6 +71,13 @@ Script プロパティの統括処理は 396 NLOC / CCN 113 から
 18 NLOC / CCN 6 へ縮小した。Inspector 群には新しい上限
 CCN 66 / 関数長 272 を解析スクリプトで固定している。公開 API と保存形式は
 変更していない。
+
+その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
+Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。
+Game UI の表示ループも独立させ、`DrawGameUi` は
+891 NLOC / CCN 368 から 633 NLOC / CCN 289 へ縮小した。
+Game UI には CCN 289 / 関数長643、Gizmo 群には CCN 101 / 関数長367の
+回帰上限を追加している。
 
 ## 初回結果
 

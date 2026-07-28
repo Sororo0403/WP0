@@ -256,6 +256,7 @@ private:
     void BuildEditorOverlayScene();
     [[nodiscard]] bool DrawGameUi(int width, int height,
                                   bool gameCameraAvailable);
+    void DrawGameUiVisuals(int width, int height, EntityId hoveredButton, bool submitHeld);
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();

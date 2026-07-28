@@ -70,6 +70,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Inspector exceeded its refactored complexity ceiling."
 }
 
+$gameUiLizardReport =
+    Join-Path $reportDirectory "lizard-editor-game-ui-final.txt"
+& lizard "editor/src/EditorSceneGameUi.cpp" -l cpp -t 1 -C 289 -L 643 -w -i 0 `
+    -o $gameUiLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Game UI exceeded its refactored complexity ceiling."
+}
+
+$gizmoLizardReport =
+    Join-Path $reportDirectory "lizard-editor-gizmos-final.txt"
+& lizard "editor/src/EditorSceneGizmos.cpp" -l cpp -t 1 -C 101 -L 367 -w -i 0 `
+    -o $gizmoLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Gizmos exceeded their refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -119,4 +135,6 @@ try {
 Write-Output "Lizard warnings: 0"
 Write-Output "WorldSerializer Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"
+Write-Output "EditorScene Game UI Lizard regressions: 0"
+Write-Output "EditorScene Gizmo Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"
