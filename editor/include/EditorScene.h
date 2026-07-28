@@ -319,6 +319,10 @@ private:
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
     bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
+    EntityId FindClosestSceneComponent(const ImVec2& imageMin, const ImVec2& imageMax,
+                                       const ImVec2& mouse) const;
+    bool TryRaycastSceneMesh(const ImVec2& imageMin, const ImVec2& imageMax, EntityId& picked) const;
+    void ApplyScenePick(EntityId picked);
     void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneActiveComponentGuides(const WorldEntity& entity,
                                         const DirectX::XMFLOAT4X4& worldMatrix,

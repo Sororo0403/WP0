@@ -70,6 +70,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneRendering.cpp`: 描画リソース解決、メッシュ送信、Scene Grid
 - `EditorSceneUpdate.cpp`: シミュレーションとViewリソースのフレーム更新
 - `EditorSceneViewportNavigation.cpp`: Scene Viewのカメラ操作、フォーカス、位置合わせ
+- `EditorSceneViewportSelection.cpp`: Scene Viewのコンポーネント選択、Mesh Raycast
 - `internal/EditorSceneGameUiUtils.h`: Canvas配置、UI矩形、描画順の共有計算
 - `internal/EditorSceneViewportUtils.h`: Ray、投影、モデル境界などの共有計算
 
@@ -136,6 +137,12 @@ Scene Viewのカメラ操作は入力状態、カーソル捕捉、回転、キ�
 専用ファイルへ移した。`HandleSceneCameraControls` は
 120 NLOC / CCN 39から13 NLOC / CCN 3へ縮小し、`EditorScene.cpp` は
 1,632行となった。Viewport Navigationには CCN 11 / 関数長50の
+回帰上限を設定している。
+
+Scene Viewの選択処理はコンポーネントアイコン探索、Mesh Raycast、選択反映へ
+分割して専用ファイルへ移した。`PickSceneEntity` は
+92 NLOC / CCN 36から20 NLOC / CCN 7へ縮小し、`EditorScene.cpp` は
+1,539行となった。Viewport Selectionには CCN 13 / 関数長42の
 回帰上限を設定している。
 
 ## 初回結果
