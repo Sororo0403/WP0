@@ -94,6 +94,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Gizmos exceeded their refactored complexity ceiling."
 }
 
+$projectSettingsLizardReport =
+    Join-Path $reportDirectory "lizard-editor-project-settings-final.txt"
+& lizard "editor/src/EditorSceneProjectSettings.cpp" -l cpp -t 1 -C 41 -L 173 -w -i 0 `
+    -o $projectSettingsLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Project Settings exceeded their refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -146,4 +154,5 @@ Write-Output "EditorScene Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
 Write-Output "EditorScene Game UI editing Lizard regressions: 0"
 Write-Output "EditorScene Gizmo Lizard regressions: 0"
+Write-Output "EditorScene Project Settings Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

@@ -134,6 +134,11 @@ private:
     void DrawMaterialOverrideInspector(WorldEntity* entity);
     void DrawConsolePanel();
     void DrawProjectSettingsWindow();
+    void DrawProjectGeneralSettings();
+    void DrawProjectPlayerSettings();
+    void DrawProjectPhysicsSettings();
+    void DrawProjectInputSettings();
+    void DrawInputActionDialogs(Input* input);
     bool SavePhysicsSettings();
     bool SavePlayerSettings();
     bool SaveInputSettings();
