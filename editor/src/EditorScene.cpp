@@ -837,47 +837,6 @@ bool EditorScene::TryNormalizeAudioAssetReference(const std::filesystem::path& p
     return true;
 }
 
-bool EditorScene::InstantiatePrefabAsset(const std::filesystem::path& path, EntityId parent,
-                                         std::optional<DirectX::XMFLOAT3> position) {
-    if (IsInPlayMode()) {
-        status_ = "Stop Play Mode before instantiating a Prefab.";
-        return false;
-    }
-    const std::optional<std::filesystem::path> resolved = ResolveProjectAssetPath(path);
-    std::error_code filesystemError;
-    if (!resolved || !IsPrefabAsset(*resolved) ||
-        !std::filesystem::is_regular_file(*resolved, filesystemError) || filesystemError ||
-        !IsPathWithinRoot(assetRoot_, *resolved)) {
-        status_ = "The Prefab asset is invalid or outside the project assets directory.";
-        return false;
-    }
-    World prefab;
-    std::string error;
-    if (!WorldSerializer::Load(*resolved, prefab, &error)) {
-        status_ = "Prefab load failed: " + error;
-        return false;
-    }
-    const std::string before = WorldSerializer::Serialize(world_);
-    const EntityId selectionBefore = selection_;
-    std::vector<EntityId> roots;
-    if (!world_.InstantiateEntityHierarchies(prefab, parent, roots, &error) || roots.empty()) {
-        status_ = "Prefab instantiate failed: " + error;
-        return false;
-    }
-    if (position && roots.size() == 1u) {
-        if (WorldEntity* root = world_.Find(roots.front())) {
-            root->transform.position = *position;
-        }
-    }
-    hierarchySelection_.clear();
-    hierarchySelection_.insert(roots.begin(), roots.end());
-    selection_ = roots.front();
-    hierarchySelectionAnchor_ = selection_;
-    RecordImmediateEdit("Instantiate Prefab", before, selectionBefore);
-    status_ = "Instantiated Prefab: " + resolved->filename().string();
-    return true;
-}
-
 std::optional<std::filesystem::path> EditorScene::ResolveProjectAssetPath(
     const std::filesystem::path& path) const {
     const std::filesystem::path resolved = AssetManager::ResolvePathStrict(path);

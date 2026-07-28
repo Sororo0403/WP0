@@ -265,6 +265,14 @@ private:
     bool InstantiatePrefabAsset(
         const std::filesystem::path& path, EntityId parent = {},
         std::optional<DirectX::XMFLOAT3> position = std::nullopt);
+    bool TryResolvePrefabAsset(const std::filesystem::path& path,
+                               std::filesystem::path& resolved);
+    bool TryLoadPrefabAsset(const std::filesystem::path& path, World& prefab);
+    bool TryInstantiatePrefabWorld(const World& prefab, EntityId parent,
+                                   std::vector<EntityId>& roots);
+    void PositionInstantiatedPrefab(const std::vector<EntityId>& roots,
+                                    const std::optional<DirectX::XMFLOAT3>& position);
+    void SelectInstantiatedPrefab(const std::vector<EntityId>& roots);
     bool TryNormalizeModelAssetReference(const std::filesystem::path& path,
                                          std::string& assetPath);
     bool TryNormalizeTextureAssetReference(const std::filesystem::path& path,

@@ -49,6 +49,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 14,090 行の単一ファイルから、まず次の責務を分離した。
 
 - `EditorScenePersistence.cpp`: Scene の New/Open/Save、履歴、ファイルダイアログ
+- `EditorScenePrefabInstantiation.cpp`: Prefab検証、読込、Hierarchy生成、配置
 - `EditorScenePrefabSaving.cpp`: 選択階層の抽出、外部参照除去、Prefab保存
 - `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator、Audio
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
@@ -191,6 +192,12 @@ Audio Preview描画は選択同期、再生判定、操作UI、音声読込・�
 分割して専用ファイルへ移した。`DrawAudioAssetPreview` は
 44 NLOC / CCN 13から7 NLOC / CCN 2へ縮小し、`EditorScene.cpp` は
 1,102行となった。Audio Previewには CCN 5 / 関数長18の回帰上限を
+設定している。
+
+Prefab生成はAssetパス検証、Prefab読込、Hierarchy生成、配置、選択反映へ
+分割して専用ファイルへ移した。`InstantiatePrefabAsset` は
+40 NLOC / CCN 13から23 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
+1,061行となった。Prefab生成処理には CCN 6 / 関数長23の回帰上限を
 設定している。
 
 ## 初回結果
