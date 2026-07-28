@@ -60,6 +60,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
 - `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
+- `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
 - `EditorSceneInspectorRendering.cpp`: Camera、Light、Material
@@ -127,6 +128,11 @@ Project Settingsには CCN 41 / 関数長173の回帰上限を設定している
 分割して専用ファイルへ移した。`DrawPanels` は263 NLOC / CCN 66から
 21 NLOC / CCN 6へ縮小し、`EditorScene.cpp` は2,588行となった。
 パネル群には CCN 32 / 関数長131の回帰上限を設定している。
+
+Hierarchyの再帰描画からEntity行、選択、Context Menu、Drag & Dropを
+`EditorSceneHierarchyNode.cpp` へ分離した。`DrawEntityNode` は
+199 NLOC / CCN 77から33 NLOC / CCN 10へ縮小した。Hierarchy本体の
+回帰上限は CCN 39 / 関数長187、Node操作は CCN 27 / 関数長71である。
 
 メインメニューはFile、Build、Edit、View、Runtime操作、タイトル表示へ分割し、
 専用ファイルへ移した。`DrawMainMenu` は186 NLOC / CCN 53から

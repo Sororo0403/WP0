@@ -138,6 +138,15 @@ private:
     void DrawProjectPanel();
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
+    std::vector<EntityId> GetVisibleHierarchyChildren(EntityId id) const;
+    int BuildHierarchyNodeFlags(EntityId id, bool filtering, bool hasChildren) const;
+    bool DrawHierarchyNodeHeader(EntityId id, int flags, bool editing, ImVec2& nodeMin,
+                                 ImVec2& nodeMax);
+    void HandleHierarchyNodeSelection(EntityId id);
+    bool DrawHierarchyEntityContextMenu(EntityId id, bool editing);
+    void DrawHierarchyEntityDragSource(EntityId id, bool editing);
+    void DrawHierarchyEntityDropTarget(EntityId id, bool editing, const ImVec2& nodeMin,
+                                       const ImVec2& nodeMax);
     void DrawInspectorPanel();
     void DrawEntityHeaderAndTransformInspector(
         WorldEntity* entity, const std::vector<EntityId>& inspectedEntities);
