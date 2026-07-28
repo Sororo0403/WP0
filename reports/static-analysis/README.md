@@ -58,6 +58,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneAssetPreview.cpp`: Preview状態、Model読込、Cameraフレーミング
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
+- `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
@@ -206,6 +207,12 @@ Entity Rename dialogはPopup準備、対象検証、入力、Rename確定、Canc
 53 NLOC / CCN 11から18 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
 1,007行となった。Entity Renameには CCN 5 / 関数長18の回帰上限を
 設定している。
+
+Camera Preview描画は対象解決、矩形とCamera準備、RenderSurface描画、
+ImGui Overlay描画へ分割して専用ファイルへ移した。
+`DrawSelectedCameraPreview` は43 NLOC / CCN 11から11 NLOC / CCN 3へ
+縮小し、`EditorScene.cpp` は962行となった。Camera Previewには
+CCN 9 / 関数長18の回帰上限を設定している。
 
 ## 初回結果
 

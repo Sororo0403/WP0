@@ -230,6 +230,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Entity Rename exceeded its refactored complexity ceiling."
 }
 
+$cameraPreviewLizardReport =
+    Join-Path $reportDirectory "lizard-editor-camera-preview-final.txt"
+& lizard "editor/src/EditorSceneCameraPreview.cpp" -l cpp -t 1 -C 9 -L 18 -w -i 0 `
+    -o $cameraPreviewLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Camera Preview exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -299,4 +307,5 @@ Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "EditorScene Audio Preview Lizard regressions: 0"
 Write-Output "EditorScene Prefab instantiation Lizard regressions: 0"
 Write-Output "EditorScene Entity Rename Lizard regressions: 0"
+Write-Output "EditorScene Camera Preview Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

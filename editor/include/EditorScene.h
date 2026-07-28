@@ -377,6 +377,13 @@ private:
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
     bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);
+    const WorldEntity* ResolveSelectedCameraPreviewEntity() const;
+    bool PrepareSelectedCameraPreviewRect(const WorldEntity& entity, const ImVec2& imageMin,
+                                          const ImVec2& imageMax, ImVec2& previewMin,
+                                          ImVec2& previewMax);
+    void RenderSelectedCameraPreview();
+    bool DrawSelectedCameraPreviewOverlay(const WorldEntity& entity, const ImVec2& previewMin,
+                                          const ImVec2& previewMax) const;
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     EntityId FindClosestSceneComponent(const ImVec2& imageMin, const ImVec2& imageMax,
                                        const ImVec2& mouse) const;
