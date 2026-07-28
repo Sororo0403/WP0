@@ -48,6 +48,11 @@ public:
                         int screenY) override;
 
 private:
+    void UpdateEditorSimulation();
+    void UpdateSceneViewResources();
+    void UpdateGameViewResources();
+    void UpdatePreviewResources();
+
     enum class ConsoleSeverity : uint8_t {
         Info,
         Warning,
