@@ -224,59 +224,6 @@ EditorScene::EditorScene(std::filesystem::path projectRoot, std::filesystem::pat
     }
 }
 
-void EditorScene::SubmitLighting(LightingScene& lightingScene) {
-    SceneLighting lighting{};
-    bool directionalAssigned = false;
-    size_t pointLightIndex = 0u;
-    bool spotAssigned = false;
-    for (const WorldEntity& entity : world_.Entities()) {
-        if (!world_.IsActiveInHierarchy(entity.id) || !entity.light || !entity.light->enabled ||
-            entity.light->intensity <= 0.0f) {
-            continue;
-        }
-        DirectX::XMFLOAT4X4 storedWorld{};
-        if (!world_.TryGetWorldMatrix(entity.id, storedWorld)) {
-            continue;
-        }
-        const DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&storedWorld);
-        DirectX::XMVECTOR direction =
-            DirectX::XMVector3TransformNormal(DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), world);
-        if (DirectX::XMVectorGetX(DirectX::XMVector3LengthSq(direction)) <= 1.0e-8f) {
-            continue;
-        }
-        direction = DirectX::XMVector3Normalize(direction);
-        DirectX::XMFLOAT3 storedDirection{};
-        DirectX::XMStoreFloat3(&storedDirection, direction);
-        const LightComponent& component = *entity.light;
-        if (component.type == LightType::Directional && !directionalAssigned) {
-            lighting.keyLightDirection = storedDirection;
-            lighting.keyLightColor = {component.color.x * component.intensity,
-                                      component.color.y * component.intensity,
-                                      component.color.z * component.intensity, 1.0f};
-            directionalAssigned = true;
-        } else if (component.type == LightType::Point &&
-                   pointLightIndex < lighting.pointLights.size()) {
-            PointLight& point = lighting.pointLights[pointLightIndex++];
-            point.positionRange = {storedWorld._41, storedWorld._42, storedWorld._43,
-                                   component.range};
-            point.colorIntensity = {component.color.x, component.color.y, component.color.z,
-                                    component.intensity};
-        } else if (component.type == LightType::Spot && !spotAssigned) {
-            SpotLight& spot = lighting.spotLight;
-            spot.positionRange = {storedWorld._41, storedWorld._42, storedWorld._43,
-                                  component.range};
-            spot.direction = {storedDirection.x, storedDirection.y, storedDirection.z, 0.0f};
-            spot.colorIntensity = {component.color.x, component.color.y, component.color.z,
-                                   component.intensity};
-            spot.angleParams = {std::cos(DirectX::XMConvertToRadians(component.innerAngleDegrees)),
-                                std::cos(DirectX::XMConvertToRadians(component.outerAngleDegrees)),
-                                2.4f, 1.0f};
-            spotAssigned = true;
-        }
-    }
-    lightingScene.SetSceneLighting(lighting);
-}
-
 void EditorScene::Draw() {}
 
 void EditorScene::DrawPostProcessOverlay() {

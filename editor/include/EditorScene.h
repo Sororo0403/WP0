@@ -34,6 +34,7 @@ class ModelManager;
 struct Model;
 struct PlayerPackageRequest;
 struct ProjectDescriptor;
+struct SceneLighting;
 
 class EditorScene final : public BaseScene {
 public:
@@ -58,6 +59,8 @@ private:
     bool InitializeViewSurfaces(const SceneContext& ctx);
     bool InitializeRenderingResources(const SceneContext& ctx);
     void InitializeEditorCameras();
+    bool TryResolveSceneLight(const WorldEntity& entity, DirectX::XMFLOAT4X4& worldMatrix,
+                              DirectX::XMFLOAT3& direction) const;
     void UpdateEditorSimulation();
     void UpdateSceneViewResources();
     void UpdateGameViewResources();
