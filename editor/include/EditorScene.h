@@ -49,6 +49,12 @@ public:
                         int screenY) override;
 
 private:
+    void InitializeInputSettings(const SceneContext& ctx);
+    void InitializeProjectScripts(const SceneContext& ctx);
+    void InitializeDocking(const SceneContext& ctx);
+    bool InitializeViewSurfaces(const SceneContext& ctx);
+    bool InitializeRenderingResources(const SceneContext& ctx);
+    void InitializeEditorCameras();
     void UpdateEditorSimulation();
     void UpdateSceneViewResources();
     void UpdateGameViewResources();

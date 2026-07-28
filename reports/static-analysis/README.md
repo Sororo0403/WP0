@@ -63,6 +63,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
 - `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
+- `EditorSceneInitialization.cpp`: 入力、Script、Surface、描画、Camera初期化
 - `EditorSceneGizmos.cpp`: Scene View のコンポーネント表示、選択枠、Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
@@ -144,6 +145,11 @@ Scene Viewの選択処理はコンポーネントアイコン探索、Mesh Rayca
 92 NLOC / CCN 36から20 NLOC / CCN 7へ縮小し、`EditorScene.cpp` は
 1,539行となった。Viewport Selectionには CCN 13 / 関数長42の
 回帰上限を設定している。
+
+初期化処理は入力設定、Project Script、Docking、RenderSurface、描画リソース、
+Cameraへ分割して専用ファイルへ移した。`Initialize` は
+75 NLOC / CCN 21から16 NLOC / CCN 4へ縮小し、`EditorScene.cpp` は
+1,462行となった。初期化処理には CCN 7 / 関数長22の回帰上限を設定している。
 
 ## 初回結果
 

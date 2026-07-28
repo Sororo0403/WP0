@@ -158,6 +158,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene viewport selection exceeded its refactored complexity ceiling."
 }
 
+$initializationLizardReport =
+    Join-Path $reportDirectory "lizard-editor-initialization-final.txt"
+& lizard "editor/src/EditorSceneInitialization.cpp" -l cpp -t 1 -C 7 -L 22 -w -i 0 `
+    -o $initializationLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene initialization exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -218,4 +226,5 @@ Write-Output "EditorScene Rendering Lizard regressions: 0"
 Write-Output "EditorScene asset discovery Lizard regressions: 0"
 Write-Output "EditorScene viewport navigation Lizard regressions: 0"
 Write-Output "EditorScene viewport selection Lizard regressions: 0"
+Write-Output "EditorScene initialization Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"
