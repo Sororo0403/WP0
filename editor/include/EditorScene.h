@@ -60,6 +60,12 @@ private:
     };
 
     void DrawMainMenu();
+    void DrawFileMenu();
+    void DrawBuildMenu();
+    void DrawEditMenu();
+    void DrawViewMenu();
+    void DrawRuntimeControls();
+    void DrawEditorTitle();
     bool LaunchPlayerPreview();
     bool BuildPlayerPackage(std::filesystem::path* destination = nullptr);
     bool BuildAndRunPlayerPackage();
