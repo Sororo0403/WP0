@@ -53,6 +53,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorScenePrefabSaving.cpp`: 選択階層の抽出、外部参照除去、Prefab保存
 - `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator、Audio
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
+- `EditorSceneEntityRename.cpp`: Rename Popup、入力、確定、Cancel
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
 - `EditorSceneAssetPreview.cpp`: Preview状態、Model読込、Cameraフレーミング
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
@@ -198,6 +199,12 @@ Prefab生成はAssetパス検証、Prefab読込、Hierarchy生成、配置、選
 分割して専用ファイルへ移した。`InstantiatePrefabAsset` は
 40 NLOC / CCN 13から23 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
 1,061行となった。Prefab生成処理には CCN 6 / 関数長23の回帰上限を
+設定している。
+
+Entity Rename dialogはPopup準備、対象検証、入力、Rename確定、Cancelへ
+分割して専用ファイルへ移した。`DrawEntityRenameDialog` は
+53 NLOC / CCN 11から18 NLOC / CCN 5へ縮小し、`EditorScene.cpp` は
+1,007行となった。Entity Renameには CCN 5 / 関数長18の回帰上限を
 設定している。
 
 ## 初回結果

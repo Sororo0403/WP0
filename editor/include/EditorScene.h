@@ -123,6 +123,11 @@ private:
     [[nodiscard]] bool IsInPlayMode() const;
     void DrawUnsavedChangesDialog();
     void DrawEntityRenameDialog();
+    void PrepareEntityRenamePopup();
+    WorldEntity* ResolveEntityRenameTarget();
+    void DrawEntityRenameInput(bool& renameRequested, bool& cancelRequested);
+    void CommitEntityRename(WorldEntity& entity);
+    void CancelEntityRename();
     void DrawDockSpace();
     void DrawPanels();
     void DrawHierarchyAndProjectPanels();

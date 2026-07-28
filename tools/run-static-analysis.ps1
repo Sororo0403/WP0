@@ -222,6 +222,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Prefab instantiation exceeded its refactored complexity ceiling."
 }
 
+$entityRenameLizardReport =
+    Join-Path $reportDirectory "lizard-editor-entity-rename-final.txt"
+& lizard "editor/src/EditorSceneEntityRename.cpp" -l cpp -t 1 -C 5 -L 18 -w -i 0 `
+    -o $entityRenameLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Entity Rename exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -290,4 +298,5 @@ Write-Output "EditorScene Lighting Lizard regressions: 0"
 Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "EditorScene Audio Preview Lizard regressions: 0"
 Write-Output "EditorScene Prefab instantiation Lizard regressions: 0"
+Write-Output "EditorScene Entity Rename Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

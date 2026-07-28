@@ -355,60 +355,6 @@ void EditorScene::DrawUnsavedChangesDialog() {
     ImGui::EndPopup();
 }
 
-void EditorScene::DrawEntityRenameDialog() {
-    if (showEntityRenameDialog_) {
-        ImGui::OpenPopup("Rename Entity");
-        showEntityRenameDialog_ = false;
-        focusEntityRenameInput_ = true;
-    }
-    if (!ImGui::BeginPopupModal("Rename Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        return;
-    }
-    if (IsInPlayMode()) {
-        renameEntity_ = {};
-        ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-        return;
-    }
-    WorldEntity* entity = world_.Find(renameEntity_);
-    if (entity == nullptr) {
-        renameEntity_ = {};
-        ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
-        return;
-    }
-    ImGui::TextDisabled("ID: %s", renameEntity_.ToString().c_str());
-    if (focusEntityRenameInput_) {
-        ImGui::SetKeyboardFocusHere();
-        focusEntityRenameInput_ = false;
-    }
-    ImGui::SetNextItemWidth(320.0f);
-    const bool submitted =
-        ImGui::InputText("##EntityName", renameBuffer_.data(), renameBuffer_.size(),
-                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-    const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
-    if (submitted || ImGui::Button("Rename", ImVec2(100.0f, 0.0f))) {
-        const std::string before = WorldSerializer::Serialize(world_);
-        const EntityId selectionBefore = selection_;
-        entity->name = renameBuffer_.data();
-        if (entity->name.empty()) {
-            entity->name = "Entity";
-        }
-        selection_ = renameEntity_;
-        renameEntity_ = {};
-        RecordImmediateEdit("Rename Entity", before, selectionBefore);
-        status_ = "Renamed the entity.";
-        ImGui::CloseCurrentPopup();
-    } else {
-        ImGui::SameLine();
-        if (cancel || ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
-            renameEntity_ = {};
-            ImGui::CloseCurrentPopup();
-        }
-    }
-    ImGui::EndPopup();
-}
-
 void EditorScene::DrawDockSpace() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const ImGuiID dockspaceId = ImHashStr("LikeEngineEditorDockSpace");
