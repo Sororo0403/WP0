@@ -174,6 +174,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Prefab saving exceeded its refactored complexity ceiling."
 }
 
+$playerBuildLizardReport =
+    Join-Path $reportDirectory "lizard-editor-player-build-final.txt"
+& lizard "editor/src/EditorScenePlayerBuild.cpp" -l cpp -t 1 -C 8 -L 24 -w -i 0 `
+    -o $playerBuildLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Player build exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -236,4 +244,5 @@ Write-Output "EditorScene viewport navigation Lizard regressions: 0"
 Write-Output "EditorScene viewport selection Lizard regressions: 0"
 Write-Output "EditorScene initialization Lizard regressions: 0"
 Write-Output "EditorScene Prefab saving Lizard regressions: 0"
+Write-Output "EditorScene Player build Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

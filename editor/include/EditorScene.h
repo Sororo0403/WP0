@@ -31,6 +31,8 @@
 
 struct ImVec2;
 class ModelManager;
+struct PlayerPackageRequest;
+struct ProjectDescriptor;
 
 class EditorScene final : public BaseScene {
 public:
@@ -80,6 +82,13 @@ private:
     void DrawEditorTitle();
     bool LaunchPlayerPreview();
     bool BuildPlayerPackage(std::filesystem::path* destination = nullptr);
+    bool CanBuildPlayerPackage();
+    bool TryLoadPlayerBuildProject(ProjectDescriptor& project, std::string& error);
+    bool TryLocatePlayerExecutable(std::filesystem::path& executable);
+    PlayerPackageRequest CreatePlayerPackageRequest(
+        const ProjectDescriptor& project, const std::filesystem::path& executable) const;
+    void SetPlayerPackageBuildStatus(const std::filesystem::path& destination,
+                                     const std::string& warning);
     bool BuildAndRunPlayerPackage();
     bool LaunchPackagedPlayer(const std::filesystem::path& package);
     void EnterPlayMode();

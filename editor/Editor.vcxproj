@@ -125,6 +125,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneMainMenu.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScenePanels.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScenePersistence.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScenePlayerBuild.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScenePrefabSaving.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneProjectSettings.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneRendering.cpp" />

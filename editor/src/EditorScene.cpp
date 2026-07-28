@@ -390,61 +390,6 @@ bool EditorScene::LaunchPlayerPreview() {
     return true;
 }
 
-bool EditorScene::BuildPlayerPackage(std::filesystem::path* destination) {
-    if (IsInPlayMode() || dirty_ || playerSettingsDirty_ || physicsSettingsDirty_ ||
-        inputSettingsDirty_) {
-        status_ = "Save the scene and Project Settings before building.";
-        return false;
-    }
-    if (scriptBuildInProgress_ || scriptBuildPending_) {
-        status_ = "Wait for Project Script compilation before building.";
-        return false;
-    }
-    ProjectDescriptor project;
-    std::string error;
-    if (!ProjectDescriptor::Load(projectRoot_, project, error) ||
-        !PlayerProjectValidator::Validate(project, error)) {
-        status_ = "Could not build Player: " + error;
-        return false;
-    }
-    std::array<wchar_t, 32768> executableBuffer{};
-    const DWORD executableLength = GetModuleFileNameW(nullptr, executableBuffer.data(),
-                                                      static_cast<DWORD>(executableBuffer.size()));
-    if (executableLength == 0u || executableLength >= executableBuffer.size()) {
-        status_ = "Could not locate the Player executable.";
-        return false;
-    }
-#ifdef _DEBUG
-    constexpr char configuration[] = "Debug";
-    constexpr wchar_t outputName[] = L"windows-x64-debug";
-#else
-    constexpr char configuration[] = "Release";
-    constexpr wchar_t outputName[] = L"windows-x64";
-#endif
-    const PlayerPackageRequest request{
-        .executable =
-            std::filesystem::path(std::wstring(executableBuffer.data(), executableLength)),
-        .projectRoot = project.root,
-        .manifest = project.manifestPath,
-        .assetRoot = project.assetRoot,
-        .sceneRoot = project.sceneRoot,
-        .destination = project.root / L"build" / outputName,
-        .configuration = configuration,
-    };
-    if (!PlayerPackageBuilder::Build(request, error)) {
-        status_ = "Could not build Player: " + error;
-        return false;
-    }
-    if (destination != nullptr) {
-        *destination = request.destination;
-    }
-    status_ = "Built Player package: " + request.destination.generic_string();
-    if (!error.empty()) {
-        status_ += " Warning: " + error;
-    }
-    return true;
-}
-
 bool EditorScene::LaunchPackagedPlayer(const std::filesystem::path& package) {
     const std::filesystem::path executable = package / L"Game.exe";
     std::error_code filesystemError;
