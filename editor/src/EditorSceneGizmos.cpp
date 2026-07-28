@@ -159,254 +159,8 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2&
             drawList->AddRect({center.x - 6.0f, center.y - 6.0f},
                               {center.x + 6.0f, center.y + 6.0f}, color, 1.0f, 0, 1.8f);
         }
-        if (active || drawPhysicsShapes) {
-            using namespace DirectX;
-            const XMMATRIX world = XMLoadFloat4x4(&worldMatrix);
-            const XMVECTOR origin =
-                XMVectorSet(worldMatrix._41, worldMatrix._42, worldMatrix._43, 1.0f);
-            auto normalizedAxis = [&](float x, float y, float z) {
-                XMVECTOR axis = XMVector3TransformNormal(XMVectorSet(x, y, z, 0.0f), world);
-                return XMVectorGetX(XMVector3LengthSq(axis)) > 1.0e-8f ? XMVector3Normalize(axis)
-                                                                       : XMVectorSet(x, y, z, 0.0f);
-            };
-            const XMVECTOR right = normalizedAxis(1.0f, 0.0f, 0.0f);
-            const XMVECTOR up = normalizedAxis(0.0f, 1.0f, 0.0f);
-            const XMVECTOR forward = normalizedAxis(0.0f, 0.0f, 1.0f);
-            auto worldPoint = [&](float x, float y, float z) {
-                XMFLOAT3 result{};
-                XMStoreFloat3(&result, origin + right * x + up * y + forward * z);
-                return result;
-            };
-
-            if (active && entity.camera) {
-                const CameraComponent& camera = *entity.camera;
-                const float aspect =
-                    static_cast<float>((std::max)(1, gameViewSurface_.GetWidth())) /
-                    static_cast<float>((std::max)(1, gameViewSurface_.GetHeight()));
-                const float nearDepth = camera.nearClip;
-                const float farDepth =
-                    (std::min)(camera.farClip, (std::max)(20.0f, nearDepth + 0.001f));
-                float nearHalfHeight = camera.orthographicHeight * 0.5f;
-                float farHalfHeight = nearHalfHeight;
-                if (camera.projection == CameraProjection::Perspective) {
-                    const float tangent =
-                        std::tan(XMConvertToRadians(camera.fieldOfViewDegrees) * 0.5f);
-                    nearHalfHeight = tangent * nearDepth;
-                    farHalfHeight = tangent * farDepth;
-                }
-                const float nearHalfWidth = nearHalfHeight * aspect;
-                const float farHalfWidth = farHalfHeight * aspect;
-                const std::array<XMFLOAT3, 8> corners = {
-                    worldPoint(-nearHalfWidth, -nearHalfHeight, nearDepth),
-                    worldPoint(nearHalfWidth, -nearHalfHeight, nearDepth),
-                    worldPoint(nearHalfWidth, nearHalfHeight, nearDepth),
-                    worldPoint(-nearHalfWidth, nearHalfHeight, nearDepth),
-                    worldPoint(-farHalfWidth, -farHalfHeight, farDepth),
-                    worldPoint(farHalfWidth, -farHalfHeight, farDepth),
-                    worldPoint(farHalfWidth, farHalfHeight, farDepth),
-                    worldPoint(-farHalfWidth, farHalfHeight, farDepth),
-                };
-                constexpr size_t edges[][2] = {
-                    {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
-                    {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
-                };
-                const ImU32 guideColor =
-                    camera.enabled ? IM_COL32(90, 185, 255, 190) : IM_COL32(90, 185, 255, 80);
-                for (const auto& edge : edges) {
-                    drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor);
-                }
-            }
-
-            if (active && entity.light) {
-                const LightComponent& light = *entity.light;
-                const ImU32 guideColor =
-                    light.enabled ? IM_COL32(255, 215, 80, 190) : IM_COL32(255, 215, 80, 80);
-                const XMFLOAT3 worldOrigin = worldPoint(0.0f, 0.0f, 0.0f);
-                auto drawCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB,
-                                      XMVECTOR circleCenter = DirectX::g_XMZero) {
-                    constexpr int segments = 32;
-                    XMFLOAT3 previous{};
-                    for (int index = 0; index <= segments; ++index) {
-                        const float angle =
-                            XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
-                        XMFLOAT3 point{};
-                        XMStoreFloat3(&point, origin + circleCenter +
-                                                  axisA * (std::cos(angle) * radius) +
-                                                  axisB * (std::sin(angle) * radius));
-                        if (index > 0) {
-                            drawWorldLine(previous, point, guideColor);
-                        }
-                        previous = point;
-                    }
-                };
-                if (light.type == LightType::Directional) {
-                    const XMFLOAT3 tip = worldPoint(0.0f, 0.0f, 3.0f);
-                    drawWorldLine(worldOrigin, tip, guideColor, 1.75f);
-                    drawWorldLine(tip, worldPoint(-0.3f, 0.0f, 2.5f), guideColor, 1.75f);
-                    drawWorldLine(tip, worldPoint(0.3f, 0.0f, 2.5f), guideColor, 1.75f);
-                    drawWorldLine(tip, worldPoint(0.0f, -0.3f, 2.5f), guideColor, 1.75f);
-                    drawWorldLine(tip, worldPoint(0.0f, 0.3f, 2.5f), guideColor, 1.75f);
-                } else if (light.type == LightType::Point) {
-                    drawCircle(light.range, right, up);
-                    drawCircle(light.range, right, forward);
-                    drawCircle(light.range, up, forward);
-                } else {
-                    const float guideAngle = (std::min)(light.outerAngleDegrees, 89.0f);
-                    const float coneRadius = light.range * std::tan(XMConvertToRadians(guideAngle));
-                    const XMVECTOR coneCenter = forward * light.range;
-                    drawCircle(coneRadius, right, up, coneCenter);
-                    for (int index = 0; index < 4; ++index) {
-                        const float angle = XM_PIDIV2 * static_cast<float>(index);
-                        XMFLOAT3 rim{};
-                        XMStoreFloat3(&rim, origin + coneCenter +
-                                                right * (std::cos(angle) * coneRadius) +
-                                                up * (std::sin(angle) * coneRadius));
-                        drawWorldLine(worldOrigin, rim, guideColor);
-                    }
-                }
-            }
-
-            if (active && entity.audioSource && entity.audioSource->spatial) {
-                const AudioSourceComponent& source = *entity.audioSource;
-                const bool sourceEnabled = entityActive && source.enabled;
-                const ImU32 minColor =
-                    sourceEnabled ? IM_COL32(220, 155, 255, 220) : IM_COL32(220, 155, 255, 80);
-                const ImU32 maxColor =
-                    sourceEnabled ? IM_COL32(155, 95, 255, 150) : IM_COL32(155, 95, 255, 60);
-                auto drawRangeCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB,
-                                           ImU32 guideColor, float thickness) {
-                    constexpr int segments = 48;
-                    XMFLOAT3 previous{};
-                    for (int index = 0; index <= segments; ++index) {
-                        const float angle =
-                            XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
-                        XMFLOAT3 point{};
-                        XMStoreFloat3(&point, origin + axisA * (std::cos(angle) * radius) +
-                                                  axisB * (std::sin(angle) * radius));
-                        if (index > 0) {
-                            drawWorldLine(previous, point, guideColor, thickness);
-                        }
-                        previous = point;
-                    }
-                };
-                drawRangeCircle(source.minDistance, right, up, minColor, 1.75f);
-                drawRangeCircle(source.minDistance, right, forward, minColor, 1.75f);
-                drawRangeCircle(source.minDistance, up, forward, minColor, 1.75f);
-                drawRangeCircle(source.maxDistance, right, up, maxColor, 1.25f);
-                drawRangeCircle(source.maxDistance, right, forward, maxColor, 1.25f);
-                drawRangeCircle(source.maxDistance, up, forward, maxColor, 1.25f);
-            }
-
-            if (entity.boxCollider && (active || drawPhysicsShapes)) {
-                OBB collider{};
-                if (TryBuildWorldBoxCollider(world_, entity.id, collider)) {
-                    const XMVECTOR colliderCenter = XMLoadFloat3(&collider.center);
-                    const XMVECTOR colliderRotation = XMLoadFloat4(&collider.rotation);
-                    const XMVECTOR colliderRight =
-                        XMVector3Rotate(g_XMIdentityR0, colliderRotation);
-                    const XMVECTOR colliderUp = XMVector3Rotate(g_XMIdentityR1, colliderRotation);
-                    const XMVECTOR colliderForward =
-                        XMVector3Rotate(g_XMIdentityR2, colliderRotation);
-                    const float halfX = collider.size.x * 0.5f;
-                    const float halfY = collider.size.y * 0.5f;
-                    const float halfZ = collider.size.z * 0.5f;
-                    std::array<XMFLOAT3, 8> corners{};
-                    size_t cornerIndex = 0;
-                    for (int z = -1; z <= 1; z += 2) {
-                        for (int y = -1; y <= 1; y += 2) {
-                            for (int x = -1; x <= 1; x += 2) {
-                                XMStoreFloat3(&corners[cornerIndex++],
-                                              colliderCenter + colliderRight * (halfX * x) +
-                                                  colliderUp * (halfY * y) +
-                                                  colliderForward * (halfZ * z));
-                            }
-                        }
-                    }
-                    constexpr size_t colliderEdges[][2] = {
-                        {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
-                        {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
-                    };
-                    const ImU32 guideColor =
-                        entity.boxCollider->isTrigger
-                            ? (entity.boxCollider->enabled ? IM_COL32(255, 170, 70, 220)
-                                                           : IM_COL32(255, 170, 70, 80))
-                        : (!active && showPhysicsDebug_)
-                            ? PhysicsDebugLayerColor(entity.layer, entity.boxCollider->enabled)
-                            : (entity.boxCollider->enabled ? IM_COL32(80, 230, 130, 210)
-                                                           : IM_COL32(80, 230, 130, 80));
-                    for (const auto& edge : colliderEdges) {
-                        drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor, 1.5f);
-                    }
-                }
-            }
-
-            if (entity.characterController && (active || drawPhysicsShapes)) {
-                CharacterCapsule capsule{};
-                if (TryBuildWorldCharacterCapsule(world_, entity.id, capsule)) {
-                    const ImU32 guideColor =
-                        !active && showPhysicsDebug_
-                            ? PhysicsDebugLayerColor(entity.layer,
-                                                     entity.characterController->enabled)
-                            : (entity.characterController->enabled ? IM_COL32(70, 220, 210, 220)
-                                                                   : IM_COL32(70, 220, 210, 80));
-                    const float segmentHalfHeight =
-                        (std::max)(0.0f, capsule.height * 0.5f - capsule.radius);
-                    auto capsulePoint = [&](float x, float y, float z) {
-                        return XMFLOAT3{capsule.center.x + x, capsule.center.y + y,
-                                        capsule.center.z + z};
-                    };
-                    constexpr int segments = 32;
-                    for (float y : {-segmentHalfHeight, segmentHalfHeight}) {
-                        XMFLOAT3 previous = capsulePoint(capsule.radius, y, 0.0f);
-                        for (int index = 1; index <= segments; ++index) {
-                            const float angle =
-                                XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
-                            const XMFLOAT3 point = capsulePoint(std::cos(angle) * capsule.radius, y,
-                                                                std::sin(angle) * capsule.radius);
-                            drawWorldLine(previous, point, guideColor, 1.5f);
-                            previous = point;
-                        }
-                    }
-                    drawWorldLine(capsulePoint(capsule.radius, -segmentHalfHeight, 0.0f),
-                                  capsulePoint(capsule.radius, segmentHalfHeight, 0.0f), guideColor,
-                                  1.5f);
-                    drawWorldLine(capsulePoint(-capsule.radius, -segmentHalfHeight, 0.0f),
-                                  capsulePoint(-capsule.radius, segmentHalfHeight, 0.0f),
-                                  guideColor, 1.5f);
-                    drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, capsule.radius),
-                                  capsulePoint(0.0f, segmentHalfHeight, capsule.radius), guideColor,
-                                  1.5f);
-                    drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, -capsule.radius),
-                                  capsulePoint(0.0f, segmentHalfHeight, -capsule.radius),
-                                  guideColor, 1.5f);
-                    auto drawCapArc = [&](bool xPlane, bool top) {
-                        const float baseY = top ? segmentHalfHeight : -segmentHalfHeight;
-                        const float angleStart = top ? 0.0f : XM_PI;
-                        XMFLOAT3 previous = xPlane ? capsulePoint(capsule.radius, baseY, 0.0f)
-                                                   : capsulePoint(0.0f, baseY, capsule.radius);
-                        if (!top) {
-                            previous = xPlane ? capsulePoint(-capsule.radius, baseY, 0.0f)
-                                              : capsulePoint(0.0f, baseY, -capsule.radius);
-                        }
-                        for (int index = 1; index <= segments; ++index) {
-                            const float angle = angleStart + XM_PI * static_cast<float>(index) /
-                                                                 static_cast<float>(segments);
-                            const float horizontal = std::cos(angle) * capsule.radius;
-                            const float vertical = std::sin(angle) * capsule.radius;
-                            const XMFLOAT3 point =
-                                xPlane ? capsulePoint(horizontal, baseY + vertical, 0.0f)
-                                       : capsulePoint(0.0f, baseY + vertical, horizontal);
-                            drawWorldLine(previous, point, guideColor, 1.5f);
-                            previous = point;
-                        }
-                    };
-                    drawCapArc(true, true);
-                    drawCapArc(true, false);
-                    drawCapArc(false, true);
-                    drawCapArc(false, false);
-                }
-            }
-        }
+        DrawSceneActiveComponentGuides(entity, worldMatrix, imageMin, imageMax, active);
+        DrawScenePhysicsGizmos(entity, imageMin, imageMax, active, drawPhysicsShapes);
         if (drawPhysicsShapes) {
             std::string layerLabel = physicsSettings_.layerNames[entity.layer];
             if (layerLabel.empty()) {
@@ -419,11 +173,280 @@ void EditorScene::DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2&
                               layerLabel.c_str());
         }
         if (active && (!entity.meshRenderer || !entity.meshRenderer->enabled)) {
-            drawList->AddText({center.x + 14.0f, center.y - ImGui::GetTextLineHeight() * 0.5f},
-                              color, entity.name.c_str());
+            drawList->AddText(
+                {center.x + 14.0f, center.y - ImGui::GetTextLineHeight() * 0.5f}, color,
+                entity.name.c_str());
         }
     }
     drawList->PopClipRect();
+}
+
+void EditorScene::DrawSceneActiveComponentGuides(const WorldEntity& entity,
+                                                 const DirectX::XMFLOAT4X4& worldMatrix,
+                                                 const ImVec2& imageMin, const ImVec2& imageMax,
+                                                 bool active) const {
+    if (!active) {
+        return;
+    }
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const auto drawWorldLine = [&](const DirectX::XMFLOAT3& from, const DirectX::XMFLOAT3& to,
+                                   ImU32 color, float thickness = 1.25f) {
+        ImVec2 screenFrom{};
+        ImVec2 screenTo{};
+        if (ProjectScenePoint(sceneViewCamera_, from, imageMin, imageMax, screenFrom, false) &&
+            ProjectScenePoint(sceneViewCamera_, to, imageMin, imageMax, screenTo, false)) {
+            drawList->AddLine(screenFrom, screenTo, color, thickness);
+        }
+    };
+    using namespace DirectX;
+    const XMMATRIX world = XMLoadFloat4x4(&worldMatrix);
+    const XMVECTOR origin = XMVectorSet(worldMatrix._41, worldMatrix._42, worldMatrix._43, 1.0f);
+    auto normalizedAxis = [&](float x, float y, float z) {
+        XMVECTOR axis = XMVector3TransformNormal(XMVectorSet(x, y, z, 0.0f), world);
+        return XMVectorGetX(XMVector3LengthSq(axis)) > 1.0e-8f ? XMVector3Normalize(axis)
+                                                               : XMVectorSet(x, y, z, 0.0f);
+    };
+    const XMVECTOR right = normalizedAxis(1.0f, 0.0f, 0.0f);
+    const XMVECTOR up = normalizedAxis(0.0f, 1.0f, 0.0f);
+    const XMVECTOR forward = normalizedAxis(0.0f, 0.0f, 1.0f);
+    auto worldPoint = [&](float x, float y, float z) {
+        XMFLOAT3 result{};
+        XMStoreFloat3(&result, origin + right * x + up * y + forward * z);
+        return result;
+    };
+
+    if (entity.camera) {
+        const CameraComponent& camera = *entity.camera;
+        const float aspect = static_cast<float>((std::max)(1, gameViewSurface_.GetWidth())) /
+                             static_cast<float>((std::max)(1, gameViewSurface_.GetHeight()));
+        const float nearDepth = camera.nearClip;
+        const float farDepth = (std::min)(camera.farClip, (std::max)(20.0f, nearDepth + 0.001f));
+        float nearHalfHeight = camera.orthographicHeight * 0.5f;
+        float farHalfHeight = nearHalfHeight;
+        if (camera.projection == CameraProjection::Perspective) {
+            const float tangent = std::tan(XMConvertToRadians(camera.fieldOfViewDegrees) * 0.5f);
+            nearHalfHeight = tangent * nearDepth;
+            farHalfHeight = tangent * farDepth;
+        }
+        const float nearHalfWidth = nearHalfHeight * aspect;
+        const float farHalfWidth = farHalfHeight * aspect;
+        const std::array<XMFLOAT3, 8> corners = {
+            worldPoint(-nearHalfWidth, -nearHalfHeight, nearDepth),
+            worldPoint(nearHalfWidth, -nearHalfHeight, nearDepth),
+            worldPoint(nearHalfWidth, nearHalfHeight, nearDepth),
+            worldPoint(-nearHalfWidth, nearHalfHeight, nearDepth),
+            worldPoint(-farHalfWidth, -farHalfHeight, farDepth),
+            worldPoint(farHalfWidth, -farHalfHeight, farDepth),
+            worldPoint(farHalfWidth, farHalfHeight, farDepth),
+            worldPoint(-farHalfWidth, farHalfHeight, farDepth),
+        };
+        constexpr size_t edges[][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+            {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        };
+        const ImU32 guideColor =
+            camera.enabled ? IM_COL32(90, 185, 255, 190) : IM_COL32(90, 185, 255, 80);
+        for (const auto& edge : edges) {
+            drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor);
+        }
+    }
+
+    if (entity.light) {
+        const LightComponent& light = *entity.light;
+        const ImU32 guideColor =
+            light.enabled ? IM_COL32(255, 215, 80, 190) : IM_COL32(255, 215, 80, 80);
+        const XMFLOAT3 worldOrigin = worldPoint(0.0f, 0.0f, 0.0f);
+        auto drawCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB,
+                              XMVECTOR circleCenter = DirectX::g_XMZero) {
+            constexpr int segments = 32;
+            XMFLOAT3 previous{};
+            for (int index = 0; index <= segments; ++index) {
+                const float angle =
+                    XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
+                XMFLOAT3 point{};
+                XMStoreFloat3(&point, origin + circleCenter + axisA * (std::cos(angle) * radius) +
+                                          axisB * (std::sin(angle) * radius));
+                if (index > 0) {
+                    drawWorldLine(previous, point, guideColor);
+                }
+                previous = point;
+            }
+        };
+        if (light.type == LightType::Directional) {
+            const XMFLOAT3 tip = worldPoint(0.0f, 0.0f, 3.0f);
+            drawWorldLine(worldOrigin, tip, guideColor, 1.75f);
+            drawWorldLine(tip, worldPoint(-0.3f, 0.0f, 2.5f), guideColor, 1.75f);
+            drawWorldLine(tip, worldPoint(0.3f, 0.0f, 2.5f), guideColor, 1.75f);
+            drawWorldLine(tip, worldPoint(0.0f, -0.3f, 2.5f), guideColor, 1.75f);
+            drawWorldLine(tip, worldPoint(0.0f, 0.3f, 2.5f), guideColor, 1.75f);
+        } else if (light.type == LightType::Point) {
+            drawCircle(light.range, right, up);
+            drawCircle(light.range, right, forward);
+            drawCircle(light.range, up, forward);
+        } else {
+            const float guideAngle = (std::min)(light.outerAngleDegrees, 89.0f);
+            const float coneRadius = light.range * std::tan(XMConvertToRadians(guideAngle));
+            const XMVECTOR coneCenter = forward * light.range;
+            drawCircle(coneRadius, right, up, coneCenter);
+            for (int index = 0; index < 4; ++index) {
+                const float angle = XM_PIDIV2 * static_cast<float>(index);
+                XMFLOAT3 rim{};
+                XMStoreFloat3(&rim, origin + coneCenter + right * (std::cos(angle) * coneRadius) +
+                                        up * (std::sin(angle) * coneRadius));
+                drawWorldLine(worldOrigin, rim, guideColor);
+            }
+        }
+    }
+
+    if (entity.audioSource && entity.audioSource->spatial) {
+        const AudioSourceComponent& source = *entity.audioSource;
+        const bool sourceEnabled = world_.IsActiveInHierarchy(entity.id) && source.enabled;
+        const ImU32 minColor =
+            sourceEnabled ? IM_COL32(220, 155, 255, 220) : IM_COL32(220, 155, 255, 80);
+        const ImU32 maxColor =
+            sourceEnabled ? IM_COL32(155, 95, 255, 150) : IM_COL32(155, 95, 255, 60);
+        auto drawRangeCircle = [&](float radius, XMVECTOR axisA, XMVECTOR axisB, ImU32 guideColor,
+                                   float thickness) {
+            constexpr int segments = 48;
+            XMFLOAT3 previous{};
+            for (int index = 0; index <= segments; ++index) {
+                const float angle =
+                    XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
+                XMFLOAT3 point{};
+                XMStoreFloat3(&point, origin + axisA * (std::cos(angle) * radius) +
+                                          axisB * (std::sin(angle) * radius));
+                if (index > 0) {
+                    drawWorldLine(previous, point, guideColor, thickness);
+                }
+                previous = point;
+            }
+        };
+        drawRangeCircle(source.minDistance, right, up, minColor, 1.75f);
+        drawRangeCircle(source.minDistance, right, forward, minColor, 1.75f);
+        drawRangeCircle(source.minDistance, up, forward, minColor, 1.75f);
+        drawRangeCircle(source.maxDistance, right, up, maxColor, 1.25f);
+        drawRangeCircle(source.maxDistance, right, forward, maxColor, 1.25f);
+        drawRangeCircle(source.maxDistance, up, forward, maxColor, 1.25f);
+    }
+}
+
+void EditorScene::DrawScenePhysicsGizmos(const WorldEntity& entity, const ImVec2& imageMin,
+                                         const ImVec2& imageMax, bool active,
+                                         bool drawPhysicsShapes) const {
+    if (!active && !drawPhysicsShapes) {
+        return;
+    }
+    using namespace DirectX;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const auto drawWorldLine = [&](const DirectX::XMFLOAT3& from, const DirectX::XMFLOAT3& to,
+                                   ImU32 color, float thickness = 1.25f) {
+        ImVec2 screenFrom{};
+        ImVec2 screenTo{};
+        if (ProjectScenePoint(sceneViewCamera_, from, imageMin, imageMax, screenFrom, false) &&
+            ProjectScenePoint(sceneViewCamera_, to, imageMin, imageMax, screenTo, false)) {
+            drawList->AddLine(screenFrom, screenTo, color, thickness);
+        }
+    };
+    if (entity.boxCollider && (active || drawPhysicsShapes)) {
+        OBB collider{};
+        if (TryBuildWorldBoxCollider(world_, entity.id, collider)) {
+            const XMVECTOR colliderCenter = XMLoadFloat3(&collider.center);
+            const XMVECTOR colliderRotation = XMLoadFloat4(&collider.rotation);
+            const XMVECTOR colliderRight = XMVector3Rotate(g_XMIdentityR0, colliderRotation);
+            const XMVECTOR colliderUp = XMVector3Rotate(g_XMIdentityR1, colliderRotation);
+            const XMVECTOR colliderForward = XMVector3Rotate(g_XMIdentityR2, colliderRotation);
+            const float halfX = collider.size.x * 0.5f;
+            const float halfY = collider.size.y * 0.5f;
+            const float halfZ = collider.size.z * 0.5f;
+            std::array<XMFLOAT3, 8> corners{};
+            size_t cornerIndex = 0;
+            for (int z = -1; z <= 1; z += 2) {
+                for (int y = -1; y <= 1; y += 2) {
+                    for (int x = -1; x <= 1; x += 2) {
+                        XMStoreFloat3(&corners[cornerIndex++],
+                                      colliderCenter + colliderRight * (halfX * x) +
+                                          colliderUp * (halfY * y) + colliderForward * (halfZ * z));
+                    }
+                }
+            }
+            constexpr size_t colliderEdges[][2] = {
+                {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
+                {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
+            };
+            const ImU32 guideColor =
+                entity.boxCollider->isTrigger
+                    ? (entity.boxCollider->enabled ? IM_COL32(255, 170, 70, 220)
+                                                   : IM_COL32(255, 170, 70, 80))
+                : (!active && showPhysicsDebug_)
+                    ? PhysicsDebugLayerColor(entity.layer, entity.boxCollider->enabled)
+                    : (entity.boxCollider->enabled ? IM_COL32(80, 230, 130, 210)
+                                                   : IM_COL32(80, 230, 130, 80));
+            for (const auto& edge : colliderEdges) {
+                drawWorldLine(corners[edge[0]], corners[edge[1]], guideColor, 1.5f);
+            }
+        }
+    }
+
+    if (entity.characterController && (active || drawPhysicsShapes)) {
+        CharacterCapsule capsule{};
+        if (TryBuildWorldCharacterCapsule(world_, entity.id, capsule)) {
+            const ImU32 guideColor =
+                !active && showPhysicsDebug_
+                    ? PhysicsDebugLayerColor(entity.layer, entity.characterController->enabled)
+                    : (entity.characterController->enabled ? IM_COL32(70, 220, 210, 220)
+                                                           : IM_COL32(70, 220, 210, 80));
+            const float segmentHalfHeight =
+                (std::max)(0.0f, capsule.height * 0.5f - capsule.radius);
+            auto capsulePoint = [&](float x, float y, float z) {
+                return XMFLOAT3{capsule.center.x + x, capsule.center.y + y, capsule.center.z + z};
+            };
+            constexpr int segments = 32;
+            for (float y : {-segmentHalfHeight, segmentHalfHeight}) {
+                XMFLOAT3 previous = capsulePoint(capsule.radius, y, 0.0f);
+                for (int index = 1; index <= segments; ++index) {
+                    const float angle =
+                        XM_2PI * static_cast<float>(index) / static_cast<float>(segments);
+                    const XMFLOAT3 point = capsulePoint(std::cos(angle) * capsule.radius, y,
+                                                        std::sin(angle) * capsule.radius);
+                    drawWorldLine(previous, point, guideColor, 1.5f);
+                    previous = point;
+                }
+            }
+            drawWorldLine(capsulePoint(capsule.radius, -segmentHalfHeight, 0.0f),
+                          capsulePoint(capsule.radius, segmentHalfHeight, 0.0f), guideColor, 1.5f);
+            drawWorldLine(capsulePoint(-capsule.radius, -segmentHalfHeight, 0.0f),
+                          capsulePoint(-capsule.radius, segmentHalfHeight, 0.0f), guideColor, 1.5f);
+            drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, capsule.radius),
+                          capsulePoint(0.0f, segmentHalfHeight, capsule.radius), guideColor, 1.5f);
+            drawWorldLine(capsulePoint(0.0f, -segmentHalfHeight, -capsule.radius),
+                          capsulePoint(0.0f, segmentHalfHeight, -capsule.radius), guideColor, 1.5f);
+            auto drawCapArc = [&](bool xPlane, bool top) {
+                const float baseY = top ? segmentHalfHeight : -segmentHalfHeight;
+                const float angleStart = top ? 0.0f : XM_PI;
+                XMFLOAT3 previous = xPlane ? capsulePoint(capsule.radius, baseY, 0.0f)
+                                           : capsulePoint(0.0f, baseY, capsule.radius);
+                if (!top) {
+                    previous = xPlane ? capsulePoint(-capsule.radius, baseY, 0.0f)
+                                      : capsulePoint(0.0f, baseY, -capsule.radius);
+                }
+                for (int index = 1; index <= segments; ++index) {
+                    const float angle = angleStart + XM_PI * static_cast<float>(index) /
+                                                         static_cast<float>(segments);
+                    const float horizontal = std::cos(angle) * capsule.radius;
+                    const float vertical = std::sin(angle) * capsule.radius;
+                    const XMFLOAT3 point = xPlane
+                                               ? capsulePoint(horizontal, baseY + vertical, 0.0f)
+                                               : capsulePoint(0.0f, baseY + vertical, horizontal);
+                    drawWorldLine(previous, point, guideColor, 1.5f);
+                    previous = point;
+                }
+            };
+            drawCapArc(true, true);
+            drawCapArc(true, false);
+            drawCapArc(false, true);
+            drawCapArc(false, false);
+        }
+    }
 }
 
 void EditorScene::DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const {

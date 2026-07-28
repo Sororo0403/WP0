@@ -257,6 +257,10 @@ private:
     [[nodiscard]] bool DrawGameUi(int width, int height,
                                   bool gameCameraAvailable);
     void DrawGameUiVisuals(int width, int height, EntityId hoveredButton, bool submitHeld);
+    bool NavigateGameUiDirection(
+        const std::vector<EntityId>& selectableButtons,
+        const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters,
+        bool canNavigateUi, bool focusedSlider, bool gameCameraAvailable, bool dropdownOpen);
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();
@@ -265,6 +269,13 @@ private:
     bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);
     void PickSceneEntity(const ImVec2& imageMin, const ImVec2& imageMax, bool imageHovered);
     void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
+    void DrawSceneActiveComponentGuides(const WorldEntity& entity,
+                                        const DirectX::XMFLOAT4X4& worldMatrix,
+                                        const ImVec2& imageMin, const ImVec2& imageMax,
+                                        bool active) const;
+    void DrawScenePhysicsGizmos(const WorldEntity& entity, const ImVec2& imageMin,
+                                const ImVec2& imageMax, bool active,
+                                bool drawPhysicsShapes) const;
     void DrawSceneSelectionOutline(const ImVec2& imageMin, const ImVec2& imageMax) const;
     void DrawSceneGizmoToolbar();
     bool DrawBoxColliderGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
