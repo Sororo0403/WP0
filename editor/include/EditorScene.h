@@ -210,6 +210,12 @@ private:
     void HandleSceneAssetDrop(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleSceneCameraControls(const ImVec2& imageMin, const ImVec2& imageMax,
                                    bool imageHovered);
+    void UpdateSceneCameraNavigationState(bool imageHovered, bool& beginCapture);
+    void ReadSceneCameraPointerDelta(const ImVec2& imageMin, const ImVec2& imageMax,
+                                     bool beginCapture, float& pointerDeltaX,
+                                     float& pointerDeltaY);
+    void RotateSceneCamera(float pointerDeltaX, float pointerDeltaY);
+    void MoveSceneCamera(bool imageHovered, float pointerDeltaX, float pointerDeltaY);
     bool FocusSceneCameraOnSelection();
     bool AlignSelectedCameraToSceneView();
     bool AlignSceneViewToSelectedCamera();

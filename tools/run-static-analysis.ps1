@@ -142,6 +142,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene asset discovery exceeded its refactored complexity ceiling."
 }
 
+$viewportNavigationLizardReport =
+    Join-Path $reportDirectory "lizard-editor-viewport-navigation-final.txt"
+& lizard "editor/src/EditorSceneViewportNavigation.cpp" -l cpp -t 1 -C 11 -L 50 -w -i 0 `
+    -o $viewportNavigationLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene viewport navigation exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -200,4 +208,5 @@ Write-Output "EditorScene main menu Lizard regressions: 0"
 Write-Output "EditorScene Update Lizard regressions: 0"
 Write-Output "EditorScene Rendering Lizard regressions: 0"
 Write-Output "EditorScene asset discovery Lizard regressions: 0"
+Write-Output "EditorScene viewport navigation Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"
