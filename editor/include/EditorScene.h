@@ -94,6 +94,44 @@ private:
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     void DrawInspectorPanel();
+    void DrawEntityHeaderAndTransformInspector(
+        WorldEntity* entity, const std::vector<EntityId>& inspectedEntities);
+    void DrawAddComponentInspector(WorldEntity* entity);
+    void DrawMeshRendererInspector(WorldEntity* entity);
+    void DrawScriptsInspector(WorldEntity* entity);
+    bool DrawScriptEntryInspector(WorldEntity* entity, size_t scriptIndex);
+    void DrawScriptPropertiesInspector(WorldEntity* entity, BehaviorComponent& behavior,
+                                       EntityId selectionBefore);
+    bool DrawScalarScriptPropertyInspector(BehaviorComponent& behavior,
+                                           const ScriptPropertyDefinition& definition,
+                                           EntityId selectionBefore);
+    bool DrawAssetScriptPropertyInspector(WorldEntity* entity,
+                                          BehaviorComponent& behavior,
+                                          const ScriptPropertyDefinition& definition,
+                                          EntityId selectionBefore);
+    bool DrawStringScriptPropertyInspector(BehaviorComponent& behavior,
+                                           const ScriptPropertyDefinition& definition);
+    bool DrawEntityScriptPropertyInspector(BehaviorComponent& behavior,
+                                           const ScriptPropertyDefinition& definition,
+                                           EntityId selectionBefore);
+    void DrawBoxColliderInspector(WorldEntity* entity);
+    void DrawCharacterControllerInspector(WorldEntity* entity);
+    void DrawCameraInspector(WorldEntity* entity);
+    void DrawLightInspector(WorldEntity* entity);
+    void DrawAudioSourceInspector(WorldEntity* entity);
+    void DrawAudioListenerInspector(WorldEntity* entity);
+    void DrawAnimatorInspector(WorldEntity* entity);
+    void DrawCanvasInspector(WorldEntity* entity);
+    void DrawCanvasGroupInspector(WorldEntity* entity);
+    void DrawEventSystemInspector(WorldEntity* entity);
+    void DrawTextInspector(WorldEntity* entity);
+    void DrawImageInspector(WorldEntity* entity);
+    void DrawButtonInspector(WorldEntity* entity);
+    void DrawToggleInspector(WorldEntity* entity);
+    void DrawSliderInspector(WorldEntity* entity);
+    void DrawDropdownInspector(WorldEntity* entity);
+    void DrawInputFieldInspector(WorldEntity* entity);
+    void DrawMaterialOverrideInspector(WorldEntity* entity);
     void DrawConsolePanel();
     void DrawProjectSettingsWindow();
     bool SavePhysicsSettings();

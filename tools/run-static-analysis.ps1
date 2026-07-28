@@ -53,6 +53,23 @@ if ($LASTEXITCODE -ne 0) {
     throw "WorldSerializer exceeded its refactored complexity ceiling."
 }
 
+$inspectorSources = @(
+    "editor/src/EditorSceneInspector.cpp",
+    "editor/src/EditorSceneInspectorMedia.cpp",
+    "editor/src/EditorSceneInspectorPhysics.cpp",
+    "editor/src/EditorSceneInspectorRendering.cpp",
+    "editor/src/EditorSceneInspectorUi.cpp",
+    "editor/src/EditorSceneInspectorUiControls.cpp",
+    "editor/src/EditorSceneInspectorUiGraphics.cpp"
+)
+$inspectorLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-final.txt"
+& lizard @inspectorSources -l cpp -t 1 -C 66 -L 272 -w -i 0 `
+    -o $inspectorLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Inspector exceeded its refactored complexity ceiling."
+}
+
 if (-not (Test-Path -LiteralPath $CppcheckPath)) {
     throw "Cppcheck was not found at '$CppcheckPath'."
 }
@@ -101,4 +118,5 @@ try {
 
 Write-Output "Lizard warnings: 0"
 Write-Output "WorldSerializer Lizard regressions: 0"
+Write-Output "EditorScene Inspector Lizard regressions: 0"
 Write-Output "Cppcheck findings: 0"

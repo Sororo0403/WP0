@@ -53,11 +53,21 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
-- `EditorSceneInspector.cpp`: コンポーネント編集 UI
+- `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
+- `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
+- `EditorSceneInspectorRendering.cpp`: Camera、Light、Material
+- `EditorSceneInspectorMedia.cpp`: Audio、Animator
+- `EditorSceneInspectorUi.cpp`: Canvas、Event System
+- `EditorSceneInspectorUiGraphics.cpp`: Text、Image
+- `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
 
-元の実装ファイルは 14,090 行から 6,677 行まで縮小した。公開 API と
-保存形式は変更していない。次段階では Inspector のコンポーネント別関数化、
-Game UI、Scene Gizmo の分離を進める。
+元の実装ファイルは 14,090 行から約 6,700 行まで縮小した。さらに
+3,500 行規模だった Inspector は、最大 1,010 行の7ファイルへ分割した。
+`DrawInspectorPanel` は 3,360 NLOC / CCN 764 から 40 NLOC / CCN 6、
+Script プロパティの統括処理は 396 NLOC / CCN 113 から
+18 NLOC / CCN 6 へ縮小した。Inspector 群には新しい上限
+CCN 66 / 関数長 272 を解析スクリプトで固定している。公開 API と保存形式は
+変更していない。
 
 ## 初回結果
 
