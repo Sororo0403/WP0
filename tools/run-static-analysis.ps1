@@ -72,10 +72,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $gameUiLizardReport =
     Join-Path $reportDirectory "lizard-editor-game-ui-final.txt"
-& lizard "editor/src/EditorSceneGameUi.cpp" -l cpp -t 1 -C 249 -L 538 -w -i 0 `
+& lizard "editor/src/EditorSceneGameUi.cpp" -l cpp -t 1 -C 81 -L 278 -w -i 0 `
     -o $gameUiLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Game UI exceeded its refactored complexity ceiling."
+}
+
+$gameUiInteractionLizardReport =
+    Join-Path $reportDirectory "lizard-editor-game-ui-interaction-final.txt"
+& lizard "editor/src/EditorSceneGameUiInteraction.cpp" -l cpp -t 1 -C 32 -L 70 -w -i 0 `
+    -o $gameUiInteractionLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Game UI interaction exceeded its refactored complexity ceiling."
 }
 
 $gameUiEditingLizardReport =
@@ -288,6 +296,7 @@ Write-Output "Lizard warnings: 0"
 Write-Output "WorldSerializer Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
+Write-Output "EditorScene Game UI interaction Lizard regressions: 0"
 Write-Output "EditorScene Game UI editing Lizard regressions: 0"
 Write-Output "EditorScene Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Project Settings Lizard regressions: 0"

@@ -350,6 +350,46 @@ private:
     void BuildEditorOverlayScene();
     [[nodiscard]] bool DrawGameUi(int width, int height,
                                   bool gameCameraAvailable);
+    bool PrepareGameUiFrame(int width, int height);
+    bool CanPointAtGameUi(const ImVec2& imageScreenMin, const ImVec2& mouse,
+                          bool uiEventsEnabled) const;
+    DirectX::XMFLOAT2 CalculateGameUiPointer(const ImVec2& imageScreenMin, const ImVec2& mouse,
+                                             int width, int height) const;
+    bool CanNavigateGameUi(const EventSystemComponent* eventSystem, bool uiEventsEnabled) const;
+    bool IsGameUiButtonInteractable(EntityId entity) const;
+    bool IsGameUiSliderInteractable(EntityId entity) const;
+    bool TryCalculateRuntimeGameUiCanvasLayout(
+        const WorldEntity& entity, int width, int height, float& scale,
+        DirectX::XMFLOAT2& origin, DirectX::XMFLOAT2& referenceResolution) const;
+    bool TryCalculateRuntimeGameUiImageRect(const WorldEntity& entity, int width, int height,
+                                            float& left, float& top, float& right,
+                                            float& bottom) const;
+    void SetGameUiSliderValue(WorldEntity& entity, float requestedValue);
+    void SetGameUiSliderValueFromPointer(WorldEntity& entity, int width, int height,
+                                         const DirectX::XMFLOAT2& pointer);
+    void QueueGameUiInputFieldEvent(EntityId entity, const std::string& text, bool submitted);
+    EntityId CollectGameUiControls(
+        bool canPoint, const DirectX::XMFLOAT2& pointer, int width, int height,
+        std::vector<EntityId>& selectableButtons,
+        std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters) const;
+    WorldEntity* FindOpenGameUiDropdown();
+    int32_t UpdateGameUiDropdownHover(WorldEntity* openDropdownEntity, bool canPoint,
+                                      const DirectX::XMFLOAT2& pointer, int width, int height,
+                                      EntityId& hoveredButton);
+    WorldEntity* FindActiveGameUiInputField();
+    void InitializeGameUiSelection(const std::vector<EntityId>& selectableButtons,
+                                   const EventSystemComponent* eventSystem, bool uiEventsEnabled);
+    void UpdateActiveGameUiInputField(WorldEntity* activeInputFieldEntity, bool canNavigateUi);
+    bool NavigateGameUiTab(const std::vector<EntityId>& selectableButtons, bool canNavigateUi);
+    bool NavigateOpenGameUiDropdown(WorldEntity* openDropdownEntity, bool canNavigateUi);
+    void HandleGameUiPointerInteractions(EntityId hoveredButton, int32_t hoveredDropdownOption,
+                                         bool hoveredButtonInteractable,
+                                         bool hoveredSliderInteractable,
+                                         const DirectX::XMFLOAT2& pointer, int width, int height);
+    bool HandleGameUiSubmit(bool canNavigateUi);
+    void HandleGameUiKeyboardSlider(bool canNavigateUi, bool navigatedUi);
+    void HandleGameUiCancel(bool canNavigateUi);
+    void DrawGameUiDropdownPopup(int width, int height);
     void DrawGameUiVisuals(int width, int height, EntityId hoveredButton, bool submitHeld);
     bool NavigateGameUiDirection(
         const std::vector<EntityId>& selectableButtons,
