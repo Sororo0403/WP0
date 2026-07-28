@@ -235,6 +235,16 @@ private:
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);
     bool SaveSelectionAsPrefab();
+    bool TryPreparePrefabSave(EntityId& root, std::filesystem::path& destination);
+    std::unordered_set<EntityId, EntityIdHash> CollectPrefabEntityIds(EntityId root) const;
+    std::vector<WorldEntity> BuildPrefabEntities(
+        EntityId root, const std::unordered_set<EntityId, EntityIdHash>& includedIds) const;
+    void ClearExternalPrefabEntityReferences(
+        WorldEntity& entity,
+        const std::unordered_set<EntityId, EntityIdHash>& includedIds) const;
+    bool SavePrefabEntities(std::vector<WorldEntity> entities,
+                            const std::filesystem::path& destination);
+    void SelectSavedPrefabAsset(const std::filesystem::path& destination);
     bool InstantiatePrefabAsset(
         const std::filesystem::path& path, EntityId parent = {},
         std::optional<DirectX::XMFLOAT3> position = std::nullopt);

@@ -49,6 +49,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 14,090 行の単一ファイルから、まず次の責務を分離した。
 
 - `EditorScenePersistence.cpp`: Scene の New/Open/Save、履歴、ファイルダイアログ
+- `EditorScenePrefabSaving.cpp`: 選択階層の抽出、外部参照除去、Prefab保存
 - `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator、Audio
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
@@ -150,6 +151,12 @@ Scene Viewの選択処理はコンポーネントアイコン探索、Mesh Rayca
 Cameraへ分割して専用ファイルへ移した。`Initialize` は
 75 NLOC / CCN 21から16 NLOC / CCN 4へ縮小し、`EditorScene.cpp` は
 1,462行となった。初期化処理には CCN 7 / 関数長22の回帰上限を設定している。
+
+Prefab保存は保存準備、子孫収集、Entity複製、外部Entity参照の除去、保存、
+Asset選択更新へ分割して専用ファイルへ移した。`SaveSelectionAsPrefab` は
+70 NLOC / CCN 21から15 NLOC / CCN 3へ縮小し、`EditorScene.cpp` は
+1,389行となった。Prefab保存処理には CCN 6 / 関数長26の回帰上限を
+設定している。
 
 ## 初回結果
 
