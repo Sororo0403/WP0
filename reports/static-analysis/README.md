@@ -60,8 +60,10 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneInspectorUi.cpp`: Canvas、Event System
 - `EditorSceneInspectorUiGraphics.cpp`: Text、Image
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
-- `EditorSceneGameUi.cpp`: Game View のUI入力、描画、編集
+- `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
+- `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
 - `EditorSceneGizmos.cpp`: Scene View のコンポーネント表示、選択枠、Gizmo
+- `internal/EditorSceneGameUiUtils.h`: Canvas配置、UI矩形、描画順の共有計算
 - `internal/EditorSceneViewportUtils.h`: Ray、投影、モデル境界などの共有計算
 
 元の実装ファイルは 14,090 行から約 6,700 行まで縮小した。さらに
@@ -81,6 +83,11 @@ Game UI の表示ループも独立させ、`DrawGameUi` は
 物理形状を分離し、統括関数を 361 NLOC / CCN 101 から
 121 NLOC / CCN 48へ縮小した。現在の回帰上限はGame UIが
 CCN 249 / 関数長538、Gizmo 群が CCN 48 / 関数長148である。
+
+Game UI編集処理は専用ファイルへ分離し、Canvas配置・UI矩形計算を共通
+ユーティリティ化した。`HandleGameUiEditing` は 334 NLOC / CCN 95 から
+147 NLOC / CCN 53へ縮小し、ドラッグ・リサイズ更新も独立させた。
+編集処理には CCN 53 / 関数長152の回帰上限を設定している。
 
 ## 初回結果
 

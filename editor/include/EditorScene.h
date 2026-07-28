@@ -261,6 +261,16 @@ private:
         const std::vector<EntityId>& selectableButtons,
         const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters,
         bool canNavigateUi, bool focusedSlider, bool gameCameraAvailable, bool dropdownOpen);
+    bool TryCalculateGameUiCanvasLayout(
+        const WorldEntity& entity, const ImVec2& imageMin, const ImVec2& imageMax, float& scale,
+        DirectX::XMFLOAT2& origin, DirectX::XMFLOAT2& referenceResolution) const;
+    bool TryCalculateGameUiRect(const WorldEntity& entity, const ImVec2& imageMin,
+                                const ImVec2& imageMax, ImVec2& minimum,
+                                ImVec2& maximum) const;
+    bool TryCalculateGameUiImageRect(const WorldEntity& entity, const ImVec2& imageMin,
+                                     const ImVec2& imageMax, ImVec2& minimum,
+                                     ImVec2& maximum, float* canvasScale = nullptr) const;
+    void UpdateGameUiDragAndResize(const ImVec2& imageMin, const ImVec2& imageMax);
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();
