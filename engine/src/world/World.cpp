@@ -567,9 +567,7 @@ bool World::RequestSceneLoad(std::string scene) {
 }
 
 std::optional<std::string> World::ConsumeSceneLoadRequest() {
-    std::optional<std::string> request = std::move(pendingSceneLoad_);
-    pendingSceneLoad_.reset();
-    return request;
+    return std::exchange(pendingSceneLoad_, std::nullopt);
 }
 
 void World::SetPhysicsSettings(const PhysicsSettings& settings) {

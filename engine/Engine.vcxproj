@@ -215,6 +215,13 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\World.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldCollision.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializer.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerDeserialize.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerPhysicsDecoders.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerRenderingDecoders.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerRuntimeDecoders.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerScriptDecoders.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerSerialize.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerUiDecoders.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)externals\DirectXTex\DirectXTex_Desktop_2022.vcxproj">
@@ -248,6 +255,8 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\PhysicsSettings.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldCollision.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\world\WorldSerializer.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\world\internal\WorldSerializerJson.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\world\internal\WorldSerializerComponentDecoders.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\Animator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\AnimationSampler.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\animation\AssimpAnimationLoader.h" />

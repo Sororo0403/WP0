@@ -352,7 +352,7 @@ std::filesystem::path FindMsBuild() {
     const DWORD found = SearchPathW(nullptr, L"MSBuild.exe", nullptr,
                                     static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
     if (found > 0u && found < buffer.size()) {
-        return buffer.data();
+        return std::filesystem::path(buffer.data());
     }
     wchar_t programFiles[32768]{};
     const DWORD length = GetEnvironmentVariableW(L"ProgramFiles", programFiles,
@@ -643,7 +643,7 @@ bool ScriptBuildService::ParseDiagnosticLocation(
     try {
         const unsigned long parsedLine = std::stoul(match[2].str());
         const unsigned long parsedColumn = match[3].matched ? std::stoul(match[3].str()) : 0u;
-        if (parsedLine == 0u || parsedLine > UINT32_MAX || parsedColumn > UINT32_MAX) {
+        if (parsedLine == 0u) {
             return false;
         }
         sourcePath = std::filesystem::path(match[1].str()).lexically_normal();

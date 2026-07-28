@@ -138,17 +138,20 @@ ProjectLauncher::ChooseProject(const std::vector<RecentProject>& recentProjects)
     std::vector<std::wstring> labels;
     std::vector<TASKDIALOG_BUTTON> buttons;
     labels.reserve(recentProjects.size() + 2u);
-    buttons.reserve(recentProjects.size() + 2u);
-    for (size_t index = 0u; index < recentProjects.size(); ++index) {
-        labels.push_back(Utf8ToWide(recentProjects[index].name) + L"\n" +
-                         recentProjects[index].manifestPath.wstring());
-        buttons.push_back(
-            {kRecentButtonBase + static_cast<int>(index), labels.back().c_str()});
+    for (const RecentProject& recentProject : recentProjects) {
+        labels.push_back(Utf8ToWide(recentProject.name) + L"\n" +
+                         recentProject.manifestPath.wstring());
     }
     labels.push_back(L"Create New Project...\nCreate a project in a new or empty directory");
-    buttons.push_back({kCreateButtonId, labels.back().c_str()});
     labels.push_back(L"Browse...\nOpen another .likeproject file");
-    buttons.push_back({kBrowseButtonId, labels.back().c_str()});
+
+    buttons.reserve(labels.size());
+    for (size_t index = 0u; index < recentProjects.size(); ++index) {
+        buttons.push_back(
+            {kRecentButtonBase + static_cast<int>(index), labels[index].c_str()});
+    }
+    buttons.push_back({kCreateButtonId, labels[recentProjects.size()].c_str()});
+    buttons.push_back({kBrowseButtonId, labels[recentProjects.size() + 1u].c_str()});
 
     TASKDIALOGCONFIG config{};
     config.cbSize = sizeof(config);

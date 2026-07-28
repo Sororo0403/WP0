@@ -107,6 +107,12 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\main.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneAssets.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneConsole.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneHierarchy.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspector.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScenePersistence.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneRuntime.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ApplicationPaths.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerPackageBuilder.cpp" />
@@ -127,6 +133,8 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)include\EditorScene.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\EditorSceneAssetUtils.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\EditorSceneHierarchyUtils.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\AssetImportPlanner.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />

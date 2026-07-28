@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <shellapi.h>
+#include <utility>
 
 #ifdef ENGINE_WITH_IMGUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam,
@@ -308,9 +309,7 @@ bool WinApp::ConsumeCloseRequest() {
 }
 
 std::vector<FileDropEvent> WinApp::ConsumeFileDrops() {
-    std::vector<FileDropEvent> result = std::move(fileDrops_);
-    fileDrops_.clear();
-    return result;
+    return std::exchange(fileDrops_, {});
 }
 
 void WinApp::RequestClose() {

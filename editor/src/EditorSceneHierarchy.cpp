@@ -1,0 +1,1264 @@
+#include "EditorScene.h"
+
+#include "AssetImportPlanner.h"
+#include "PlayerPackageBuilder.h"
+#include "PlayerProjectValidator.h"
+#include "ProjectDescriptor.h"
+#include "RuntimeSceneLoader.h"
+#include "ScriptAsset.h"
+#include "ScriptBuildService.h"
+
+#include "core/AssetManager.h"
+#include "core/MathUtils.h"
+#include "core/WinApp.h"
+#include "font/TextRenderer.h"
+#include "graphics/DirectXCommon.h"
+#include "graphics/LightingScene.h"
+#include "graphics/RenderScene.h"
+#include "graphics/ShaderPaths.h"
+#include "graphics/SrvManager.h"
+#include "imgui/ImguiManager.h"
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "ImGuizmo.h"
+#include "input/Input.h"
+#include "model/Model.h"
+#include "model/ModelManager.h"
+#include "model/MeshRenderer.h"
+#include "sound/ISoundService.h"
+#include "sprite/SpriteRenderer.h"
+#include "texture/TextureManager.h"
+#include "world/WorldSerializer.h"
+#include "world/WorldCollision.h"
+
+#include <Windows.h>
+#include <commdlg.h>
+#include <shellapi.h>
+
+#ifdef DrawText
+#undef DrawText
+#endif
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <ranges>
+#include <sstream>
+#include <string_view>
+#include <system_error>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
+#include "internal/EditorSceneHierarchyUtils.h"
+
+using namespace EditorSceneHierarchyUtils;
+
+void EditorScene::DrawHierarchyPanel() {
+    SynchronizeHierarchySelection();
+    const bool editing = !IsInPlayMode();
+    if (!editing) {
+        ImGui::TextDisabled("Runtime World (Read Only)");
+    }
+    ImGui::BeginDisabled(!editing);
+    if (ImGui::Button("Create")) {
+        ImGui::OpenPopup("CreateEntity");
+    }
+    ImGui::EndDisabled();
+    if (ImGui::BeginPopup("CreateEntity")) {
+        ImGui::BeginDisabled(!editing);
+        DrawCreateEntityMenu({0.0f, 0.0f, 0.0f});
+        ImGui::EndDisabled();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    const bool canEditSelection = editing && !hierarchySelection_.empty();
+    ImGui::BeginDisabled(!canEditSelection);
+    if (ImGui::Button("Duplicate")) {
+        DuplicateSelection();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!canEditSelection);
+    if (ImGui::Button("Delete")) {
+        DeleteSelection();
+    }
+    ImGui::EndDisabled();
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(-58.0f);
+    ImGui::InputTextWithHint("##HierarchySearch", "Search entities...", hierarchySearch_.data(),
+                             hierarchySearch_.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) {
+        hierarchySearch_.fill('\0');
+    }
+    const std::string hierarchyQuery(hierarchySearch_.data());
+    visibleHierarchyEntities_.clear();
+    if (!hierarchyQuery.empty()) {
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (!ContainsCaseInsensitive(entity.name, hierarchyQuery)) {
+                continue;
+            }
+            EntityId current = entity.id;
+            for (size_t depth = 0; current.IsValid() && depth <= world_.Entities().size();
+                 ++depth) {
+                if (!visibleHierarchyEntities_.insert(current).second) {
+                    break;
+                }
+                const WorldEntity* currentEntity = world_.Find(current);
+                current = currentEntity != nullptr ? currentEntity->parent : EntityId{};
+            }
+        }
+    }
+    ImGui::Separator();
+    bool drewEntity = false;
+    for (EntityId id : world_.GetRootEntities()) {
+        if (!hierarchyQuery.empty() && !visibleHierarchyEntities_.contains(id)) {
+            continue;
+        }
+        DrawEntityNode(id);
+        drewEntity = true;
+    }
+    if (!hierarchyQuery.empty() && !drewEntity) {
+        ImGui::TextDisabled("No matching entities.");
+    }
+    ImGui::Separator();
+    if (ImGui::Selectable(editing ? "Scene Root (drop here)" : "Scene Root", false)) {
+        ClearHierarchySelection();
+    }
+    if (editing && ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kEntityDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize == sizeof(EntityId)) {
+            EntityId child{};
+            std::memcpy(&child, payload->Data, sizeof(child));
+            ReparentSelection(child, {});
+        }
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload(kPrefabAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            InstantiatePrefabAsset(static_cast<const char*>(payload->Data));
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+        !ImGui::IsAnyItemHovered()) {
+        ClearHierarchySelection();
+    }
+}
+
+bool EditorScene::DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent) {
+    bool created = false;
+    if (ImGui::MenuItem("Empty Entity")) {
+        CreateEmptyEntity(position, parent);
+        created = true;
+    }
+    if (ImGui::BeginMenu("3D Primitive")) {
+        for (size_t index = 0; index < std::size(kPrimitiveNames); ++index) {
+            if (ImGui::MenuItem(kPrimitiveNames[index])) {
+                CreatePrimitiveEntity(static_cast<MeshPrimitive>(index), position, parent);
+                created = true;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("UI")) {
+        if (ImGui::MenuItem("Canvas")) {
+            CreateUiEntity(UiEntityPreset::Canvas, parent);
+            created = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Text")) {
+            CreateUiEntity(UiEntityPreset::Text, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Image")) {
+            CreateUiEntity(UiEntityPreset::Image, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Button")) {
+            CreateUiEntity(UiEntityPreset::Button, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Toggle")) {
+            CreateUiEntity(UiEntityPreset::Toggle, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Slider")) {
+            CreateUiEntity(UiEntityPreset::Slider, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Dropdown")) {
+            CreateUiEntity(UiEntityPreset::Dropdown, parent);
+            created = true;
+        }
+        if (ImGui::MenuItem("Input Field")) {
+            CreateUiEntity(UiEntityPreset::InputField,
+                           parent);
+            created = true;
+        }
+        ImGui::EndMenu();
+    }
+    return created;
+}
+
+void EditorScene::CreateEmptyEntity(const DirectX::XMFLOAT3& position, EntityId parent) {
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const EntityId entityId = world_.CreateEntity();
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "Could not create an entity.";
+        return;
+    }
+    entity->transform.position = position;
+    if (parent.IsValid() && !world_.SetParent(entityId, parent)) {
+        world_.DestroyEntity(entityId);
+        status_ = "Could not parent the new entity.";
+        return;
+    }
+    selection_ = entityId;
+    RecordImmediateEdit("Create Entity", before, selectionBefore);
+    status_ = "Created a new entity.";
+}
+
+void EditorScene::CreatePrimitiveEntity(MeshPrimitive primitive,
+                                        const DirectX::XMFLOAT3& position, EntityId parent) {
+    const size_t primitiveIndex = static_cast<size_t>(primitive);
+    if (primitiveIndex >= std::size(kPrimitiveNames)) {
+        status_ = "Could not create an invalid primitive.";
+        return;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const EntityId entityId = world_.CreateEntity(kPrimitiveNames[primitiveIndex]);
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr) {
+        status_ = "Could not create the primitive entity.";
+        return;
+    }
+    entity->transform.position = position;
+    entity->meshRenderer = MeshRendererComponent{};
+    entity->meshRenderer->sourceType = MeshSourceType::Primitive;
+    entity->meshRenderer->primitive = primitive;
+    entity->materialOverride = MaterialOverrideComponent{};
+    if (parent.IsValid() && !world_.SetParent(entityId, parent)) {
+        world_.DestroyEntity(entityId);
+        status_ = "Could not parent the primitive entity.";
+        return;
+    }
+    selection_ = entityId;
+    RecordImmediateEdit("Create Primitive Entity", before, selectionBefore);
+    status_ = std::string("Created primitive: ") + kPrimitiveNames[primitiveIndex];
+}
+
+void EditorScene::CreateUiEntity(UiEntityPreset preset, EntityId parent) {
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const auto createEventSystemIfNeeded = [&]() {
+        if (std::ranges::any_of(
+                world_.Entities(), [](const WorldEntity& entity) {
+                    return entity.eventSystem.has_value();
+                })) {
+            return EntityId{};
+        }
+        const EntityId eventSystemId =
+            world_.CreateEntity("Event System");
+        if (WorldEntity* eventSystem =
+                world_.Find(eventSystemId)) {
+            eventSystem->eventSystem = EventSystemComponent{};
+            return eventSystemId;
+        }
+        return EntityId{};
+    };
+
+    if (preset == UiEntityPreset::Canvas) {
+        const EntityId canvasId = world_.CreateEntity("Canvas");
+        WorldEntity* canvas = world_.Find(canvasId);
+        if (canvas == nullptr) {
+            status_ = "Could not create a Canvas.";
+            return;
+        }
+        canvas->canvas = CanvasComponent{};
+        if (parent.IsValid() && !world_.SetParent(canvasId, parent)) {
+            world_.DestroyEntity(canvasId);
+            status_ = "Could not parent the new Canvas.";
+            return;
+        }
+        createEventSystemIfNeeded();
+        selection_ = canvasId;
+        RecordImmediateEdit("Create UI Canvas", before, selectionBefore);
+        status_ = "Created a UI Canvas.";
+        return;
+    }
+
+    EntityId uiParent = parent;
+    bool hasCanvasAncestor = false;
+    for (EntityId current = parent; current.IsValid();) {
+        const WorldEntity* entity = world_.Find(current);
+        if (entity == nullptr) {
+            break;
+        }
+        if (entity->canvas) {
+            hasCanvasAncestor = true;
+            break;
+        }
+        current = entity->parent;
+    }
+    if (!hasCanvasAncestor) {
+        uiParent = {};
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (entity.canvas) {
+                uiParent = entity.id;
+                break;
+            }
+        }
+    }
+
+    EntityId createdCanvas{};
+    if (!uiParent.IsValid()) {
+        createdCanvas = world_.CreateEntity("Canvas");
+        WorldEntity* canvas = world_.Find(createdCanvas);
+        if (canvas == nullptr) {
+            status_ = "Could not create a Canvas for the UI element.";
+            return;
+        }
+        canvas->canvas = CanvasComponent{};
+        uiParent = createdCanvas;
+    }
+    const EntityId createdEventSystem =
+        createEventSystemIfNeeded();
+
+    const char* name = "Button";
+    if (preset == UiEntityPreset::Text) {
+        name = "Text";
+    } else if (preset == UiEntityPreset::Image) {
+        name = "Image";
+    } else if (preset == UiEntityPreset::Toggle) {
+        name = "Toggle";
+    } else if (preset == UiEntityPreset::Slider) {
+        name = "Slider";
+    } else if (preset == UiEntityPreset::Dropdown) {
+        name = "Dropdown";
+    } else if (preset == UiEntityPreset::InputField) {
+        name = "Input Field";
+    }
+    const EntityId entityId = world_.CreateEntity(name);
+    WorldEntity* entity = world_.Find(entityId);
+    if (entity == nullptr || !world_.SetParent(entityId, uiParent)) {
+        world_.DestroyEntity(entityId);
+        if (createdCanvas.IsValid()) {
+            world_.DestroyEntity(createdCanvas);
+        }
+        if (createdEventSystem.IsValid()) {
+            world_.DestroyEntity(createdEventSystem);
+        }
+        status_ = "Could not create the UI element.";
+        return;
+    }
+
+    if (preset == UiEntityPreset::Text) {
+        entity->text = TextComponent{};
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+    } else if (preset == UiEntityPreset::Image) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {200.0f, 100.0f};
+    } else if (preset == UiEntityPreset::Button) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {240.0f, 64.0f};
+        entity->image->color = {0.22f, 0.38f, 0.65f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->text = TextComponent{};
+        entity->text->text = "Button";
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+        entity->text->fontSize = 28.0f;
+    } else if (preset == UiEntityPreset::Toggle) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {48.0f, 48.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->toggle = ToggleComponent{};
+    } else if (preset == UiEntityPreset::Slider) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {240.0f, 24.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->slider = SliderComponent{};
+    } else if (preset == UiEntityPreset::Dropdown) {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {280.0f, 56.0f};
+        entity->image->color = {0.18f, 0.22f, 0.28f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->dropdown = DropdownComponent{};
+        entity->text = TextComponent{};
+        entity->text->text = entity->dropdown->options.front();
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+        entity->text->fontSize = 26.0f;
+    } else {
+        entity->image = ImageComponent{};
+        entity->image->anchor = UiAnchor::Center;
+        entity->image->pivot = {0.5f, 0.5f};
+        entity->image->size = {360.0f, 56.0f};
+        entity->image->color = {0.12f, 0.15f, 0.2f, 1.0f};
+        entity->button = ButtonComponent{};
+        entity->inputField = InputFieldComponent{};
+        entity->text = TextComponent{};
+        entity->text->text.clear();
+        entity->text->anchor = UiAnchor::Center;
+        entity->text->alignment = TextAlignment::Center;
+        entity->text->fontSize = 26.0f;
+    }
+
+    selection_ = entityId;
+    RecordImmediateEdit(
+        preset == UiEntityPreset::Text
+            ? "Create UI Text"
+            : preset == UiEntityPreset::Image
+                  ? "Create UI Image"
+                  : preset == UiEntityPreset::Toggle
+                        ? "Create UI Toggle"
+                        : preset == UiEntityPreset::Slider
+                              ? "Create UI Slider"
+                              : preset == UiEntityPreset::Dropdown
+                                    ? "Create UI Dropdown"
+                                    : preset == UiEntityPreset::InputField
+                                          ? "Create UI Input Field"
+                                    : "Create UI Button",
+        before, selectionBefore);
+    status_ = std::string("Created a UI ") + name + ".";
+}
+
+void EditorScene::DeleteSelection() {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
+        return;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    size_t deletedCount = 0;
+    for (EntityId root : roots) {
+        if (world_.DestroyEntity(root)) {
+            ++deletedCount;
+        }
+    }
+    if (deletedCount == 0u) {
+        status_ = "Could not delete the selected entity hierarchies.";
+        return;
+    }
+    selection_ = {};
+    hierarchySelection_.clear();
+    hierarchySelectionAnchor_ = {};
+    RecordImmediateEdit("Delete Entities", before, selectionBefore);
+    status_ = deletedCount == 1u ? "Deleted the selected entity hierarchy."
+                                 : "Deleted the selected entity hierarchies.";
+}
+
+void EditorScene::DrawEntityNode(EntityId id) {
+    const WorldEntity* entity = world_.Find(id);
+    const bool filtering = hierarchySearch_[0] != '\0';
+    if (entity == nullptr || (filtering && !visibleHierarchyEntities_.contains(id))) {
+        return;
+    }
+    std::vector<EntityId> children = world_.GetChildren(id);
+    if (filtering) {
+        std::erase_if(children, [this](EntityId child) {
+            return !visibleHierarchyEntities_.contains(child);
+        });
+    }
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (filtering) {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
+    if (children.empty()) {
+        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    }
+    if (IsHierarchyEntitySelected(id)) {
+        flags |= ImGuiTreeNodeFlags_Selected;
+    }
+
+    const std::string idText = id.ToString();
+    ImGui::PushID(idText.c_str());
+    const bool editing = !IsInPlayMode();
+    bool active = entity->active;
+    ImGui::BeginDisabled(!editing);
+    if (ImGui::Checkbox("##EntityActive", &active)) {
+        SetSelectedEntitiesActive(id, active);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip(editing ? (active ? "Deactivate Entity" : "Activate Entity")
+                                  : "Entity active state (read-only in Play Mode)");
+    }
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    const bool activeInHierarchy = world_.IsActiveInHierarchy(id);
+    if (!activeInHierarchy) {
+        const ImVec4 textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              {textColor.x, textColor.y, textColor.z, textColor.w * 0.45f});
+    }
+    const bool open = ImGui::TreeNodeEx(entity->name.c_str(), flags);
+    const ImVec2 nodeMin = ImGui::GetItemRectMin();
+    const ImVec2 nodeMax = ImGui::GetItemRectMax();
+    if (!activeInHierarchy) {
+        ImGui::PopStyleColor();
+    }
+    if (ImGui::IsItemClicked()) {
+        const ImGuiIO& io = ImGui::GetIO();
+        SelectHierarchyEntity(id, io.KeyCtrl, io.KeyShift);
+    }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        SelectHierarchyEntity(id, false, false);
+        FocusSceneCameraOnSelection();
+    }
+    bool hierarchyChanged = false;
+    bool deleteRequested = false;
+    if (ImGui::BeginPopupContextItem("EntityContext")) {
+        if (!IsHierarchyEntitySelected(id)) {
+            SelectHierarchyEntity(id, false, false);
+        }
+        if (ImGui::BeginMenu("Create Child", editing)) {
+            hierarchyChanged = DrawCreateEntityMenu({0.0f, 0.0f, 0.0f}, id);
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Rename", "F2", false, editing)) {
+            RequestEntityRename(id);
+        }
+        if (ImGui::MenuItem("Focus in Scene", "F")) {
+            SelectHierarchyEntity(id, false, false);
+            FocusSceneCameraOnSelection();
+        }
+        if (ImGui::MenuItem("Active", nullptr, entity->active, editing)) {
+            SetSelectedEntitiesActive(id, !entity->active);
+        }
+        const WorldEntity* contextEntity = world_.Find(id);
+        const std::vector<EntityId> siblings =
+            contextEntity != nullptr && contextEntity->parent.IsValid()
+                ? world_.GetChildren(contextEntity->parent)
+                : world_.GetRootEntities();
+        const auto siblingPosition = std::ranges::find(siblings, id);
+        const bool canMoveUp = siblingPosition != siblings.end() &&
+                               siblingPosition != siblings.begin();
+        const bool canMoveDown = siblingPosition != siblings.end() &&
+                                 std::next(siblingPosition) != siblings.end();
+        if (ImGui::MenuItem("Move Up", "Alt+Up", false, editing && canMoveUp)) {
+            hierarchyChanged = MoveEntityInHierarchy(id, -1);
+        }
+        if (ImGui::MenuItem("Move Down", "Alt+Down", false, editing && canMoveDown)) {
+            hierarchyChanged = MoveEntityInHierarchy(id, 1);
+        }
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, editing)) {
+            DuplicateSelection();
+            hierarchyChanged = true;
+        }
+        if (ImGui::MenuItem("Save as Prefab...", nullptr, false,
+                            editing && GetTopLevelSelectedEntities().size() == 1u)) {
+            SaveSelectionAsPrefab();
+        }
+        if (ImGui::MenuItem("Copy", "Ctrl+C")) {
+            CopySelection();
+        }
+        if (ImGui::MenuItem("Cut", "Ctrl+X", false, editing)) {
+            CutSelection();
+            hierarchyChanged = true;
+        }
+        if (ImGui::MenuItem("Paste as Child", nullptr, false,
+                            editing && !entityClipboard_.empty())) {
+            hierarchyChanged = PasteEntityClipboard(id);
+        }
+        if (ImGui::MenuItem("Delete", "Delete", false, editing)) {
+            deleteRequested = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Copy Entity ID")) {
+            ImGui::SetClipboardText(idText.c_str());
+            status_ = "Copied entity ID: " + idText;
+        }
+        ImGui::EndPopup();
+    }
+    if (deleteRequested) {
+        DeleteSelection();
+        hierarchyChanged = true;
+    }
+    if (hierarchyChanged) {
+        if (open && !children.empty()) {
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+        return;
+    }
+    if (editing && ImGui::BeginDragDropSource()) {
+        ImGui::SetDragDropPayload(kEntityDragPayload, &id, sizeof(id));
+        if (IsHierarchyEntitySelected(id) && hierarchySelection_.size() > 1u) {
+            ImGui::Text("Move %zu selected entities", hierarchySelection_.size());
+        } else {
+            ImGui::TextUnformatted(entity->name.c_str());
+        }
+        ImGui::EndDragDropSource();
+    }
+    if (editing && ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+                kEntityDragPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
+            payload != nullptr && payload->DataSize == sizeof(EntityId)) {
+            const float rowHeight = nodeMax.y - nodeMin.y;
+            const float mouseY = ImGui::GetIO().MousePos.y;
+            const bool insertBefore = mouseY < nodeMin.y + rowHeight * 0.25f;
+            const bool insertAfter = mouseY > nodeMax.y - rowHeight * 0.25f;
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const ImU32 targetColor = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
+            if (insertBefore || insertAfter) {
+                const float lineY = insertBefore ? nodeMin.y : nodeMax.y;
+                drawList->AddLine({nodeMin.x, lineY}, {nodeMax.x, lineY}, targetColor, 2.0f);
+            } else {
+                drawList->AddRect(nodeMin, nodeMax, targetColor, 2.0f, 0, 2.0f);
+            }
+            if (payload->IsDelivery()) {
+                EntityId dragged{};
+                std::memcpy(&dragged, payload->Data, sizeof(dragged));
+                if (insertBefore || insertAfter) {
+                    MoveSelectionAdjacentTo(dragged, id, insertAfter);
+                } else {
+                    ReparentSelection(dragged, id);
+                }
+            }
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignModelAsset(id, static_cast<const char*>(payload->Data));
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kAudioAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignAudioAsset(id, static_cast<const char*>(payload->Data));
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignScriptAsset(id, static_cast<const char*>(payload->Data));
+        }
+        if (const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload(kPrefabAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            InstantiatePrefabAsset(static_cast<const char*>(payload->Data), id);
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (open && !children.empty()) {
+        for (EntityId child : children) {
+            DrawEntityNode(child);
+        }
+        ImGui::TreePop();
+    }
+    ImGui::PopID();
+}
+
+void EditorScene::HandleEditorShortcuts() {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (pendingSceneAction_ != PendingSceneAction::None) {
+        return;
+    }
+    if (gameInputCaptured_ && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        ReleaseGameInputCapture();
+        status_ = "Released Game input.";
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
+        if (IsInPlayMode()) {
+            StopPlayMode();
+        } else {
+            EnterPlayMode();
+        }
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) {
+        if (IsInPlayMode()) {
+            TogglePlayPause();
+        }
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F7, false)) {
+        StepRuntimeWorld();
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F8, false)) {
+        LaunchPlayerPreview();
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F9, false)) {
+        BuildAndRunPlayerPackage();
+        return;
+    }
+    if (io.WantTextInput || sceneCameraNavigating_ || sceneCameraPanning_) {
+        return;
+    }
+    if (IsInPlayMode()) {
+        return;
+    }
+    if (!io.KeyCtrl) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+            ClearHierarchySelection();
+        } else if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            MoveEntityInHierarchy(selection_, -1);
+        } else if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            MoveEntityInHierarchy(selection_, 1);
+        } else if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+            RequestEntityRename(selection_);
+        } else if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+            gizmoOperation_ = GizmoOperation::Translate;
+        } else if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+            gizmoOperation_ = GizmoOperation::Rotate;
+        } else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+            gizmoOperation_ = GizmoOperation::Scale;
+        } else if (!gizmoWasUsing_ && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+            DeleteSelection();
+        }
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+        SelectAllHierarchyEntities();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+        RequestSceneAction(PendingSceneAction::NewScene);
+    } else if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+        RequestSceneAction(PendingSceneAction::OpenScene);
+    } else if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+        if (io.KeyShift) {
+            SaveSceneAs();
+        } else {
+            SaveScene();
+        }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+        CopySelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+        CutSelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+        PasteEntityClipboard();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_D, false)) {
+        DuplicateSelection();
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        if (io.KeyShift) {
+            Redo();
+        } else {
+            Undo();
+        }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+        Redo();
+    }
+}
+
+void EditorScene::RequestEntityRename(EntityId entity) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr) {
+        return;
+    }
+    renameEntity_ = entity;
+    selection_ = entity;
+    renameBuffer_.fill('\0');
+    strncpy_s(renameBuffer_.data(), renameBuffer_.size(), target->name.c_str(), _TRUNCATE);
+    showEntityRenameDialog_ = true;
+}
+
+void EditorScene::SynchronizeHierarchySelection() {
+    std::erase_if(hierarchySelection_, [this](EntityId entity) {
+        return !world_.Contains(entity);
+    });
+    if (!world_.Contains(hierarchySelectionAnchor_)) {
+        hierarchySelectionAnchor_ = {};
+    }
+    if (!world_.Contains(selection_)) {
+        selection_ = {};
+        hierarchySelection_.clear();
+        hierarchySelectionAnchor_ = {};
+        return;
+    }
+    if (!hierarchySelection_.contains(selection_)) {
+        hierarchySelection_.clear();
+        hierarchySelection_.insert(selection_);
+        hierarchySelectionAnchor_ = selection_;
+    }
+}
+
+void EditorScene::SelectHierarchyEntity(EntityId entity, bool toggle, bool range) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr) {
+        return;
+    }
+    if (range && world_.Contains(hierarchySelectionAnchor_)) {
+        const WorldEntity* anchor = world_.Find(hierarchySelectionAnchor_);
+        if (anchor != nullptr && anchor->parent == target->parent) {
+            const std::vector<EntityId> siblings = target->parent.IsValid()
+                                                       ? world_.GetChildren(target->parent)
+                                                       : world_.GetRootEntities();
+            const auto anchorPosition = std::ranges::find(siblings, hierarchySelectionAnchor_);
+            const auto targetPosition = std::ranges::find(siblings, entity);
+            if (anchorPosition != siblings.end() && targetPosition != siblings.end()) {
+                if (!toggle) {
+                    hierarchySelection_.clear();
+                }
+                auto first = anchorPosition;
+                auto last = targetPosition;
+                if (last < first) {
+                    std::swap(first, last);
+                }
+                hierarchySelection_.insert(first, std::next(last));
+                selection_ = entity;
+                return;
+            }
+        }
+    }
+    if (toggle) {
+        if (hierarchySelection_.contains(entity)) {
+            hierarchySelection_.erase(entity);
+            if (selection_ == entity) {
+                selection_ = {};
+                for (const WorldEntity& candidate : world_.Entities()) {
+                    if (hierarchySelection_.contains(candidate.id)) {
+                        selection_ = candidate.id;
+                        break;
+                    }
+                }
+            }
+            if (hierarchySelection_.empty()) {
+                hierarchySelectionAnchor_ = {};
+            }
+            return;
+        }
+        hierarchySelection_.insert(entity);
+    } else {
+        hierarchySelection_.clear();
+        hierarchySelection_.insert(entity);
+    }
+    selection_ = entity;
+    hierarchySelectionAnchor_ = entity;
+}
+
+void EditorScene::SelectAllHierarchyEntities() {
+    hierarchySelection_.clear();
+    for (const WorldEntity& entity : world_.Entities()) {
+        hierarchySelection_.insert(entity.id);
+    }
+    if (!world_.Contains(selection_)) {
+        selection_ = world_.Empty() ? EntityId{} : world_.Entities().front().id;
+    }
+    hierarchySelectionAnchor_ = selection_;
+    status_ = hierarchySelection_.empty() ? "There are no entities to select."
+                                          : "Selected all entities.";
+}
+
+void EditorScene::ClearHierarchySelection() {
+    selection_ = {};
+    hierarchySelection_.clear();
+    hierarchySelectionAnchor_ = {};
+    status_ = "Cleared the entity selection.";
+}
+
+bool EditorScene::IsHierarchyEntitySelected(EntityId entity) const {
+    return hierarchySelection_.contains(entity);
+}
+
+std::vector<EntityId> EditorScene::GetTopLevelSelectedEntities() const {
+    std::vector<EntityId> roots;
+    roots.reserve(hierarchySelection_.size());
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!hierarchySelection_.contains(entity.id)) {
+            continue;
+        }
+        bool hasSelectedAncestor = false;
+        EntityId ancestor = entity.parent;
+        for (size_t depth = 0; ancestor.IsValid() && depth < world_.Entities().size(); ++depth) {
+            if (hierarchySelection_.contains(ancestor)) {
+                hasSelectedAncestor = true;
+                break;
+            }
+            const WorldEntity* parent = world_.Find(ancestor);
+            ancestor = parent != nullptr ? parent->parent : EntityId{};
+        }
+        if (!hasSelectedAncestor) {
+            roots.push_back(entity.id);
+        }
+    }
+    return roots;
+}
+
+void EditorScene::SetSelectedEntitiesActive(EntityId source, bool active) {
+    if (!world_.Contains(source)) {
+        return;
+    }
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> targets;
+    if (hierarchySelection_.contains(source)) {
+        targets.reserve(hierarchySelection_.size());
+        for (const WorldEntity& entity : world_.Entities()) {
+            if (hierarchySelection_.contains(entity.id) && entity.active != active) {
+                targets.push_back(entity.id);
+            }
+        }
+    } else {
+        const WorldEntity* entity = world_.Find(source);
+        if (entity != nullptr && entity->active != active) {
+            targets.push_back(source);
+        }
+    }
+    if (targets.empty()) {
+        return;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    for (EntityId target : targets) {
+        WorldEntity* entity = world_.Find(target);
+        if (entity != nullptr) {
+            entity->active = active;
+        }
+    }
+    RecordImmediateEdit(active ? "Activate Entities" : "Deactivate Entities", before,
+                        selectionBefore);
+    if (targets.size() == 1u) {
+        status_ = active ? "Activated the Entity." : "Deactivated the Entity.";
+    } else {
+        status_ = active ? "Activated the selected Entities."
+                         : "Deactivated the selected Entities.";
+    }
+}
+
+bool EditorScene::MoveEntityInHierarchy(EntityId entity, int direction) {
+    const WorldEntity* target = world_.Find(entity);
+    if (target == nullptr || direction == 0) {
+        return false;
+    }
+    const std::vector<EntityId> siblings =
+        target->parent.IsValid() ? world_.GetChildren(target->parent) : world_.GetRootEntities();
+    const auto position = std::ranges::find(siblings, entity);
+    if (position == siblings.end()) {
+        return false;
+    }
+    EntityId adjacent{};
+    if (direction < 0) {
+        if (position == siblings.begin()) {
+            return false;
+        }
+        adjacent = *std::prev(position);
+    } else {
+        const auto next = std::next(position);
+        if (next == siblings.end()) {
+            return false;
+        }
+        adjacent = *next;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const bool moved = direction < 0 ? world_.MoveEntityBefore(entity, adjacent)
+                                     : world_.MoveEntityAfter(entity, adjacent);
+    if (!moved) {
+        return false;
+    }
+    selection_ = entity;
+    RecordImmediateEdit("Reorder Entity", before, selectionBefore);
+    status_ = direction < 0 ? "Moved the entity up." : "Moved the entity down.";
+    return true;
+}
+
+bool EditorScene::MoveSelectionAdjacentTo(EntityId draggedEntity, EntityId sibling, bool after) {
+    const WorldEntity* dragged = world_.Find(draggedEntity);
+    const WorldEntity* target = world_.Find(sibling);
+    if (dragged == nullptr || target == nullptr || draggedEntity == sibling) {
+        return false;
+    }
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> roots;
+    if (hierarchySelection_.contains(draggedEntity)) {
+        roots = GetTopLevelSelectedEntities();
+    } else {
+        roots.push_back(draggedEntity);
+    }
+    if (roots.empty() || std::ranges::find(roots, sibling) != roots.end()) {
+        return false;
+    }
+    for (EntityId root : roots) {
+        const WorldEntity* entity = world_.Find(root);
+        if (entity == nullptr || entity->parent != target->parent) {
+            status_ = "Sibling reordering requires entities with the same parent.";
+            return false;
+        }
+    }
+
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    if (after) {
+        for (auto iterator = roots.rbegin(); iterator != roots.rend(); ++iterator) {
+            world_.MoveEntityAfter(*iterator, sibling);
+        }
+    } else {
+        for (EntityId root : roots) {
+            world_.MoveEntityBefore(root, sibling);
+        }
+    }
+    if (WorldSerializer::Serialize(world_) == before) {
+        return false;
+    }
+    selection_ = world_.Contains(draggedEntity) ? draggedEntity : roots.front();
+    RecordImmediateEdit(roots.size() == 1u ? "Reorder Entity" : "Reorder Entities", before,
+                        selectionBefore);
+    status_ = roots.size() == 1u ? "Reordered the entity."
+                                 : "Reordered the selected entities.";
+    return true;
+}
+
+bool EditorScene::CopySelection() {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
+        return false;
+    }
+    const std::unordered_set<EntityId, EntityIdHash> rootIds(roots.begin(), roots.end());
+    std::unordered_set<EntityId, EntityIdHash> copiedIds;
+    std::vector<EntityId> pending = roots;
+    while (!pending.empty()) {
+        const EntityId current = pending.back();
+        pending.pop_back();
+        if (!copiedIds.insert(current).second) {
+            continue;
+        }
+        const std::vector<EntityId> children = world_.GetChildren(current);
+        pending.insert(pending.end(), children.begin(), children.end());
+    }
+
+    std::vector<WorldEntity> copiedEntities;
+    copiedEntities.reserve(copiedIds.size());
+    for (const WorldEntity& entity : world_.Entities()) {
+        if (!copiedIds.contains(entity.id)) {
+            continue;
+        }
+        copiedEntities.push_back(entity);
+        if (rootIds.contains(entity.id)) {
+            copiedEntities.back().parent = {};
+        }
+    }
+    World clipboardWorld;
+    std::string error;
+    if (!clipboardWorld.ReplaceEntities(std::move(copiedEntities), &error)) {
+        status_ = "Copy failed: " + error;
+        return false;
+    }
+    entityClipboard_ = WorldSerializer::Serialize(clipboardWorld);
+    status_ = roots.size() == 1u ? "Copied the selected entity hierarchy."
+                                 : "Copied the selected entity hierarchies.";
+    return true;
+}
+
+void EditorScene::CutSelection() {
+    if (!CopySelection()) {
+        return;
+    }
+    const size_t cutCount = GetTopLevelSelectedEntities().size();
+    DeleteSelection();
+    status_ = cutCount == 1u ? "Cut the selected entity hierarchy."
+                             : "Cut the selected entity hierarchies.";
+}
+
+bool EditorScene::PasteEntityClipboard(EntityId parent) {
+    if (entityClipboard_.empty() || (parent.IsValid() && !world_.Contains(parent))) {
+        return false;
+    }
+    World clipboardWorld;
+    std::string error;
+    if (!WorldSerializer::Deserialize(entityClipboard_, clipboardWorld, &error) ||
+        clipboardWorld.Empty()) {
+        status_ = "Paste failed: " + (error.empty() ? std::string("clipboard is empty.") : error);
+        return false;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    std::vector<EntityId> pastedRoots;
+    if (!world_.InstantiateEntityHierarchies(clipboardWorld, parent, pastedRoots,
+                                              &error)) {
+        status_ = "Paste failed: " + error;
+        return false;
+    }
+    for (EntityId root : pastedRoots) {
+        if (WorldEntity* pastedRoot = world_.Find(root)) {
+            pastedRoot->name += " Copy";
+        }
+    }
+    const size_t rootCount = pastedRoots.size();
+    hierarchySelection_.clear();
+    hierarchySelection_.insert(pastedRoots.begin(), pastedRoots.end());
+    selection_ = pastedRoots.front();
+    hierarchySelectionAnchor_ = selection_;
+    RecordImmediateEdit(rootCount == 1u ? "Paste Entity Hierarchy" : "Paste Entity Hierarchies",
+                        before, selectionBefore);
+    if (rootCount == 1u) {
+        status_ = parent.IsValid() ? "Pasted the entity hierarchy as a child."
+                                   : "Pasted the entity hierarchy.";
+    } else {
+        status_ = parent.IsValid() ? "Pasted the entity hierarchies as children."
+                                   : "Pasted the entity hierarchies.";
+    }
+    return true;
+}
+
+void EditorScene::DuplicateSelection() {
+    SynchronizeHierarchySelection();
+    const std::vector<EntityId> roots = GetTopLevelSelectedEntities();
+    if (roots.empty()) {
+        return;
+    }
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    std::vector<EntityId> duplicates;
+    duplicates.reserve(roots.size());
+    for (EntityId root : roots) {
+        const EntityId duplicate = world_.DuplicateEntityHierarchy(root);
+        if (!duplicate.IsValid()) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
+            }
+            selection_ = selectionBefore;
+            hierarchySelection_.clear();
+            if (world_.Contains(selectionBefore)) {
+                hierarchySelection_.insert(selectionBefore);
+                hierarchySelectionAnchor_ = selectionBefore;
+            } else {
+                hierarchySelectionAnchor_ = {};
+            }
+            status_ = "Could not duplicate the selected entity hierarchies.";
+            return;
+        }
+        duplicates.push_back(duplicate);
+    }
+    hierarchySelection_.clear();
+    hierarchySelection_.insert(duplicates.begin(), duplicates.end());
+    selection_ = duplicates.front();
+    hierarchySelectionAnchor_ = selection_;
+    RecordImmediateEdit(duplicates.size() == 1u ? "Duplicate Entity" : "Duplicate Entities",
+                        before, selectionBefore);
+    status_ = duplicates.size() == 1u ? "Duplicated the selected entity hierarchy."
+                                      : "Duplicated the selected entity hierarchies.";
+}
+
+void EditorScene::ReparentSelection(EntityId draggedEntity, EntityId parent) {
+    if (!world_.Contains(draggedEntity) || (parent.IsValid() && !world_.Contains(parent))) {
+        return;
+    }
+    SynchronizeHierarchySelection();
+    std::vector<EntityId> roots;
+    if (hierarchySelection_.contains(draggedEntity)) {
+        roots = GetTopLevelSelectedEntities();
+    } else {
+        roots.push_back(draggedEntity);
+    }
+    std::erase_if(roots, [this, parent](EntityId entity) {
+        const WorldEntity* current = world_.Find(entity);
+        return current == nullptr || current->parent == parent;
+    });
+    if (roots.empty()) {
+        return;
+    }
+    const std::unordered_set<EntityId, EntityIdHash> rootIds(roots.begin(), roots.end());
+    for (EntityId ancestor = parent; ancestor.IsValid();) {
+        if (rootIds.contains(ancestor)) {
+            status_ = "Cannot reparent entities into their own hierarchy.";
+            return;
+        }
+        const WorldEntity* entity = world_.Find(ancestor);
+        ancestor = entity != nullptr ? entity->parent : EntityId{};
+    }
+
+    DirectX::XMMATRIX inverseParent = DirectX::XMMatrixIdentity();
+    if (parent.IsValid()) {
+        DirectX::XMFLOAT4X4 parentWorld{};
+        if (!world_.TryGetWorldMatrix(parent, parentWorld)) {
+            status_ = "Could not read the new parent world transform.";
+            return;
+        }
+        DirectX::XMVECTOR determinant{};
+        inverseParent =
+            DirectX::XMMatrixInverse(&determinant, DirectX::XMLoadFloat4x4(&parentWorld));
+        const float determinantValue = DirectX::XMVectorGetX(determinant);
+        if (!std::isfinite(determinantValue) || std::abs(determinantValue) <= 1.0e-8f) {
+            status_ = "Cannot reparent under a singular transform.";
+            return;
+        }
+    }
+
+    struct ReparentTransform {
+        EntityId entity{};
+        TransformComponent local{};
+    };
+    std::vector<ReparentTransform> transforms;
+    transforms.reserve(roots.size());
+    for (EntityId root : roots) {
+        DirectX::XMFLOAT4X4 worldMatrix{};
+        TransformComponent local{};
+        if (!world_.TryGetWorldMatrix(root, worldMatrix) ||
+            !TryDecomposeTransformComponent(DirectX::XMLoadFloat4x4(&worldMatrix) * inverseParent,
+                                            local)) {
+            status_ = "Could not preserve the selected entities' world transforms.";
+            return;
+        }
+        transforms.push_back({root, local});
+    }
+
+    CommitHistoryEdit();
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    for (const ReparentTransform& transform : transforms) {
+        if (!world_.SetParent(transform.entity, parent)) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
+            }
+            status_ = "Cannot create a cyclic or invalid hierarchy.";
+            return;
+        }
+        WorldEntity* reparented = world_.Find(transform.entity);
+        if (reparented == nullptr) {
+            World restored;
+            if (WorldSerializer::Deserialize(before, restored, nullptr)) {
+                world_ = std::move(restored);
+                world_.SetPhysicsSettings(physicsSettings_);
+            }
+            status_ = "A reparented entity no longer exists.";
+            return;
+        }
+        reparented->transform = transform.local;
+    }
+    selection_ = world_.Contains(draggedEntity) ? draggedEntity : roots.front();
+    RecordImmediateEdit(roots.size() == 1u ? "Reparent Entity" : "Reparent Entities", before,
+                        selectionBefore);
+    if (roots.size() == 1u) {
+        status_ = parent.IsValid() ? "Reparented the entity without moving it."
+                                   : "Moved the entity to the scene root without moving it.";
+    } else {
+        status_ = parent.IsValid() ? "Reparented the entities without moving them."
+                                   : "Moved the entities to the scene root without moving them.";
+    }
+}
+

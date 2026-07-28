@@ -1,0 +1,7 @@
+funcArgNamesDifferent
+useStlAlgorithm
+constVariablePointer
+constVariableReference
+variableScope
+functionConst
+functionStatic
