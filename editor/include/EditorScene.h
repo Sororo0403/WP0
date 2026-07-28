@@ -30,6 +30,7 @@
 #include <vector>
 
 struct ImVec2;
+class ModelManager;
 
 class EditorScene final : public BaseScene {
 public:
@@ -273,6 +274,13 @@ private:
     void ClearHistory(bool markClean);
     void RefreshDirty();
     void BuildRenderScene();
+    void SubmitRenderEntity(const WorldEntity& entity, ModelManager* models);
+    void SubmitRenderMesh(const WorldEntity& entity, const ModelManager* models,
+                          const Transform& transform, uint32_t meshId, uint32_t materialId,
+                          uint32_t textureId, uint32_t normalTextureId,
+                          const D3D12_VERTEX_BUFFER_VIEW* vertexBufferOverride);
+    void ApplyMaterialOverride(RenderMeshItem& item,
+                               const MaterialOverrideComponent& materialOverride) const;
     void BuildEditorOverlayScene();
     [[nodiscard]] bool DrawGameUi(int width, int height,
                                   bool gameCameraAvailable);
@@ -312,6 +320,11 @@ private:
     bool DrawCharacterControllerGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     void ResolveMeshResources();
+    void ResolveModels();
+    void ResolveMaterialTextures();
+    void ResolveUiTextures();
+    void ResolveFonts();
+    void ResolveLinearMaterialTextures();
     ModelHandle ResolveModel(const MeshRendererComponent& component) const;
     TextureHandle ResolveBaseColorTexture(const MaterialOverrideComponent& component) const;
     TextureHandle ResolveNormalTexture(const MaterialOverrideComponent& component) const;
