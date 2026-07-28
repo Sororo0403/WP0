@@ -90,6 +90,10 @@ private:
     void DrawEntityRenameDialog();
     void DrawDockSpace();
     void DrawPanels();
+    void DrawHierarchyAndProjectPanels();
+    void DrawScenePanelWindow();
+    void DrawGamePanelWindow();
+    void DrawConsoleAndInspectorPanels();
     void DrawProjectPanel();
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);

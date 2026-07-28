@@ -63,6 +63,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
 - `EditorSceneGizmos.cpp`: Scene View のコンポーネント表示、選択枠、Gizmo
+- `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
 - `EditorSceneProjectSettings.cpp`: General、Player、Physics、Input設定
 - `internal/EditorSceneGameUiUtils.h`: Canvas配置、UI矩形、描画順の共有計算
 - `internal/EditorSceneViewportUtils.h`: Ray、投影、モデル境界などの共有計算
@@ -95,6 +96,11 @@ Project Settings はカテゴリ別関数へ分けて専用ファイルへ移し
 `DrawProjectSettingsWindow` は 473 NLOC / CCN 106 から15 NLOC / CCN 3、
 Input設定も291 NLOC / CCN 73から170 NLOC / CCN 41へ縮小した。
 Project Settingsには CCN 41 / 関数長173の回帰上限を設定している。
+
+パネル描画はScene View、Game View、Hierarchy・Project、Console・Inspectorへ
+分割して専用ファイルへ移した。`DrawPanels` は263 NLOC / CCN 66から
+21 NLOC / CCN 6へ縮小し、`EditorScene.cpp` は2,588行となった。
+パネル群には CCN 32 / 関数長131の回帰上限を設定している。
 
 ## 初回結果
 
