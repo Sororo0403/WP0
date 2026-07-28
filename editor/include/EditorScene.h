@@ -31,6 +31,7 @@
 
 struct ImVec2;
 class ModelManager;
+struct Model;
 struct PlayerPackageRequest;
 struct ProjectDescriptor;
 
@@ -340,6 +341,12 @@ private:
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();
+    void ResetAssetPreviewState(const std::filesystem::path& relative);
+    bool TryResolveAssetPreviewPath(const std::filesystem::path& relative,
+                                    std::filesystem::path& physical) const;
+    const Model* LoadAssetPreviewModel(const std::filesystem::path& relative,
+                                       const std::filesystem::path& physical);
+    void FrameAssetPreviewModel(const Model& model);
     bool UpdateGameViewCamera();
     bool UpdateCameraFromEntity(EntityId entity, Camera& camera, int width, int height) const;
     bool DrawSelectedCameraPreview(const ImVec2& imageMin, const ImVec2& imageMax);

@@ -108,6 +108,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorScene.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneAssetDiscovery.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneAssetPreview.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneAssets.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneConsole.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneGameUi.cpp" />
