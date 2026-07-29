@@ -162,6 +162,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneRuntimeAudio.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneRuntimeUiEvents.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneShortcuts.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneTransformGizmo.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneUiEntityCreation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneUpdate.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneViewportNavigation.cpp" />

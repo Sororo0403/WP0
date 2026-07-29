@@ -115,6 +115,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneLighting.cpp`: LightのWorld解決、種類別Scene Lighting反映
 - `EditorSceneComponentGizmos.cpp`: Camera・Light・Audio・Physicsアイコン
 - `EditorScenePhysicsGizmos.cpp`: Box Collider・Character Capsule形状
+- `EditorSceneTransformGizmo.cpp`: 複数選択Transform操作、行列変換、履歴
 - `EditorSceneGizmos.cpp`: Scene View のガイド、選択枠、Transform Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
@@ -292,6 +293,12 @@ Physics GizmoをWorld線分投影、Box角・辺・色、Capsule Ring・側面�
 117 NLOC / CCN 34から11 NLOC / CCN 3へ縮小し、
 `EditorSceneGizmos.cpp` は872行から755行となった。Physics Gizmo処理の
 回帰上限は CCN 8 / 関数長24、残るGizmo処理のCCN上限は33へ引き下げた。
+
+Transform GizmoをImGuizmo設定、Snap値、操作開始Snapshot、Pivot差分、
+Entity別World・Local変換、履歴終了へ分け、専用ファイルへ移した。
+`DrawSceneTransformGizmo` は112 NLOC / CCN 33から18 NLOC / CCN 7へ縮小し、
+`EditorSceneGizmos.cpp` は755行から643行となった。Transform Gizmo処理の
+回帰上限は CCN 7 / 関数長26、残るGizmo処理のCCN上限は31へ引き下げた。
 
 Game UI編集処理は専用ファイルへ分離し、Canvas配置・UI矩形計算を共通
 ユーティリティ化した。さらにHover・Resize判定、Pointer入力、Keyboard Nudge、

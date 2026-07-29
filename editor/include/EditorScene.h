@@ -835,6 +835,22 @@ private:
     bool DrawBoxColliderGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     bool DrawCharacterControllerGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
     bool DrawSceneTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax);
+    [[nodiscard]] bool TryGetSelectedTransformGizmoMatrix(
+        DirectX::XMFLOAT4X4& worldMatrix);
+    void ResetTransformGizmoInteraction();
+    bool ManipulateTransformGizmo(const ImVec2& imageMin, const ImVec2& imageMax,
+                                  DirectX::XMFLOAT4X4& worldMatrix);
+    void FillTransformGizmoSnapValues(std::array<float, 3>& values) const;
+    void BeginTransformGizmoInteraction(const DirectX::XMFLOAT4X4& worldMatrix);
+    void ApplyTransformGizmoManipulation(const DirectX::XMFLOAT4X4& worldMatrix);
+    [[nodiscard]] bool TryBuildTransformGizmoDelta(
+        const DirectX::XMFLOAT4X4& worldMatrix, DirectX::XMMATRIX& delta) const;
+    bool ApplyTransformGizmoDeltaToEntity(EntityId id,
+                                          const DirectX::XMFLOAT4X4& initialWorld,
+                                          const DirectX::XMMATRIX& delta);
+    [[nodiscard]] bool ConvertGizmoWorldToLocal(
+        const WorldEntity& entity, DirectX::XMMATRIX& matrix) const;
+    void FinishTransformGizmoInteraction(bool usingNow);
     void ResolveMeshResources();
     void ResolveModels();
     void ResolveMaterialTextures();
