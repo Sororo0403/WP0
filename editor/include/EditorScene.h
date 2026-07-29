@@ -190,6 +190,17 @@ private:
     void DrawAudioSourceInspector(WorldEntity* entity);
     void DrawAudioListenerInspector(WorldEntity* entity);
     void DrawAnimatorInspector(WorldEntity* entity);
+    bool DrawAnimatorHeader(WorldEntity* entity);
+    void DrawAnimatorRuntimeStatus(const AnimatorComponent& animator) const;
+    const Model* ResolveAnimatorInspectorModel(const WorldEntity& entity) const;
+    void DrawAnimatorClipSelection(const WorldEntity& entity, AnimatorComponent& animator,
+                                   const Model* model, EntityId selectionBefore);
+    void DrawAnimatorPreviewControls(EntityId entity, const Model* model);
+    void DrawAnimatorCheckbox(const char* label, bool& value, const char* historyLabel,
+                              EntityId selectionBefore);
+    void DrawAnimatorPlaybackSettings(const WorldEntity& entity, AnimatorComponent& animator,
+                                      EntityId selectionBefore);
+    void SynchronizeAnimatorPreviewSettings(EntityId entity, const AnimatorComponent& animator);
     void DrawCanvasInspector(WorldEntity* entity);
     void DrawCanvasGroupInspector(WorldEntity* entity);
     void DrawEventSystemInspector(WorldEntity* entity);
