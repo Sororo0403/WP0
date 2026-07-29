@@ -324,6 +324,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Asset Preview exceeded its refactored complexity ceiling."
 }
 
+$assetPreviewPopupLizardReport =
+    Join-Path $reportDirectory "lizard-editor-asset-preview-popup-final.txt"
+& lizard "editor/src/EditorSceneAssetPreviewPopup.cpp" -l cpp -t 1 -C 9 -L 28 -w -i 0 `
+    -o $assetPreviewPopupLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Asset Preview Popup exceeded its refactored complexity ceiling."
+}
+
 $lightingLizardReport =
     Join-Path $reportDirectory "lizard-editor-lighting-final.txt"
 & lizard "editor/src/EditorSceneLighting.cpp" -l cpp -t 1 -C 7 -L 26 -w -i 0 `
@@ -468,6 +476,7 @@ Write-Output "EditorScene initialization Lizard regressions: 0"
 Write-Output "EditorScene Prefab saving Lizard regressions: 0"
 Write-Output "EditorScene Player build Lizard regressions: 0"
 Write-Output "EditorScene Asset Preview Lizard regressions: 0"
+Write-Output "EditorScene Asset Preview Popup Lizard regressions: 0"
 Write-Output "EditorScene Lighting Lizard regressions: 0"
 Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "EditorScene Audio Preview Lizard regressions: 0"

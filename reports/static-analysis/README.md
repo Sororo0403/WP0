@@ -66,6 +66,7 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
 - `EditorSceneAssetBrowserEntry.cpp`: Asset行、起動、Drag Source、Context Menu
 - `EditorSceneAssetPreview.cpp`: Preview状態、Model読込、Cameraフレーミング
+- `EditorSceneAssetPreviewPopup.cpp`: Model統計、Animation操作、Preview描画・回転
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
 - `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
@@ -159,6 +160,12 @@ Runtime WorldのInput Field、Dropdown、Slider、Button・Toggle Eventを
 共通Interactable判定と種類別dispatchへ分け、専用ファイルへ移した。
 `UpdateRuntimeWorld` は101 NLOC / CCN 47から19 NLOC / CCN 5へ縮小した。
 Runtime UI Event処理の回帰上限は CCN 12 / 関数長25である。
+
+Model Preview Popupを利用可否判定、Model統計、Animation選択・再生・シーク、
+Preview描画、回転操作へ分け、専用ファイルへ移した。
+`DrawAssetPreviewPopup` は185 NLOC / CCN 44から20 NLOC / CCN 3へ縮小し、
+`EditorSceneAssets.cpp` は1,020行となった。Model Preview Popup処理の
+回帰上限は CCN 9 / 関数長28である。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

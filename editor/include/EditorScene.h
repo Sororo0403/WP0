@@ -446,6 +446,23 @@ private:
                                bool directory);
     void DrawSelectedAssetDetails();
     void DrawAssetPreviewPopup();
+    [[nodiscard]] bool IsAssetPreviewPopupReady() const;
+    void DrawAssetPreviewModelSummary(const Model& model) const;
+    void DrawAssetPreviewAnimationControls(ModelManager& modelManager, Model& model);
+    void EnsureAssetPreviewAnimation(ModelManager& modelManager, Model& model,
+                                     const std::vector<std::string>& animationNames);
+    void DrawAssetPreviewAnimationSelector(ModelManager& modelManager,
+                                           const std::vector<std::string>& animationNames);
+    void DrawAssetPreviewPlaybackControls(ModelManager& modelManager, Model& model);
+    void SeekAssetPreviewAnimation(ModelManager& modelManager, Model& model, float duration,
+                                   float time);
+    void UpdateAssetPreviewAnimation(ModelManager& modelManager, Model& model);
+    void DrawAssetPreviewSeekButtons(ModelManager& modelManager, Model& model, float duration);
+    void DrawAssetPreviewTimeline(ModelManager& modelManager, Model& model, float duration);
+    void AdvanceAssetPreviewAnimation(ModelManager& modelManager, const Model& model);
+    void DrawAssetPreviewViewport(ModelManager& modelManager);
+    void RenderAssetPreview(ModelManager& modelManager);
+    void HandleAssetPreviewRotation();
     void DrawAudioAssetPreview(const std::filesystem::path& physicalPath);
     void SynchronizeAudioPreviewSelection();
     bool IsAudioPreviewPlaying(const ISoundService* sound) const;
