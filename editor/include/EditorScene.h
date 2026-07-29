@@ -168,6 +168,23 @@ private:
     void DrawHierarchyAndProjectPanels();
     void DrawScenePanelWindow();
     void DrawGamePanelWindow();
+    [[nodiscard]] bool BeginGamePanelWindow();
+    void DrawGamePanelContent(Input* input);
+    void UpdateGamePanelRequestedSize();
+    [[nodiscard]] bool IsGamePanelRenderReady() const;
+    bool RenderGamePanelFrame(bool& gameUiHovered);
+    void DrawGamePanelImage(ImVec2& imageMin, ImVec2& imageMax);
+    void HandleGamePanelInteraction(const ImVec2& imageMin, const ImVec2& imageMax,
+                                    bool hasGameCamera, bool gameUiHovered,
+                                    bool gameViewFocused, Input* input);
+    void TryCaptureGameInput(bool hasGameCamera, bool gameUiHovered,
+                             bool gameImageHovered);
+    void CenterCapturedGameCursor(const ImVec2& imageMin, const ImVec2& imageMax);
+    void UpdateGameInputQuery(Input* input, bool gameViewFocused,
+                              bool gameImageHovered);
+    void DrawGamePanelOverlay(const ImVec2& imageMin, bool hasGameCamera) const;
+    static void DrawGamePanelHint(const ImVec2& imageMin, const char* text,
+                                  uint32_t textColor);
     void DrawConsoleAndInspectorPanels();
     void DrawProjectPanel();
     void UpdateProjectPanelState();

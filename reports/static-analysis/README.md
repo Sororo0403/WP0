@@ -118,6 +118,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneTransformGizmo.cpp`: 複数選択Transform操作、行列変換、履歴
 - `EditorSceneGizmos.cpp`: Scene View のガイド、選択枠、Transform Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
+- `EditorSceneGamePanel.cpp`: Game View描画、入力Capture、Overlay
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
 - `EditorSceneProjectSettings.cpp`: General、Player、Physics設定
 - `EditorSceneProjectInputSettings.cpp`: Input Action、Binding、参照、Dialog
@@ -316,6 +317,13 @@ Project Settingsには CCN 41 / 関数長173の回帰上限を設定している
 分割して専用ファイルへ移した。`DrawPanels` は263 NLOC / CCN 66から
 21 NLOC / CCN 6へ縮小し、`EditorScene.cpp` は2,588行となった。
 パネル群には CCN 32 / 関数長131の回帰上限を設定している。
+
+Game PanelをWindow構成、要求Size、Render可用性、Camera・Surface描画、
+Game UI合成、入力Capture、Cursor固定、Input Query、Overlayへ分け、
+専用ファイルへ移した。`DrawGamePanelWindow` は131 NLOC / CCN 32から
+10 NLOC / CCN 4へ縮小し、`EditorScenePanels.cpp` は333行から202行となった。
+Game Panel処理の回帰上限は CCN 8 / 関数長27、残るPanel統括処理は
+CCN 23 / 関数長92まで引き下げた。
 
 Hierarchyの再帰描画からEntity行、選択、Context Menu、Drag & Dropを
 `EditorSceneHierarchyNode.cpp` へ分離した。`DrawEntityNode` は

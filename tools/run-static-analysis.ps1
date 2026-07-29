@@ -345,10 +345,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $panelsLizardReport =
     Join-Path $reportDirectory "lizard-editor-panels-final.txt"
-& lizard "editor/src/EditorScenePanels.cpp" -l cpp -t 1 -C 32 -L 131 -w -i 0 `
+& lizard "editor/src/EditorScenePanels.cpp" -l cpp -t 1 -C 23 -L 92 -w -i 0 `
     -o $panelsLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Panels exceeded their refactored complexity ceiling."
+}
+
+$gamePanelLizardReport =
+    Join-Path $reportDirectory "lizard-editor-game-panel-final.txt"
+& lizard "editor/src/EditorSceneGamePanel.cpp" -l cpp -t 1 -C 8 -L 27 -w -i 0 `
+    -o $gamePanelLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Game Panel exceeded its refactored complexity ceiling."
 }
 
 $mainMenuLizardReport =
@@ -629,6 +637,7 @@ Write-Output "EditorScene Project Input Settings Lizard regressions: 0"
 Write-Output "EditorScene Console Lizard regressions: 0"
 Write-Output "EditorScene Console Panel Lizard regressions: 0"
 Write-Output "EditorScene Panels Lizard regressions: 0"
+Write-Output "EditorScene Game Panel Lizard regressions: 0"
 Write-Output "EditorScene main menu Lizard regressions: 0"
 Write-Output "EditorScene Update Lizard regressions: 0"
 Write-Output "EditorScene Rendering Lizard regressions: 0"
