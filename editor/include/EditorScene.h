@@ -206,6 +206,14 @@ private:
     void DrawEventSystemInspector(WorldEntity* entity);
     void DrawTextInspector(WorldEntity* entity);
     void DrawImageInspector(WorldEntity* entity);
+    bool DrawImageRemoval(WorldEntity* entity);
+    void DrawImageGeneralSettings(ImageComponent& image, EntityId selectionBefore);
+    void DrawImageFillSettings(ImageComponent& image, EntityId selectionBefore);
+    void DrawImageAnchorAndPivotSettings(ImageComponent& image, EntityId selectionBefore);
+    void DrawImageTextureSettings(ImageComponent& image, EntityId selectionBefore);
+    void DrawImageLayoutAndColorSettings(ImageComponent& image);
+    void DrawImageTexturePreview(ImageComponent& image, EntityId selectionBefore);
+    void DrawImageCanvasRequirement(const WorldEntity* entity);
     void DrawButtonInspector(WorldEntity* entity);
     void DrawToggleInspector(WorldEntity* entity);
     void DrawSliderInspector(WorldEntity* entity);

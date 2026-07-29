@@ -124,6 +124,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneHierarchyNode.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspector.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspectorAnimator.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspectorImage.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspectorMaterial.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspectorMedia.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\EditorSceneInspectorPhysics.cpp" />
