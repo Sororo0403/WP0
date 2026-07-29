@@ -75,7 +75,8 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator
 - `EditorSceneRuntimeAudio.cpp`: Listener、Audio Source、Voiceライフサイクル
 - `EditorSceneRuntimeUiEvents.cpp`: Runtime UI Event検証・Behavior dispatch
-- `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
+- `EditorSceneConsole.cpp`: Console収集とScriptの監視・再コンパイル
+- `EditorSceneConsolePanel.cpp`: Console Toolbar、検索、メッセージ描画・操作
 - `EditorSceneEntityRename.cpp`: Rename Popup、入力、確定、Cancel
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
 - `EditorSceneAssetBrowserEntry.cpp`: Asset行、起動、Drag Source、Context Menu
@@ -235,6 +236,13 @@ Button InspectorをComponent削除、一般設定、Navigation方式、Explicit�
 `EditorSceneInspectorUiControls.cpp` は485行から331行となった。
 Button処理の回帰上限は CCN 7 / 関数長20、残るUI Controlsは
 CCN 30 / 関数長130まで引き下げた。
+
+Console PanelをToolbar、全件コピー、Severity別件数・表示Filter、検索、
+メッセージ描画、ソース起動、Context Menuへ分け、専用ファイルへ移した。
+`DrawConsolePanel` は122 NLOC / CCN 37から8 NLOC / CCN 1へ縮小し、
+`EditorSceneConsole.cpp` は402行から280行となった。Console Panel処理の
+回帰上限は CCN 8 / 関数長18、残るConsole・Script処理は
+CCN 16 / 関数長71で個別に監視する。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

@@ -286,6 +286,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Project Input Settings exceeded their refactored complexity ceiling."
 }
 
+$consoleLizardReport =
+    Join-Path $reportDirectory "lizard-editor-console-final.txt"
+& lizard "editor/src/EditorSceneConsole.cpp" -l cpp -t 1 -C 16 -L 71 -w -i 0 `
+    -o $consoleLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Console exceeded its refactored complexity ceiling."
+}
+
+$consolePanelLizardReport =
+    Join-Path $reportDirectory "lizard-editor-console-panel-final.txt"
+& lizard "editor/src/EditorSceneConsolePanel.cpp" -l cpp -t 1 -C 8 -L 18 -w -i 0 `
+    -o $consolePanelLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Console Panel exceeded its refactored complexity ceiling."
+}
+
 $panelsLizardReport =
     Join-Path $reportDirectory "lizard-editor-panels-final.txt"
 & lizard "editor/src/EditorScenePanels.cpp" -l cpp -t 1 -C 32 -L 131 -w -i 0 `
@@ -556,6 +572,8 @@ Write-Output "EditorScene UI entity creation Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy node Lizard regressions: 0"
 Write-Output "EditorScene Project Settings Lizard regressions: 0"
 Write-Output "EditorScene Project Input Settings Lizard regressions: 0"
+Write-Output "EditorScene Console Lizard regressions: 0"
+Write-Output "EditorScene Console Panel Lizard regressions: 0"
 Write-Output "EditorScene Panels Lizard regressions: 0"
 Write-Output "EditorScene main menu Lizard regressions: 0"
 Write-Output "EditorScene Update Lizard regressions: 0"

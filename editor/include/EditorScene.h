@@ -74,6 +74,14 @@ private:
         Warning,
         Error,
     };
+    struct ConsoleEntry {
+        std::string message;
+        double timestampSeconds = 0.0;
+        ConsoleSeverity severity = ConsoleSeverity::Info;
+        std::filesystem::path sourcePath;
+        uint32_t sourceLine = 0u;
+        uint32_t sourceColumn = 0u;
+    };
     struct ScriptBuildCompletion {
         bool succeeded = false;
         std::string error;
@@ -350,6 +358,20 @@ private:
     void DrawInputFieldInspector(WorldEntity* entity);
     void DrawMaterialOverrideInspector(WorldEntity* entity);
     void DrawConsolePanel();
+    void DrawConsoleToolbar();
+    void ClearConsoleEntries();
+    void CopyConsoleEntriesToClipboard() const;
+    void DrawConsoleSeverityFilters();
+    [[nodiscard]] size_t CountConsoleEntries(ConsoleSeverity severity) const;
+    [[nodiscard]] static const char* ConsoleSeverityLabel(ConsoleSeverity severity);
+    void DrawConsoleMessages();
+    [[nodiscard]] bool IsConsoleEntryVisible(const ConsoleEntry& entry,
+                                             const std::string& query) const;
+    [[nodiscard]] bool IsConsoleSeverityVisible(ConsoleSeverity severity) const;
+    void DrawConsoleEntry(const ConsoleEntry& entry, size_t index);
+    void DrawConsoleSourceInteraction(const ConsoleEntry& entry);
+    void DrawConsoleEntryContextMenu(const ConsoleEntry& entry);
+    static void CopyConsoleSourceLocation(const ConsoleEntry& entry);
     void DrawProjectSettingsWindow();
     void DrawProjectGeneralSettings();
     void DrawProjectPlayerSettings();
@@ -947,14 +969,6 @@ private:
     PendingSceneAction pendingSceneAction_ = PendingSceneAction::None;
     std::filesystem::path pendingScenePath_;
     std::string status_ = "Editor session started.";
-    struct ConsoleEntry {
-        std::string message;
-        double timestampSeconds = 0.0;
-        ConsoleSeverity severity = ConsoleSeverity::Info;
-        std::filesystem::path sourcePath;
-        uint32_t sourceLine = 0u;
-        uint32_t sourceColumn = 0u;
-    };
     std::vector<ConsoleEntry> consoleEntries_;
     std::string lastCapturedStatus_;
     std::array<char, 128> consoleSearch_{};
