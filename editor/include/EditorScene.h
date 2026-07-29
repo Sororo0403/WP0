@@ -30,6 +30,7 @@
 #include <vector>
 
 struct ImVec2;
+struct ImGuiIO;
 class ModelManager;
 struct Model;
 struct InputActionUsage;
@@ -340,6 +341,13 @@ private:
     };
     bool DrawCreateEntityMenu(const DirectX::XMFLOAT3& position, EntityId parent = {});
     void HandleEditorShortcuts();
+    bool HandleGameInputReleaseShortcut();
+    bool HandleRuntimeShortcut();
+    [[nodiscard]] bool ShouldIgnoreEditorCommandShortcuts(const ImGuiIO& io) const;
+    void HandleEditorDirectShortcut(const ImGuiIO& io);
+    void HandleEditorControlShortcut(const ImGuiIO& io);
+    void HandleSceneSaveShortcut(bool saveAs);
+    void HandleHistoryShortcut(bool redo);
     void SynchronizeHierarchySelection();
     void SelectHierarchyEntity(EntityId entity, bool toggle, bool range);
     void SelectAllHierarchyEntities();

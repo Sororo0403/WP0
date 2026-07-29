@@ -86,6 +86,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
+- `EditorSceneShortcuts.cpp`: Runtime、編集、Scene、履歴ショートカット
 - `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorAddComponent.cpp`: Component追加、Script Drop
@@ -195,6 +196,13 @@ Create・Rename・Delete Dialogへ分け、専用ファイルへ移した。
 `DrawInputActionDialogs` は126 NLOC / CCN 33から5 NLOC / CCN 1へ縮小した。
 `EditorSceneProjectSettings.cpp` は788行から280行となった。Input Settings処理の
 回帰上限は CCN 12 / 関数長49、残るProject Settingsは CCN 17 / 関数長103である。
+
+Editorショートカットを入力Capture解除、Runtime、通常編集、Ctrl操作、
+Scene保存、Undo・Redoへ分け、専用ファイルへ移した。
+`HandleEditorShortcuts` は92 NLOC / CCN 39から17 NLOC / CCN 6へ縮小し、
+`EditorSceneHierarchy.cpp` は1,097行から1,004行となった。
+Shortcut処理の回帰上限は CCN 12 / 関数長25、HierarchyのCCN上限も
+39から37へ引き下げた。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。
