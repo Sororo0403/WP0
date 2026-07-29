@@ -53,6 +53,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "WorldSerializer exceeded its refactored complexity ceiling."
 }
 
+$projectScriptLibraryLizardReport =
+    Join-Path $reportDirectory "lizard-project-script-library-final.txt"
+& lizard "editor/src/ProjectScriptLibrary.cpp" -l cpp -t 1 -C 7 -L 34 -w -i 0 `
+    -o $projectScriptLibraryLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "ProjectScriptLibrary exceeded its refactored complexity ceiling."
+}
+
+$projectScriptValidationLizardReport =
+    Join-Path $reportDirectory "lizard-project-script-library-validation-final.txt"
+& lizard "editor/src/ProjectScriptLibraryValidation.cpp" -l cpp -t 1 -C 35 -L 44 -w -i 0 `
+    -o $projectScriptValidationLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "ProjectScriptLibrary validation exceeded its refactored complexity ceiling."
+}
+
 $inspectorSources = @(
     "editor/src/EditorSceneInspector.cpp",
     "editor/src/EditorSceneInspectorMedia.cpp",
@@ -318,6 +334,8 @@ try {
 
 Write-Output "Lizard warnings: 0"
 Write-Output "WorldSerializer Lizard regressions: 0"
+Write-Output "ProjectScriptLibrary Lizard regressions: 0"
+Write-Output "ProjectScriptLibrary validation Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
 Write-Output "EditorScene Game UI visuals Lizard regressions: 0"

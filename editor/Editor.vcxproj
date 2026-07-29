@@ -152,6 +152,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\InputSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectScriptLibrary.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectScriptLibraryValidation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentProjectsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RecentScenesStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\RuntimeSceneLoader.cpp" />
@@ -167,6 +168,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\EditorSceneHierarchyUtils.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\EditorSceneGameUiUtils.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\EditorSceneViewportUtils.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\ProjectScriptLibraryUtils.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\AssetImportPlanner.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />

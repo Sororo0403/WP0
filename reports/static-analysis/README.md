@@ -61,6 +61,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
+- `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
 - `EditorSceneInspectorRendering.cpp`: Camera、Light、Material
@@ -133,6 +134,12 @@ Hierarchyの再帰描画からEntity行、選択、Context Menu、Drag & Dropを
 `EditorSceneHierarchyNode.cpp` へ分離した。`DrawEntityNode` は
 199 NLOC / CCN 77から33 NLOC / CCN 10へ縮小した。Hierarchy本体の
 回帰上限は CCN 39 / 関数長187、Node操作は CCN 27 / 関数長71である。
+
+Project Script DLLの準備・API解決・型とProperty検証・Registry登録を
+`ProjectScriptLibraryValidation.cpp` へ分離した。
+`ProjectScriptLibrary::Load` は175 NLOC / CCN 72から32 NLOC / CCN 7へ
+縮小した。Library本体の回帰上限は CCN 7 / 関数長34、検証処理は
+CCN 35 / 関数長44である。
 
 メインメニューはFile、Build、Edit、View、Runtime操作、タイトル表示へ分割し、
 専用ファイルへ移した。`DrawMainMenu` は186 NLOC / CCN 53から

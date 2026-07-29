@@ -90,6 +90,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\InputSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectScriptLibrary.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectScriptLibraryValidation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RecentScenesStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\RuntimeSceneLoader.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ScriptAsset.cpp" />
