@@ -148,7 +148,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $gameUiEditingLizardReport =
     Join-Path $reportDirectory "lizard-editor-game-ui-editing-final.txt"
-& lizard "editor/src/EditorSceneGameUiEditing.cpp" -l cpp -t 1 -C 53 -L 152 -w -i 0 `
+& lizard "editor/src/EditorSceneGameUiEditing.cpp" -l cpp -t 1 -C 25 -L 90 -w -i 0 `
     -o $gameUiEditingLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Game UI editing exceeded its refactored complexity ceiling."

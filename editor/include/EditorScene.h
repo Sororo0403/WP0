@@ -506,6 +506,19 @@ private:
                                      const ImVec2& imageMax, ImVec2& minimum,
                                      ImVec2& maximum, float* canvasScale = nullptr) const;
     void UpdateGameUiDragAndResize(const ImVec2& imageMin, const ImVec2& imageMax);
+    enum class UiResizeHandle : uint8_t;
+    void ResetGameUiEditingState();
+    EntityId FindHoveredGameUiEntity(const ImVec2& mouse, const ImVec2& imageMin,
+                                     const ImVec2& imageMax) const;
+    UiResizeHandle FindHoveredGameUiResizeHandle(const ImVec2& mouse,
+                                                  const ImVec2& imageMin,
+                                                  const ImVec2& imageMax) const;
+    void HandleGameUiPointerInput(bool imageHovered, EntityId hovered,
+                                  UiResizeHandle hoveredResizeHandle);
+    void HandleGameUiKeyboardNudge(const ImVec2& imageMin, const ImVec2& imageMax);
+    void DrawGameUiSelectionOverlay(const ImVec2& imageMin, const ImVec2& imageMax) const;
+    void UpdateGameUiEditingCursor(EntityId hovered,
+                                   UiResizeHandle hoveredResizeHandle) const;
     void HandleGameUiEditing(const ImVec2& imageMin,
                              const ImVec2& imageMax);
     void UpdateAssetPreview();

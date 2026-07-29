@@ -140,9 +140,10 @@ Game UI操作が CCN 32 / 関数長70、
 Gizmo 群が CCN 48 / 関数長148である。
 
 Game UI編集処理は専用ファイルへ分離し、Canvas配置・UI矩形計算を共通
-ユーティリティ化した。`HandleGameUiEditing` は 334 NLOC / CCN 95 から
-147 NLOC / CCN 53へ縮小し、ドラッグ・リサイズ更新も独立させた。
-編集処理には CCN 53 / 関数長152の回帰上限を設定している。
+ユーティリティ化した。さらにHover・Resize判定、Pointer入力、Keyboard Nudge、
+Overlay、Cursorを分け、`HandleGameUiEditing` は334 NLOC / CCN 95から
+19 NLOC / CCN 7へ縮小した。編集処理には CCN 25 / 関数長90の
+回帰上限を設定している。
 
 Project Settings はカテゴリ別関数へ分けて専用ファイルへ移し、
 `EditorScene.cpp` を約3,570行から2,858行まで縮小した。
