@@ -88,7 +88,8 @@ $inspectorSources = @(
     "editor/src/EditorSceneInspectorScriptAssets.cpp",
     "editor/src/EditorSceneInspectorUi.cpp",
     "editor/src/EditorSceneInspectorUiControls.cpp",
-    "editor/src/EditorSceneInspectorText.cpp"
+    "editor/src/EditorSceneInspectorText.cpp",
+    "editor/src/EditorSceneInspectorTransform.cpp"
 )
 $inspectorLizardReport =
     Join-Path $reportDirectory "lizard-editor-inspector-final.txt"
@@ -128,6 +129,14 @@ $textInspectorLizardReport =
     -o $textInspectorLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Text Inspector exceeded its refactored complexity ceiling."
+}
+
+$transformInspectorLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-transform-final.txt"
+& lizard "editor/src/EditorSceneInspectorTransform.cpp" -l cpp -t 1 -C 14 -L 44 -w -i 0 `
+    -o $transformInspectorLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Transform Inspector exceeded its refactored complexity ceiling."
 }
 
 $scriptAssetInspectorLizardReport =
@@ -410,6 +419,7 @@ Write-Output "EditorScene Material Inspector Lizard regressions: 0"
 Write-Output "EditorScene Animator Inspector Lizard regressions: 0"
 Write-Output "EditorScene Image Inspector Lizard regressions: 0"
 Write-Output "EditorScene Text Inspector Lizard regressions: 0"
+Write-Output "EditorScene Transform Inspector Lizard regressions: 0"
 Write-Output "EditorScene Script Asset Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
 Write-Output "EditorScene Game UI visuals Lizard regressions: 0"

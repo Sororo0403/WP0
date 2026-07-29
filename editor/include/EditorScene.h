@@ -168,6 +168,20 @@ private:
     void DrawInspectorPanel();
     void DrawEntityHeaderAndTransformInspector(
         WorldEntity* entity, const std::vector<EntityId>& inspectedEntities);
+    void DrawSelectedEntitiesActive(
+        const WorldEntity& entity, const std::vector<EntityId>& inspectedEntities);
+    void DrawEntitySelectionIdentity(
+        WorldEntity& entity, const std::vector<EntityId>& inspectedEntities);
+    void DrawSelectedEntitiesLayer(
+        const WorldEntity& entity, const std::vector<EntityId>& inspectedEntities);
+    void ResetSelectedTransforms(const std::vector<EntityId>& inspectedEntities);
+    void PasteSelectedTransforms(const std::vector<EntityId>& inspectedEntities);
+    void DrawTransformToolbar(
+        const WorldEntity& entity, const std::vector<EntityId>& inspectedEntities);
+    void DrawTransformField(
+        WorldEntity& entity, const std::vector<EntityId>& inspectedEntities,
+        const char* label, DirectX::XMFLOAT3 TransformComponent::* member,
+        float speed, bool scale);
     void DrawAddComponentInspector(WorldEntity* entity);
     void DrawMeshRendererInspector(WorldEntity* entity);
     void DrawScriptsInspector(WorldEntity* entity);
