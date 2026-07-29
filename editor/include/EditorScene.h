@@ -247,6 +247,21 @@ private:
     bool DrawScalarScriptPropertyInspector(BehaviorComponent& behavior,
                                            const ScriptPropertyDefinition& definition,
                                            EntityId selectionBefore);
+    bool DrawFloatScriptProperty(BehaviorComponent& behavior,
+                                 const ScriptPropertyDefinition& definition);
+    bool DrawBooleanScriptProperty(BehaviorComponent& behavior,
+                                   const ScriptPropertyDefinition& definition,
+                                   EntityId selectionBefore);
+    bool DrawIntegerScriptProperty(BehaviorComponent& behavior,
+                                   const ScriptPropertyDefinition& definition);
+    bool DrawVector3ScriptProperty(BehaviorComponent& behavior,
+                                   const ScriptPropertyDefinition& definition);
+    [[nodiscard]] static const ScriptPropertyValue* FindScriptPropertyValue(
+        const BehaviorComponent& behavior, const ScriptPropertyDefinition& definition);
+    static ScriptPropertyValue& GetOrCreateScriptPropertyValue(
+        BehaviorComponent& behavior, const ScriptPropertyDefinition& definition);
+    void MarkScriptPropertyModified();
+    void UpdateScriptPropertyEditHistory();
     bool DrawAssetScriptPropertyInspector(WorldEntity* entity,
                                           BehaviorComponent& behavior,
                                           const ScriptPropertyDefinition& definition,

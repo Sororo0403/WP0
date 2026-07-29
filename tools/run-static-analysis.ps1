@@ -86,6 +86,7 @@ $inspectorSources = @(
     "editor/src/EditorSceneInspectorMedia.cpp",
     "editor/src/EditorSceneInspectorPhysics.cpp",
     "editor/src/EditorSceneInspectorRendering.cpp",
+    "editor/src/EditorSceneInspectorScalarProperties.cpp",
     "editor/src/EditorSceneInspectorScriptAssets.cpp",
     "editor/src/EditorSceneInspectorUi.cpp",
     "editor/src/EditorSceneInspectorUiControls.cpp",
@@ -96,10 +97,26 @@ $inspectorSources = @(
 )
 $inspectorLizardReport =
     Join-Path $reportDirectory "lizard-editor-inspector-final.txt"
-& lizard @inspectorSources -l cpp -t 1 -C 66 -L 272 -w -i 0 `
+& lizard @inspectorSources -l cpp -t 1 -C 30 -L 130 -w -i 0 `
     -o $inspectorLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Inspector exceeded its refactored complexity ceiling."
+}
+
+$inspectorCoreLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-core-final.txt"
+& lizard "editor/src/EditorSceneInspector.cpp" -l cpp -t 1 -C 30 -L 120 -w -i 0 `
+    -o $inspectorCoreLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Inspector core exceeded its refactored complexity ceiling."
+}
+
+$scalarPropertyInspectorLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-scalar-properties-final.txt"
+& lizard "editor/src/EditorSceneInspectorScalarProperties.cpp" -l cpp -t 1 -C 5 -L 20 -w -i 0 `
+    -o $scalarPropertyInspectorLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Scalar Property Inspector exceeded its refactored complexity ceiling."
 }
 
 $materialInspectorLizardReport =
@@ -565,6 +582,8 @@ Write-Output "InputSettingsStore Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary validation Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"
+Write-Output "EditorScene Inspector core Lizard regressions: 0"
+Write-Output "EditorScene Scalar Property Inspector Lizard regressions: 0"
 Write-Output "EditorScene Material Inspector Lizard regressions: 0"
 Write-Output "EditorScene Animator Inspector Lizard regressions: 0"
 Write-Output "EditorScene Image Inspector Lizard regressions: 0"

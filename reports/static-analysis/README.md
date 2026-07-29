@@ -92,6 +92,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneUiEntityCreation.cpp`: Canvas、Event System、UI Preset生成
 - `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
+- `EditorSceneInspectorScalarProperties.cpp`: Float、Boolean、Integer、Vector3
 - `EditorSceneInspectorAddComponent.cpp`: Component追加、Script Drop
 - `EditorSceneInspectorAnimator.cpp`: Animator Clip、Preview、再生設定
 - `EditorSceneInspectorMaterial.cpp`: Material属性、Texture Slot、Preview
@@ -174,6 +175,13 @@ Input Action、Sceneの型別UIへ分け、専用ファイルへ移した。
 `DrawAssetScriptPropertyInspector` は164 NLOC / CCN 55から
 19 NLOC / CCN 4へ縮小した。Script Asset Property処理の回帰上限は
 CCN 16 / 関数長41である。
+
+Scalar Script PropertyをFloat、Boolean、Integer、Vector3の型別UI、
+値の検索・生成、変更通知、連続編集履歴へ分け、専用ファイルへ移した。
+`DrawScalarScriptPropertyInspector` は105 NLOC / CCN 34から
+16 NLOC / CCN 5へ縮小し、`EditorSceneInspector.cpp` は499行から394行となった。
+Scalar処理の回帰上限は CCN 5 / 関数長20、Inspector本体は
+CCN 30 / 関数長120、Inspector群全体は CCN 30 / 関数長130まで引き下げた。
 
 Runtime Audioの開始・更新・一時停止・終了を専用ファイルへ集約し、
 Listener、Voice停止・再生、Command処理、Parameter同期、Source更新へ分けた。
