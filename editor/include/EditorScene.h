@@ -310,6 +310,26 @@ private:
     void DrawToggleInspector(WorldEntity* entity);
     void DrawSliderInspector(WorldEntity* entity);
     void DrawDropdownInspector(WorldEntity* entity);
+    enum class DropdownOptionAction : uint8_t {
+        None,
+        MoveUp,
+        MoveDown,
+        Remove,
+    };
+    void RemoveDropdownComponent(WorldEntity& entity);
+    void DrawDropdownGeneralSettings(DropdownComponent& dropdown);
+    void DrawDropdownValue(DropdownComponent& dropdown);
+    void DrawDropdownOptions(DropdownComponent& dropdown);
+    void EditDropdownOptionText(DropdownComponent& dropdown, size_t optionIndex);
+    [[nodiscard]] DropdownOptionAction DrawDropdownOptionActions(
+        size_t optionIndex, size_t optionCount);
+    void MoveDropdownOption(DropdownComponent& dropdown, size_t optionIndex,
+                            DropdownOptionAction action);
+    void RemoveDropdownOption(DropdownComponent& dropdown, size_t optionIndex);
+    void AddDropdownOption(DropdownComponent& dropdown);
+    void DrawDropdownAppearance(DropdownComponent& dropdown);
+    void EditDropdownColor(const char* label, DirectX::XMFLOAT4& color);
+    void DrawDropdownRequirements(const WorldEntity& entity) const;
     void DrawInputFieldInspector(WorldEntity* entity);
     void DrawMaterialOverrideInspector(WorldEntity* entity);
     void DrawConsolePanel();
