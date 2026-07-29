@@ -324,6 +324,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Player build exceeded its refactored complexity ceiling."
 }
 
+$playerPackageBuilderLizardReport =
+    Join-Path $reportDirectory "lizard-player-package-builder-final.txt"
+& lizard "editor/src/PlayerPackageBuilder.cpp" `
+    "editor/src/PlayerPackageBuilderValidation.cpp" `
+    "editor/src/PlayerPackageBuilderStaging.cpp" `
+    "editor/src/PlayerPackageBuilderPublishing.cpp" `
+    -l cpp -t 1 -C 8 -L 28 -w -i 0 -o $playerPackageBuilderLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "PlayerPackageBuilder exceeded its refactored complexity ceiling."
+}
+
 $assetPreviewLizardReport =
     Join-Path $reportDirectory "lizard-editor-asset-preview-final.txt"
 & lizard "editor/src/EditorSceneAssetPreview.cpp" -l cpp -t 1 -C 6 -L 26 -w -i 0 `
@@ -484,6 +495,7 @@ Write-Output "EditorScene viewport selection Lizard regressions: 0"
 Write-Output "EditorScene initialization Lizard regressions: 0"
 Write-Output "EditorScene Prefab saving Lizard regressions: 0"
 Write-Output "EditorScene Player build Lizard regressions: 0"
+Write-Output "PlayerPackageBuilder Lizard regressions: 0"
 Write-Output "EditorScene Asset Preview Lizard regressions: 0"
 Write-Output "EditorScene Asset Preview Popup Lizard regressions: 0"
 Write-Output "EditorScene Lighting Lizard regressions: 0"

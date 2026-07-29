@@ -51,6 +51,20 @@ Input Settings読込を文書検証、Keyboard・Gamepad項目検証、1 Action�
 98 NLOC / CCN 52から37 NLOC / CCN 12へ縮小した。
 Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 
+### PlayerPackageBuilder
+
+Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging、
+既存PackageのBackup・Publish・復旧へ分けた。
+
+- `PlayerPackageBuilder.cpp`: 構築フローの統括
+- `PlayerPackageBuilderValidation.cpp`: Request、出力先、既存Package検証
+- `PlayerPackageBuilderStaging.cpp`: Runtime、Asset、Scene、Settings、Script配置
+- `PlayerPackageBuilderPublishing.cpp`: 新規Publish、既存Package置換・復旧
+- `internal/PlayerPackageBuilderInternal.h`: Package計画と内部工程の共有契約
+
+`PlayerPackageBuilder::Build` は157 NLOC / CCN 42から17 NLOC / CCN 4へ
+縮小した。Player Package構築処理の回帰上限は CCN 8 / 関数長28である。
+
 ### EditorScene
 
 14,090 行の単一ファイルから、まず次の責務を分離した。

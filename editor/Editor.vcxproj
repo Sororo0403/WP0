@@ -158,6 +158,9 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ApplicationPaths.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerPackageBuilder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerPackageBuilderPublishing.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerPackageBuilderStaging.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerPackageBuilderValidation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\PlayerProjectValidator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\ProjectLauncher.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\PhysicsSettingsStore.cpp" />
@@ -185,6 +188,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ApplicationPaths.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectDescriptor.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\PlayerPackageBuilder.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\internal\PlayerPackageBuilderInternal.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\PlayerProjectValidator.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\ProjectLauncher.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)include\PhysicsSettingsStore.h" />

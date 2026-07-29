@@ -85,6 +85,9 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\AssetImportPlanner.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\ProjectDescriptor.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerPackageBuilder.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerPackageBuilderPublishing.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerPackageBuilderStaging.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerPackageBuilderValidation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerProjectValidator.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PhysicsSettingsStore.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)..\..\editor\src\PlayerSettingsStore.cpp" />
