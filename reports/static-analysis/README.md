@@ -72,6 +72,7 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
 - `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
+- `EditorSceneInspectorAddComponent.cpp`: Component追加、Script Drop
 - `EditorSceneInspectorAnimator.cpp`: Animator Clip、Preview、再生設定
 - `EditorSceneInspectorMaterial.cpp`: Material属性、Texture Slot、Preview
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
@@ -136,6 +137,11 @@ Reset・Paste、Transform Fieldへ分け、専用ファイルへ移した。
 `DrawEntityHeaderAndTransformInspector` は170 NLOC / CCN 48から
 17 NLOC / CCN 2へ縮小した。Transform Inspectorの回帰上限は
 CCN 14 / 関数長44である。
+
+Add Componentの共通履歴処理を抽出し、Rendering、Audio・Animation、
+UI基盤、UI Controls、Physics、Scriptへ分け、専用ファイルへ移した。
+`DrawAddComponentInspector` は157 NLOC / CCN 47から17 NLOC / CCN 3へ
+縮小した。Add Component処理の回帰上限は CCN 11 / 関数長22である。
 
 Asset系Script Propertyを共通の値取得・代入と、Animation Clip、
 Input Action、Sceneの型別UIへ分け、専用ファイルへ移した。

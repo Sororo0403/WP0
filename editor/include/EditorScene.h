@@ -183,6 +183,15 @@ private:
         const char* label, DirectX::XMFLOAT3 TransformComponent::* member,
         float speed, bool scale);
     void DrawAddComponentInspector(WorldEntity* entity);
+    void DrawAddComponentScriptDropTarget();
+    void AddInspectorComponent(const char* historyLabel, const char* status,
+                               const std::function<void()>& addComponent);
+    void DrawAddRenderingComponents(WorldEntity& entity);
+    void DrawAddAudioAnimationComponents(WorldEntity& entity);
+    void DrawAddUiFoundationComponents(WorldEntity& entity);
+    void DrawAddUiControlComponents(WorldEntity& entity);
+    void DrawAddPhysicsComponents(WorldEntity& entity);
+    void DrawAddScriptComponent(WorldEntity& entity);
     void DrawMeshRendererInspector(WorldEntity* entity);
     void DrawScriptsInspector(WorldEntity* entity);
     bool DrawMaterialOverrideHeader(WorldEntity* entity);
