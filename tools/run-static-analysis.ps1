@@ -180,6 +180,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Game UI interaction exceeded its refactored complexity ceiling."
 }
 
+$gameUiNavigationLizardReport =
+    Join-Path $reportDirectory "lizard-editor-game-ui-navigation-final.txt"
+& lizard "editor/src/EditorSceneGameUiNavigation.cpp" -l cpp -t 1 -C 8 -L 28 -w -i 0 `
+    -o $gameUiNavigationLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Game UI navigation exceeded its refactored complexity ceiling."
+}
+
 $gameUiEditingLizardReport =
     Join-Path $reportDirectory "lizard-editor-game-ui-editing-final.txt"
 & lizard "editor/src/EditorSceneGameUiEditing.cpp" -l cpp -t 1 -C 25 -L 90 -w -i 0 `
@@ -458,6 +466,7 @@ Write-Output "EditorScene Script Asset Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
 Write-Output "EditorScene Game UI visuals Lizard regressions: 0"
 Write-Output "EditorScene Game UI interaction Lizard regressions: 0"
+Write-Output "EditorScene Game UI navigation Lizard regressions: 0"
 Write-Output "EditorScene Game UI editing Lizard regressions: 0"
 Write-Output "EditorScene Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Component Gizmo Lizard regressions: 0"

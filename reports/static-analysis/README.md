@@ -88,6 +88,7 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
 - `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
+- `EditorSceneGameUiNavigation.cpp`: 方向入力、Explicit・自動フォーカス移動
 - `EditorSceneInitialization.cpp`: 入力、Script、Surface、描画、Camera初期化
 - `EditorSceneLighting.cpp`: LightのWorld解決、種類別Scene Lighting反映
 - `EditorSceneComponentGizmos.cpp`: Camera・Light・Audio・Physicsアイコン
@@ -166,6 +167,12 @@ Preview描画、回転操作へ分け、専用ファイルへ移した。
 `DrawAssetPreviewPopup` は185 NLOC / CCN 44から20 NLOC / CCN 3へ縮小し、
 `EditorSceneAssets.cpp` は1,020行となった。Model Preview Popup処理の
 回帰上限は CCN 9 / 関数長28である。
+
+Game UIの方向Navigationを入力解決、Explicitリンク、自動候補探索、
+方向スコアリング、フォーカス反映へ分け、専用ファイルへ移した。
+`NavigateGameUiDirection` は115 NLOC / CCN 43から22 NLOC / CCN 8へ縮小し、
+`EditorSceneGameUi.cpp` は178行となった。方向Navigation処理の回帰上限は
+CCN 8 / 関数長28である。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

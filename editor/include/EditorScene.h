@@ -564,10 +564,37 @@ private:
     void DrawGameUiText(const WorldEntity& entity, float scale,
                         const DirectX::XMFLOAT2& canvasOrigin,
                         const DirectX::XMFLOAT2& referenceResolution, float groupAlpha);
+    enum class UiNavigationDirection : uint8_t {
+        None,
+        Left,
+        Right,
+        Up,
+        Down,
+    };
     bool NavigateGameUiDirection(
         const std::vector<EntityId>& selectableButtons,
         const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters,
         bool canNavigateUi, bool focusedSlider, bool gameCameraAvailable, bool dropdownOpen);
+    [[nodiscard]] UiNavigationDirection ReadGameUiNavigationDirection(
+        bool canNavigateUi, bool focusedSlider, bool dropdownOpen) const;
+    [[nodiscard]] bool IsGameUiDirectionalNavigationEnabled(
+        bool canNavigateUi, bool focusedSlider, bool dropdownOpen) const;
+    [[nodiscard]] EntityId ResolveExplicitGameUiNavigationTarget(
+        const WorldEntity& control, UiNavigationDirection direction) const;
+    void NavigateGameUiExplicit(
+        const WorldEntity& control, UiNavigationDirection direction,
+        const std::vector<EntityId>& selectableButtons);
+    void NavigateGameUiAutomatic(
+        UiNavigationDirection direction, const std::vector<EntityId>& selectableButtons,
+        const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters);
+    [[nodiscard]] EntityId FindBestGameUiNavigationTarget(
+        UiNavigationDirection direction, const DirectX::XMFLOAT2& currentCenter,
+        const std::vector<EntityId>& selectableButtons,
+        const std::unordered_map<EntityId, DirectX::XMFLOAT2, EntityIdHash>& selectableCenters)
+        const;
+    [[nodiscard]] float CalculateGameUiNavigationScore(
+        UiNavigationDirection direction, const DirectX::XMFLOAT2& currentCenter,
+        const DirectX::XMFLOAT2& candidateCenter) const;
     bool TryCalculateGameUiCanvasLayout(
         const WorldEntity& entity, const ImVec2& imageMin, const ImVec2& imageMax, float& scale,
         DirectX::XMFLOAT2& origin, DirectX::XMFLOAT2& referenceResolution) const;
