@@ -86,7 +86,8 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
 - `EditorSceneCameraPreview.cpp`: Camera Previewの準備、描画、Overlay
-- `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
+- `EditorSceneHierarchy.cpp`: Entity作成、選択、コピー、親子付け
+- `EditorSceneHierarchyPanel.cpp`: Hierarchy Toolbar、検索、Root描画・Drop
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
 - `EditorSceneShortcuts.cpp`: Runtime、編集、Scene、履歴ショートカット
 - `EditorSceneUiEntityCreation.cpp`: Canvas、Event System、UI Preset生成
@@ -225,6 +226,12 @@ Control別初期値、失敗時Rollbackへ分け、専用ファイルへ移し�
 `EditorSceneHierarchy.cpp` は1,004行から816行となった。UI Entity生成処理の
 回帰上限は CCN 9 / 関数長28、Hierarchyの上限も CCN 34 / 関数長99へ
 引き下げた。
+
+Hierarchy PanelをToolbar、検索、該当Entityと祖先の可視化、Root列挙、
+Scene RootへのEntity・Prefab Drop、空領域の選択解除へ分け、専用ファイルへ
+移した。`DrawHierarchyPanel` は92 NLOC / CCN 34から15 NLOC / CCN 2へ縮小し、
+`EditorSceneHierarchy.cpp` は782行から690行となった。Hierarchy Panel処理の
+回帰上限は CCN 6 / 関数長27、残るHierarchy処理は CCN 27 / 関数長99である。
 
 Project PanelをPanel状態、作成Toolbar、Folder Navigation、検索・形式Filter、
 名前・種類・Size Sort、検索結果・Folder内容描画へ分け、専用ファイルへ移した。

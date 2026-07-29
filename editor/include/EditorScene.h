@@ -187,6 +187,16 @@ private:
     [[nodiscard]] bool CompareAssetPaths(const std::filesystem::path& left,
                                          const std::filesystem::path& right) const;
     void DrawHierarchyPanel();
+    void DrawHierarchyToolbar(bool editing);
+    [[nodiscard]] std::string DrawHierarchySearch();
+    void RebuildVisibleHierarchyEntities(const std::string& query);
+    void IncludeVisibleHierarchyAncestors(EntityId id);
+    [[nodiscard]] bool DrawHierarchyRootEntities(const std::string& query);
+    void DrawHierarchySceneRoot(bool editing);
+    void HandleHierarchySceneRootDrop();
+    void AcceptHierarchyEntityRootDrop();
+    void AcceptHierarchyPrefabRootDrop();
+    void ClearHierarchySelectionFromEmptySpace();
     void DrawEntityNode(EntityId id);
     std::vector<EntityId> GetVisibleHierarchyChildren(EntityId id) const;
     int BuildHierarchyNodeFlags(EntityId id, bool filtering, bool hasChildren) const;
