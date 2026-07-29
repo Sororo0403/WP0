@@ -335,6 +335,31 @@ private:
                          const std::filesystem::path& relativePath);
     void NavigateAssetBrowser(const std::filesystem::path& relativeDirectory);
     void DrawAssetBrowserBreadcrumbs();
+    enum class AssetBrowserEntryKind : uint8_t {
+        Directory,
+        Prefab,
+        Texture,
+        Audio,
+        Font,
+        Script,
+        ScriptHeader,
+        Model,
+    };
+    AssetBrowserEntryKind ClassifyAssetBrowserEntry(const std::filesystem::path& relativePath,
+                                                    bool directory) const;
+    std::string BuildAssetBrowserEntryLabel(const std::filesystem::path& relativePath,
+                                            AssetBrowserEntryKind kind) const;
+    bool OpenAssetScriptSource(const std::filesystem::path& relativePath,
+                               const std::string& logicalId);
+    void ActivateAssetBrowserEntry(const std::filesystem::path& relativePath,
+                                   const std::filesystem::path& logicalPath,
+                                   AssetBrowserEntryKind kind);
+    void DrawAssetBrowserEntryDragSource(const std::string& logicalId,
+                                         AssetBrowserEntryKind kind);
+    void DrawAssetTextureAssignmentMenu(const std::filesystem::path& logicalPath);
+    void DrawAssetBrowserEntryContextMenu(const std::filesystem::path& relativePath,
+                                          const std::filesystem::path& logicalPath,
+                                          AssetBrowserEntryKind kind);
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                bool directory);
     void DrawSelectedAssetDetails();

@@ -254,132 +254,20 @@ void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePat
     const std::filesystem::path logicalPath =
         (std::filesystem::path("assets") / relativePath).lexically_normal();
     const std::string id = logicalPath.generic_string();
-    const bool texture = !directory && AssetImport::IsTextureFile(relativePath);
-    const bool audio = !directory && AssetImport::IsAudioFile(relativePath);
-    const bool font = !directory && AssetImport::IsFontFile(relativePath);
-    const bool script = !directory && ScriptAssets::IsScriptFile(relativePath);
-    const bool scriptSource =
-        !directory && ScriptAssets::IsScriptSourceFile(relativePath);
-    const bool scriptHeader = scriptSource && !script;
-    const bool prefab = !directory && IsPrefabAsset(relativePath);
-    const std::string label = std::string(directory ? "[Folder] "
-                                                     : prefab ? "[Prefab] "
-                                                     : texture ? "[Texture] "
-                                                     : audio ? "[Audio] "
-                                                     : font ? "[Font] "
-                                                     : script ? "[Script] "
-                                                     : scriptSource ? "[C++ Script] "
-                                                                    : "[Model] ") +
-                              relativePath.filename().string();
+    const AssetBrowserEntryKind kind = ClassifyAssetBrowserEntry(relativePath, directory);
+    const std::string label = BuildAssetBrowserEntryLabel(relativePath, kind);
     ImGui::PushID(id.c_str());
     const bool selected = selectedAsset_ == relativePath;
     if (ImGui::Selectable(label.c_str(), selected,
                           ImGuiSelectableFlags_AllowDoubleClick)) {
         selectedAsset_ = relativePath;
-        if (directory && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            NavigateAssetBrowser(relativePath);
-        } else if (prefab && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            InstantiatePrefabAsset(logicalPath);
-        } else if (scriptSource &&
-                   ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            const std::filesystem::path physical = assetRoot_ / relativePath;
-            if (reinterpret_cast<intptr_t>(ShellExecuteW(
-                    nullptr, L"open", physical.c_str(), nullptr,
-                    physical.parent_path().c_str(), SW_SHOWNORMAL)) <= 32) {
-                status_ = "Could not open Script source: " + id;
-            }
-        }
+        ActivateAssetBrowserEntry(relativePath, logicalPath, kind);
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", id.c_str());
     }
-    if (!directory && !scriptHeader && ImGui::BeginDragDropSource()) {
-        ImGui::SetDragDropPayload(prefab ? kPrefabAssetDragPayload
-                                          : texture ? kTextureAssetDragPayload
-                                          : audio ? kAudioAssetDragPayload
-                                          : font ? kFontAssetDragPayload
-                                          : script ? kScriptAssetDragPayload
-                                                   : kModelAssetDragPayload,
-                                  id.c_str(), id.size() + 1u);
-        ImGui::TextUnformatted(id.c_str());
-        ImGui::EndDragDropSource();
-    }
-    if (ImGui::BeginPopupContextItem("AssetContext")) {
-        selectedAsset_ = relativePath;
-        if (directory) {
-            if (ImGui::MenuItem("Open")) {
-                NavigateAssetBrowser(relativePath);
-            }
-        } else if (scriptHeader) {
-            if (ImGui::MenuItem("Open")) {
-                const std::filesystem::path physical = assetRoot_ / relativePath;
-                if (reinterpret_cast<intptr_t>(ShellExecuteW(
-                        nullptr, L"open", physical.c_str(), nullptr,
-                        physical.parent_path().c_str(), SW_SHOWNORMAL)) <= 32) {
-                    status_ = "Could not open Script source: " + id;
-                }
-            }
-        } else if (prefab && ImGui::MenuItem("Instantiate")) {
-            InstantiatePrefabAsset(logicalPath);
-        } else if (script && ImGui::MenuItem("Attach to Selected Entity", nullptr, false,
-                                             selection_.IsValid())) {
-            AssignScriptAsset(selection_, logicalPath);
-        } else if (font) {
-            if (ImGui::MenuItem("Assign to Selected Text", nullptr, false,
-                                selection_.IsValid())) {
-                AssignTextFont(selection_, logicalPath);
-            }
-        } else if (!texture && ImGui::MenuItem("Create Entity")) {
-            CreateModelEntityFromAsset(logicalPath, {0.0f, 0.0f, 0.0f});
-        } else if (texture && ImGui::BeginMenu("Assign to Selected Material",
-                                               selection_.IsValid())) {
-            if (ImGui::MenuItem("Base Color")) {
-                AssignBaseColorTexture(selection_, logicalPath);
-            }
-            if (ImGui::MenuItem("Normal Map")) {
-                AssignNormalTexture(selection_, logicalPath);
-            }
-            if (ImGui::MenuItem("Roughness")) {
-                AssignRoughnessTexture(selection_, logicalPath);
-            }
-            if (ImGui::MenuItem("Metallic")) {
-                AssignMetallicTexture(selection_, logicalPath);
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::MenuItem("Rename")) {
-            RequestAssetRename(relativePath, directory);
-        }
-        if (!directory && ImGui::MenuItem("Duplicate")) {
-            DuplicateAsset(relativePath);
-        }
-        if (ImGui::MenuItem("Delete")) {
-            RequestAssetDelete(relativePath, directory);
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Show in Explorer")) {
-            RevealAssetInExplorer(relativePath);
-        }
-        const size_t references = CountAssetReferences(relativePath, directory);
-        if (ImGui::MenuItem("Select Referencing Entities", nullptr, false,
-                            references != 0u)) {
-            SelectAssetReferences(relativePath, directory);
-        }
-        if (!directory) {
-            ImGui::Separator();
-            const std::string uri =
-                "asset://" + relativePath.lexically_normal().generic_string();
-            if (ImGui::MenuItem("Copy Asset URI")) {
-                ImGui::SetClipboardText(uri.c_str());
-                status_ = "Copied asset URI: " + uri;
-            }
-            if (ImGui::MenuItem("Copy Project Path")) {
-                ImGui::SetClipboardText(id.c_str());
-                status_ = "Copied project asset path: " + id;
-            }
-        }
-        ImGui::EndPopup();
-    }
+    DrawAssetBrowserEntryDragSource(id, kind);
+    DrawAssetBrowserEntryContextMenu(relativePath, logicalPath, kind);
     ImGui::PopID();
 }
 

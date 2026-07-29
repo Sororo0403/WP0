@@ -55,6 +55,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
 - `EditorSceneEntityRename.cpp`: Rename Popup、入力、確定、Cancel
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
+- `EditorSceneAssetBrowserEntry.cpp`: Asset行、起動、Drag Source、Context Menu
 - `EditorSceneAssetPreview.cpp`: Preview状態、Model読込、Cameraフレーミング
 - `EditorSceneAssets.cpp`: Asset Browser、Import、Rename/Delete、参照更新
 - `EditorSceneAudioPreview.cpp`: Audio Previewの状態、操作、読込、情報表示
@@ -175,6 +176,11 @@ Asset Browser の更新処理はキャッシュ初期化、Scene一覧、現在�
 `RefreshAssetBrowser` は115 NLOC / CCN 47から11 NLOC / CCN 3へ縮小し、
 `EditorScene.cpp` は1,902行となった。Asset走査処理には
 CCN 18 / 関数長33の回帰上限を設定している。
+
+Asset Browser の各行は表示分類、選択・起動、Drag Source、Texture割り当て、
+Context Menuへ分け、専用ファイルへ移した。`DrawAssetBrowserEntry` は
+133 NLOC / CCN 61から21 NLOC / CCN 3へ縮小した。Asset行処理には
+CCN 24 / 関数長63の回帰上限を設定している。
 
 Scene Viewのカメラ操作は入力状態、カーソル捕捉、回転、キーボード移動、
 パン・ズームへ分割し、Assetドロップやカメラ位置合わせとともに
