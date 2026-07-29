@@ -562,6 +562,27 @@ private:
     void DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                bool directory);
     void DrawSelectedAssetDetails();
+    [[nodiscard]] bool InspectSelectedAssetPath(const std::filesystem::path& physical,
+                                                bool& directory,
+                                                bool& regularFile) const;
+    [[nodiscard]] static std::string BuildSelectedAssetTypeLabel(
+        const std::filesystem::path& physical, bool directory, bool regularFile);
+    [[nodiscard]] static const char* SelectedAssetKindLabel(
+        const std::filesystem::path& physical, bool directory);
+    void DrawSelectedAssetMetadata(const std::filesystem::path& physical,
+                                   bool directory, bool regularFile) const;
+    static void DrawSelectedAssetFileSize(const std::filesystem::path& physical);
+    void DrawSelectedAssetActions(const std::filesystem::path& relative, bool directory,
+                                  size_t references);
+    void DrawSelectedAssetPreview(const std::filesystem::path& relative,
+                                  const std::filesystem::path& physical,
+                                  const std::string& logicalPath, bool regularFile);
+    void DrawSelectedModelDetails(const std::filesystem::path& relative,
+                                  const std::string& logicalPath);
+    [[nodiscard]] bool DrawSelectedModelDependencyStatus(
+        const std::filesystem::path& relative);
+    void DrawSelectedModelActions(const std::string& logicalPath, size_t dependencyCount);
+    void DrawAssetDependenciesPopup(const std::filesystem::path& relative);
     void DrawAssetPreviewPopup();
     [[nodiscard]] bool IsAssetPreviewPopupReady() const;
     void DrawAssetPreviewModelSummary(const Model& model) const;

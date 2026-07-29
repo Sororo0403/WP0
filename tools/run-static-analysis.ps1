@@ -360,10 +360,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $assetsLizardReport =
     Join-Path $reportDirectory "lizard-editor-assets-final.txt"
-& lizard "editor/src/EditorSceneAssets.cpp" -l cpp -t 1 -C 37 -L 121 -w -i 0 `
+& lizard "editor/src/EditorSceneAssets.cpp" -l cpp -t 1 -C 31 -L 110 -w -i 0 `
     -o $assetsLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Assets exceeded their refactored complexity ceiling."
+}
+
+$assetDetailsLizardReport =
+    Join-Path $reportDirectory "lizard-editor-asset-details-final.txt"
+& lizard "editor/src/EditorSceneAssetDetails.cpp" -l cpp -t 1 -C 8 -L 20 -w -i 0 `
+    -o $assetDetailsLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Asset Details exceeded its refactored complexity ceiling."
 }
 
 $viewportNavigationLizardReport =
@@ -582,6 +590,7 @@ Write-Output "EditorScene asset discovery Lizard regressions: 0"
 Write-Output "EditorScene asset browser entry Lizard regressions: 0"
 Write-Output "EditorScene Project Panel Lizard regressions: 0"
 Write-Output "EditorScene Assets Lizard regressions: 0"
+Write-Output "EditorScene Asset Details Lizard regressions: 0"
 Write-Output "EditorScene viewport navigation Lizard regressions: 0"
 Write-Output "EditorScene viewport selection Lizard regressions: 0"
 Write-Output "EditorScene initialization Lizard regressions: 0"
