@@ -113,6 +113,12 @@ private:
     [[nodiscard]] bool ValidateWorldBehaviorRequirements(
         std::string* error = nullptr) const;
     void UpdateRuntimeWorld(float deltaTime);
+    bool IsRuntimeUiEntityInteractable(const WorldEntity& entity) const;
+    bool DispatchPendingInputFieldEvents();
+    bool DispatchPendingDropdownChanges();
+    bool DispatchPendingSliderChanges();
+    bool DispatchPendingButtonClicks();
+    bool DispatchPendingRuntimeUiEvents();
     bool ApplyPendingRuntimeSceneLoad();
     void UpdateRuntimeAnimators(float deltaTime);
     void EndRuntimeWorld();

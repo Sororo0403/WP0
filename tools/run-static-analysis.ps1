@@ -356,6 +356,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Runtime Audio exceeded its refactored complexity ceiling."
 }
 
+$runtimeUiEventsLizardReport =
+    Join-Path $reportDirectory "lizard-editor-runtime-ui-events-final.txt"
+& lizard "editor/src/EditorSceneRuntimeUiEvents.cpp" -l cpp -t 1 -C 12 -L 25 -w -i 0 `
+    -o $runtimeUiEventsLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Runtime UI Events exceeded their refactored complexity ceiling."
+}
+
 $prefabInstantiationLizardReport =
     Join-Path $reportDirectory "lizard-editor-prefab-instantiation-final.txt"
 & lizard "editor/src/EditorScenePrefabInstantiation.cpp" -l cpp -t 1 -C 6 -L 23 -w -i 0 `
@@ -464,6 +472,7 @@ Write-Output "EditorScene Lighting Lizard regressions: 0"
 Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "EditorScene Audio Preview Lizard regressions: 0"
 Write-Output "EditorScene Runtime Audio Lizard regressions: 0"
+Write-Output "EditorScene Runtime UI Events Lizard regressions: 0"
 Write-Output "EditorScene Prefab instantiation Lizard regressions: 0"
 Write-Output "EditorScene Entity Rename Lizard regressions: 0"
 Write-Output "EditorScene Camera Preview Lizard regressions: 0"

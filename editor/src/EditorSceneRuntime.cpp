@@ -59,29 +59,6 @@
 
 namespace {
 constexpr float kRuntimeStepDeltaTime = 1.0f / 60.0f;
-
-struct RuntimeUiGroupState {
-    float alpha = 1.0f;
-    bool interactable = true;
-    bool blocksRaycasts = true;
-};
-
-RuntimeUiGroupState GetUiGroupState(const World& world,
-                                    const WorldEntity& entity) {
-    RuntimeUiGroupState state{};
-    const WorldEntity* current = &entity;
-    while (current != nullptr) {
-        if (current->canvasGroup && current->canvasGroup->enabled) {
-            const CanvasGroupComponent& group = *current->canvasGroup;
-            state.alpha *= group.alpha;
-            state.interactable = state.interactable && group.interactable;
-            state.blocksRaycasts =
-                state.blocksRaycasts && group.blocksRaycasts;
-        }
-        current = current->parent.IsValid() ? world.Find(current->parent) : nullptr;
-    }
-    return state;
-}
 } // namespace
 
 bool EditorScene::IsInPlayMode() const {
@@ -474,90 +451,8 @@ bool EditorScene::TryNormalizeScriptAssetReference(
 void EditorScene::UpdateRuntimeWorld(float deltaTime) {
     const float safeDeltaTime =
         std::isfinite(deltaTime) ? std::clamp(deltaTime, 0.0f, 0.1f) : 0.0f;
-    std::vector<InputFieldEvent> inputFieldEvents =
-        std::exchange(pendingInputFieldEvents_, {});
-    for (const InputFieldEvent& event :
-         inputFieldEvents) {
-        WorldEntity* entity = world_.Find(event.entity);
-        if (entity == nullptr || !entity->inputField ||
-            !entity->inputField->enabled ||
-            !entity->inputField->interactable ||
-            !entity->button || !entity->button->enabled ||
-            !entity->button->interactable ||
-            !GetUiGroupState(world_, *entity).interactable ||
-            !world_.IsActiveInHierarchy(event.entity)) {
-            continue;
-        }
-        if (event.submitted) {
-            runtimeBehaviors_.DispatchInputFieldSubmit(
-                event.entity, event.text);
-        } else {
-            runtimeBehaviors_.DispatchInputFieldValueChanged(
-                event.entity, event.text);
-        }
-        if (ApplyPendingRuntimeSceneLoad()) {
-            return;
-        }
-    }
-    std::vector<DropdownValueChange> dropdownChanges =
-        std::exchange(pendingDropdownValueChanges_, {});
-    for (const DropdownValueChange& change :
-         dropdownChanges) {
-        WorldEntity* entity = world_.Find(change.entity);
-        if (entity == nullptr || !entity->dropdown ||
-            !entity->dropdown->enabled ||
-            !entity->dropdown->interactable ||
-            !entity->button || !entity->button->enabled ||
-            !entity->button->interactable ||
-            !GetUiGroupState(world_, *entity).interactable ||
-            !world_.IsActiveInHierarchy(change.entity)) {
-            continue;
-        }
-        runtimeBehaviors_.DispatchDropdownValueChanged(
-            change.entity, change.value);
-        if (ApplyPendingRuntimeSceneLoad()) {
-            return;
-        }
-    }
-    std::vector<SliderValueChange> sliderChanges =
-        std::exchange(pendingSliderValueChanges_, {});
-    for (const SliderValueChange& change : sliderChanges) {
-        WorldEntity* entity = world_.Find(change.entity);
-        if (entity == nullptr || !entity->slider ||
-            !entity->slider->enabled ||
-            !entity->slider->interactable ||
-            !GetUiGroupState(world_, *entity).interactable ||
-            !world_.IsActiveInHierarchy(change.entity)) {
-            continue;
-        }
-        runtimeBehaviors_.DispatchSliderValueChanged(
-            change.entity, change.value);
-        if (ApplyPendingRuntimeSceneLoad()) {
-            return;
-        }
-    }
-    std::vector<EntityId> buttonClicks = std::exchange(pendingButtonClicks_, {});
-    for (const EntityId entityId : buttonClicks) {
-        WorldEntity* entity = world_.Find(entityId);
-        if (entity == nullptr || !entity->button || !entity->button->enabled ||
-            !entity->button->interactable ||
-            !GetUiGroupState(world_, *entity).interactable ||
-            (entity->toggle && !entity->toggle->enabled) ||
-            !world_.IsActiveInHierarchy(entityId)) {
-            continue;
-        }
-        if (entity->toggle) {
-            entity->toggle->isOn = !entity->toggle->isOn;
-            runtimeBehaviors_.DispatchToggleValueChanged(
-                entityId, entity->toggle->isOn);
-            if (ApplyPendingRuntimeSceneLoad()) {
-                return;
-            }
-        }
-        runtimeBehaviors_.DispatchButtonClick(entityId);
-        if (ApplyPendingRuntimeSceneLoad()) {
-            return;
-        }
+    if (DispatchPendingRuntimeUiEvents()) {
+        return;
     }
     runtimeBehaviors_.Update(safeDeltaTime);
     if (ApplyPendingRuntimeSceneLoad()) {
