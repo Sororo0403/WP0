@@ -178,6 +178,25 @@ private:
                                           BehaviorComponent& behavior,
                                           const ScriptPropertyDefinition& definition,
                                           EntityId selectionBefore);
+    std::string GetAssetScriptPropertyValue(
+        const BehaviorComponent& behavior,
+        const ScriptPropertyDefinition& definition) const;
+    void AssignAssetScriptProperty(BehaviorComponent& behavior,
+                                   const ScriptPropertyDefinition& definition,
+                                   const std::string& value,
+                                   EntityId selectionBefore);
+    void DrawAnimationClipScriptProperty(WorldEntity* entity,
+                                         BehaviorComponent& behavior,
+                                         const ScriptPropertyDefinition& definition,
+                                         EntityId selectionBefore);
+    void DrawInputActionScriptProperty(BehaviorComponent& behavior,
+                                       const ScriptPropertyDefinition& definition,
+                                       EntityId selectionBefore);
+    void DrawSceneScriptProperty(BehaviorComponent& behavior,
+                                 const ScriptPropertyDefinition& definition,
+                                 EntityId selectionBefore);
+    bool AcceptsScriptInputAction(const ScriptPropertyDefinition& definition,
+                                  const InputActionBinding& binding) const;
     bool DrawStringScriptPropertyInspector(BehaviorComponent& behavior,
                                            const ScriptPropertyDefinition& definition);
     bool DrawEntityScriptPropertyInspector(BehaviorComponent& behavior,

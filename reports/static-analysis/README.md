@@ -72,6 +72,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneInspectorUi.cpp`: Canvas、Event System
 - `EditorSceneInspectorUiGraphics.cpp`: Text
 - `EditorSceneInspectorImage.cpp`: Image一般設定、Fill、Texture、Layout、Preview
+- `EditorSceneInspectorScriptAssets.cpp`: Animation Clip、Input Action、Scene Property
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
 - `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
@@ -113,6 +114,12 @@ Image Inspectorを一般設定、Fill、Anchor・Pivot、Texture選択、
 Layout・Color、Preview、Canvas要件へ分け、専用ファイルへ移した。
 `DrawImageInspector` は211 NLOC / CCN 57から18 NLOC / CCN 3へ縮小した。
 Image処理の回帰上限は CCN 12 / 関数長42である。
+
+Asset系Script Propertyを共通の値取得・代入と、Animation Clip、
+Input Action、Sceneの型別UIへ分け、専用ファイルへ移した。
+`DrawAssetScriptPropertyInspector` は164 NLOC / CCN 55から
+19 NLOC / CCN 4へ縮小した。Script Asset Property処理の回帰上限は
+CCN 16 / 関数長41である。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。
