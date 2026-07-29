@@ -224,6 +224,14 @@ private:
     void DrawCanvasGroupInspector(WorldEntity* entity);
     void DrawEventSystemInspector(WorldEntity* entity);
     void DrawTextInspector(WorldEntity* entity);
+    bool DrawTextRemoval(WorldEntity* entity);
+    void DrawTextGeneralSettings(TextComponent& text, EntityId selectionBefore);
+    void DrawTextContentAndPosition(TextComponent& text);
+    void DrawTextFontPicker(TextComponent& text, EntityId selectionBefore);
+    void DrawTextFontStatus(const TextComponent& text);
+    void DrawTextTypographySettings(TextComponent& text);
+    void DrawTextColorAndAlignment(TextComponent& text, EntityId selectionBefore);
+    void DrawTextCanvasRequirement(const WorldEntity* entity);
     void DrawImageInspector(WorldEntity* entity);
     bool DrawImageRemoval(WorldEntity* entity);
     void DrawImageGeneralSettings(ImageComponent& image, EntityId selectionBefore);

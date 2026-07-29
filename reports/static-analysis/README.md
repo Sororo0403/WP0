@@ -77,7 +77,7 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorSceneInspectorRendering.cpp`: Camera、Light、Material
 - `EditorSceneInspectorMedia.cpp`: Audio、Animator
 - `EditorSceneInspectorUi.cpp`: Canvas、Event System
-- `EditorSceneInspectorUiGraphics.cpp`: Text
+- `EditorSceneInspectorText.cpp`: Text一般設定、Font、Typography、配置
 - `EditorSceneInspectorImage.cpp`: Image一般設定、Fill、Texture、Layout、Preview
 - `EditorSceneInspectorScriptAssets.cpp`: Animation Clip、Input Action、Scene Property
 - `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Dropdown、Input
@@ -121,6 +121,12 @@ Image Inspectorを一般設定、Fill、Anchor・Pivot、Texture選択、
 Layout・Color、Preview、Canvas要件へ分け、専用ファイルへ移した。
 `DrawImageInspector` は211 NLOC / CCN 57から18 NLOC / CCN 3へ縮小した。
 Image処理の回帰上限は CCN 12 / 関数長42である。
+
+Text Inspectorを一般設定、Content・Position、Font Picker・検証、
+Typography、Color・Alignment、Canvas要件へ分け、ファイル名も
+`EditorSceneInspectorText.cpp` へ最適化した。`DrawTextInspector` は
+172 NLOC / CCN 49から18 NLOC / CCN 3へ縮小した。
+Text処理の回帰上限は CCN 12 / 関数長36である。
 
 Asset系Script Propertyを共通の値取得・代入と、Animation Clip、
 Input Action、Sceneの型別UIへ分け、専用ファイルへ移した。
