@@ -112,6 +112,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneInitialization.cpp`: 入力、Script、Surface、描画、Camera初期化
 - `EditorSceneLighting.cpp`: LightのWorld解決、種類別Scene Lighting反映
 - `EditorSceneComponentGizmos.cpp`: Camera・Light・Audio・Physicsアイコン
+- `EditorScenePhysicsGizmos.cpp`: Box Collider・Character Capsule形状
 - `EditorSceneGizmos.cpp`: Scene View のガイド、選択枠、Transform Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
@@ -270,6 +271,12 @@ CCN 13 / 関数長28の回帰上限を設定した。現在の回帰上限はGam
 CCN 43 / 関数長116、Game UI固有表現が CCN 20 / 関数長61、
 Game UI操作が CCN 32 / 関数長70、
 Gizmo 群が CCN 48 / 関数長148である。
+
+Physics GizmoをWorld線分投影、Box角・辺・色、Capsule Ring・側面・Cap Arcへ
+分け、専用ファイルへ移した。`DrawScenePhysicsGizmos` は
+117 NLOC / CCN 34から11 NLOC / CCN 3へ縮小し、
+`EditorSceneGizmos.cpp` は872行から755行となった。Physics Gizmo処理の
+回帰上限は CCN 8 / 関数長24、残るGizmo処理のCCN上限は33へ引き下げた。
 
 Game UI編集処理は専用ファイルへ分離し、Canvas配置・UI矩形計算を共通
 ユーティリティ化した。さらにHover・Resize判定、Pointer入力、Keyboard Nudge、
