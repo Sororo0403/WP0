@@ -117,8 +117,26 @@ private:
     void UpdateRuntimeAnimators(float deltaTime);
     void EndRuntimeWorld();
     void EndRuntimeAnimators();
+    struct RuntimeAudioSource;
     bool BeginRuntimeAudio(std::string* error = nullptr);
     void UpdateRuntimeAudio();
+    const WorldEntity* FindRuntimeAudioListener() const;
+    void UpdateRuntimeAudioListener(ISoundService& sound) const;
+    void StopRuntimeAudioVoices(RuntimeAudioSource& runtime, ISoundService& sound);
+    uint32_t PlayRuntimeAudioVoice(const RuntimeAudioSource& runtime,
+                                   const AudioSourceComponent& source,
+                                   ISoundService& sound, bool loop) const;
+    void StartRuntimeAudioVoice(RuntimeAudioSource& runtime,
+                                const AudioSourceComponent& source,
+                                ISoundService& sound);
+    void ProcessRuntimeAudioPlayback(
+        RuntimeAudioSource& runtime, const AudioSourceComponent& source,
+        AudioSourceComponent::RuntimeCommand command, uint32_t pendingOneShots,
+        ISoundService& sound);
+    void UpdateRuntimeAudioVoiceSettings(const RuntimeAudioSource& runtime,
+                                         const AudioSourceComponent& source,
+                                         ISoundService& sound) const;
+    void UpdateRuntimeAudioSource(RuntimeAudioSource& runtime, ISoundService& sound);
     void PauseRuntimeAudio(bool paused);
     void EndRuntimeAudio();
     [[nodiscard]] bool IsInPlayMode() const;

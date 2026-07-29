@@ -58,7 +58,8 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorScenePersistence.cpp`: Scene の New/Open/Save、履歴、ファイルダイアログ
 - `EditorScenePrefabInstantiation.cpp`: Prefab検証、読込、Hierarchy生成、配置
 - `EditorScenePrefabSaving.cpp`: 選択階層の抽出、外部参照除去、Prefab保存
-- `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator、Audio
+- `EditorSceneRuntime.cpp`: Play Mode、Runtime World、Animator
+- `EditorSceneRuntimeAudio.cpp`: Listener、Audio Source、Voiceライフサイクル
 - `EditorSceneConsole.cpp`: Console と Script の監視・再コンパイル
 - `EditorSceneEntityRename.cpp`: Rename Popup、入力、確定、Cancel
 - `EditorSceneAssetDiscovery.cpp`: Asset・Sceneの走査、分類、表示フォルダー解決
@@ -133,6 +134,11 @@ Input Action、Sceneの型別UIへ分け、専用ファイルへ移した。
 `DrawAssetScriptPropertyInspector` は164 NLOC / CCN 55から
 19 NLOC / CCN 4へ縮小した。Script Asset Property処理の回帰上限は
 CCN 16 / 関数長41である。
+
+Runtime Audioの開始・更新・一時停止・終了を専用ファイルへ集約し、
+Listener、Voice停止・再生、Command処理、Parameter同期、Source更新へ分けた。
+`UpdateRuntimeAudio` は152 NLOC / CCN 49から10 NLOC / CCN 4へ縮小した。
+Runtime Audio処理の回帰上限は CCN 19 / 関数長52である。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

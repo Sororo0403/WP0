@@ -322,6 +322,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Audio Preview exceeded its refactored complexity ceiling."
 }
 
+$runtimeAudioLizardReport =
+    Join-Path $reportDirectory "lizard-editor-runtime-audio-final.txt"
+& lizard "editor/src/EditorSceneRuntimeAudio.cpp" -l cpp -t 1 -C 19 -L 52 -w -i 0 `
+    -o $runtimeAudioLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Runtime Audio exceeded its refactored complexity ceiling."
+}
+
 $prefabInstantiationLizardReport =
     Join-Path $reportDirectory "lizard-editor-prefab-instantiation-final.txt"
 & lizard "editor/src/EditorScenePrefabInstantiation.cpp" -l cpp -t 1 -C 6 -L 23 -w -i 0 `
@@ -426,6 +434,7 @@ Write-Output "EditorScene Asset Preview Lizard regressions: 0"
 Write-Output "EditorScene Lighting Lizard regressions: 0"
 Write-Output "EditorScene Player Preview Lizard regressions: 0"
 Write-Output "EditorScene Audio Preview Lizard regressions: 0"
+Write-Output "EditorScene Runtime Audio Lizard regressions: 0"
 Write-Output "EditorScene Prefab instantiation Lizard regressions: 0"
 Write-Output "EditorScene Entity Rename Lizard regressions: 0"
 Write-Output "EditorScene Camera Preview Lizard regressions: 0"
