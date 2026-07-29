@@ -101,7 +101,8 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneInspectorTransform.cpp`: Entity Header、Layer、Transform編集
 - `EditorSceneInspectorImage.cpp`: Image一般設定、Fill、Texture、Layout、Preview
 - `EditorSceneInspectorScriptAssets.cpp`: Animation Clip、Input Action、Scene Property
-- `EditorSceneInspectorUiControls.cpp`: Button、Toggle、Slider、Input Field
+- `EditorSceneInspectorUiControls.cpp`: Toggle、Slider、Input Field
+- `EditorSceneInspectorButton.cpp`: Button、Navigation、色Transition
 - `EditorSceneInspectorDropdown.cpp`: Dropdown、Option、表示設定
 - `EditorSceneGameUi.cpp`: Game View のランタイムUI入力・描画
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
@@ -227,6 +228,13 @@ Dropdown InspectorをComponent削除、一般設定、選択値、Option文字�
 `EditorSceneInspectorUiControls.cpp` は641行から485行となった。
 Dropdown処理の回帰上限は CCN 5 / 関数長22、残るUI Controlsには
 CCN 37 / 関数長145の上限を新設した。
+
+Button InspectorをComponent削除、一般設定、Navigation方式、Explicit遷移先、
+色Transition、依存Component警告へ分け、専用ファイルへ移した。
+`DrawButtonInspector` は145 NLOC / CCN 37から15 NLOC / CCN 3へ縮小し、
+`EditorSceneInspectorUiControls.cpp` は485行から331行となった。
+Button処理の回帰上限は CCN 7 / 関数長20、残るUI Controlsは
+CCN 30 / 関数長130まで引き下げた。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

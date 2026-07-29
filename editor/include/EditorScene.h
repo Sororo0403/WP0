@@ -307,6 +307,23 @@ private:
     void DrawImageTexturePreview(ImageComponent& image, EntityId selectionBefore);
     void DrawImageCanvasRequirement(const WorldEntity* entity);
     void DrawButtonInspector(WorldEntity* entity);
+    void RemoveButtonComponent(WorldEntity& entity);
+    void DrawButtonGeneralSettings(ButtonComponent& button);
+    void DrawButtonNavigation(const WorldEntity& entity, ButtonComponent& button);
+    void SelectButtonNavigationMode(ButtonComponent& button, ButtonNavigationMode mode,
+                                    const char* label);
+    void DrawButtonExplicitNavigation(const WorldEntity& entity, ButtonComponent& button);
+    void DrawButtonNavigationTarget(const WorldEntity& source, const char* label,
+                                    const char* popup, EntityId& target);
+    void HandleButtonNavigationDrop(const WorldEntity& source, EntityId& target);
+    void DrawButtonNavigationPicker(const WorldEntity& source, const char* popup,
+                                    EntityId& target);
+    void AssignButtonNavigationTarget(EntityId& target, EntityId value);
+    [[nodiscard]] bool IsButtonNavigationCandidate(const WorldEntity& source,
+                                                   const WorldEntity& candidate) const;
+    void DrawButtonAppearance(ButtonComponent& button);
+    void EditButtonColor(const char* label, DirectX::XMFLOAT4& color);
+    void DrawButtonRequirements(const WorldEntity& entity) const;
     void DrawToggleInspector(WorldEntity* entity);
     void DrawSliderInspector(WorldEntity* entity);
     void DrawDropdownInspector(WorldEntity* entity);

@@ -89,6 +89,7 @@ $inspectorSources = @(
     "editor/src/EditorSceneInspectorScriptAssets.cpp",
     "editor/src/EditorSceneInspectorUi.cpp",
     "editor/src/EditorSceneInspectorUiControls.cpp",
+    "editor/src/EditorSceneInspectorButton.cpp",
     "editor/src/EditorSceneInspectorDropdown.cpp",
     "editor/src/EditorSceneInspectorText.cpp",
     "editor/src/EditorSceneInspectorTransform.cpp"
@@ -151,10 +152,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $uiControlsInspectorLizardReport =
     Join-Path $reportDirectory "lizard-editor-inspector-ui-controls-final.txt"
-& lizard "editor/src/EditorSceneInspectorUiControls.cpp" -l cpp -t 1 -C 37 -L 145 -w -i 0 `
+& lizard "editor/src/EditorSceneInspectorUiControls.cpp" -l cpp -t 1 -C 30 -L 130 -w -i 0 `
     -o $uiControlsInspectorLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene UI Controls Inspector exceeded its refactored complexity ceiling."
+}
+
+$buttonInspectorLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-button-final.txt"
+& lizard "editor/src/EditorSceneInspectorButton.cpp" -l cpp -t 1 -C 7 -L 20 -w -i 0 `
+    -o $buttonInspectorLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Button Inspector exceeded its refactored complexity ceiling."
 }
 
 $dropdownInspectorLizardReport =
@@ -531,6 +540,7 @@ Write-Output "EditorScene Text Inspector Lizard regressions: 0"
 Write-Output "EditorScene Transform Inspector Lizard regressions: 0"
 Write-Output "EditorScene Add Component Inspector Lizard regressions: 0"
 Write-Output "EditorScene UI Controls Inspector Lizard regressions: 0"
+Write-Output "EditorScene Button Inspector Lizard regressions: 0"
 Write-Output "EditorScene Dropdown Inspector Lizard regressions: 0"
 Write-Output "EditorScene Script Asset Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
