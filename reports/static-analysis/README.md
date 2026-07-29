@@ -113,6 +113,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
 - `EditorSceneProjectSettings.cpp`: General、Player、Physics設定
 - `EditorSceneProjectInputSettings.cpp`: Input Action、Binding、参照、Dialog
+- `EditorSceneProjectPanel.cpp`: Asset検索、Filter、Sort、Folder表示
 - `EditorScenePlayerBuild.cpp`: Player構築の検証、出力設定、Package生成
 - `EditorScenePlayerPreview.cpp`: Preview起動条件、Project検証、Process起動
 - `EditorSceneRendering.cpp`: 描画リソース解決、メッシュ送信、Scene Grid
@@ -211,6 +212,13 @@ Control別初期値、失敗時Rollbackへ分け、専用ファイルへ移し�
 `EditorSceneHierarchy.cpp` は1,004行から816行となった。UI Entity生成処理の
 回帰上限は CCN 9 / 関数長28、Hierarchyの上限も CCN 34 / 関数長99へ
 引き下げた。
+
+Project PanelをPanel状態、作成Toolbar、Folder Navigation、検索・形式Filter、
+名前・種類・Size Sort、検索結果・Folder内容描画へ分け、専用ファイルへ移した。
+`DrawProjectPanel` は162 NLOC / CCN 37から11 NLOC / CCN 2へ縮小し、
+`EditorSceneAssets.cpp` は1,020行から831行となった。Project Panel処理の
+回帰上限は CCN 7 / 関数長23、残るAsset処理には CCN 37 / 関数長121の
+上限を新設した。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

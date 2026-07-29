@@ -162,6 +162,22 @@ private:
     void DrawGamePanelWindow();
     void DrawConsoleAndInspectorPanels();
     void DrawProjectPanel();
+    void UpdateProjectPanelState();
+    void DrawProjectPanelToolbar();
+    void DrawAssetCreateMenu();
+    void DrawAssetBrowserLocation();
+    void DrawAssetBrowserFilters();
+    void DrawAssetBrowserEntries();
+    void DrawAssetSearchResults(const std::string& search);
+    void DrawAssetDirectoryEntries();
+    void AppendAssetSearchMatches(std::vector<std::filesystem::path>& matches,
+                                  const std::vector<std::filesystem::path>& assets,
+                                  const std::string& search) const;
+    [[nodiscard]] bool MatchesAssetFormat(const std::filesystem::path& relativePath) const;
+    [[nodiscard]] uintmax_t GetAssetFileSize(
+        const std::filesystem::path& relativePath) const;
+    [[nodiscard]] bool CompareAssetPaths(const std::filesystem::path& left,
+                                         const std::filesystem::path& right) const;
     void DrawHierarchyPanel();
     void DrawEntityNode(EntityId id);
     std::vector<EntityId> GetVisibleHierarchyChildren(EntityId id) const;
