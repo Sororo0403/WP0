@@ -32,6 +32,7 @@
 struct ImVec2;
 class ModelManager;
 struct Model;
+struct InputActionUsage;
 struct Sprite;
 struct PlayerPackageRequest;
 struct ProjectDescriptor;
@@ -300,7 +301,19 @@ private:
     void DrawProjectPlayerSettings();
     void DrawProjectPhysicsSettings();
     void DrawProjectInputSettings();
-    void DrawInputActionDialogs(Input* input);
+    void DrawInputSettingsToolbar(Input& input);
+    void RevertInputSettings(Input& input);
+    void OpenCreateInputActionDialog();
+    void DrawInputActionBindings(Input& input);
+    void DrawInputActionBinding(Input& input, const std::string& name,
+                                const InputActionUsage& usage);
+    bool DrawInputActionBindingFields(InputActionBinding& binding);
+    void OpenRenameInputActionDialog(const std::string& name);
+    void OpenDeleteInputActionDialog(const std::string& name);
+    void DrawInputActionDialogs(Input& input);
+    void DrawCreateInputActionDialog(Input& input);
+    void DrawRenameInputActionDialog(Input& input);
+    void DrawDeleteInputActionDialog(Input& input);
     bool SavePhysicsSettings();
     bool SavePlayerSettings();
     bool SaveInputSettings();

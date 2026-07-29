@@ -109,7 +109,8 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneGizmos.cpp`: Scene View のガイド、選択枠、Transform Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
-- `EditorSceneProjectSettings.cpp`: General、Player、Physics、Input設定
+- `EditorSceneProjectSettings.cpp`: General、Player、Physics設定
+- `EditorSceneProjectInputSettings.cpp`: Input Action、Binding、参照、Dialog
 - `EditorScenePlayerBuild.cpp`: Player構築の検証、出力設定、Package生成
 - `EditorScenePlayerPreview.cpp`: Preview起動条件、Project検証、Process起動
 - `EditorSceneRendering.cpp`: 描画リソース解決、メッシュ送信、Scene Grid
@@ -187,6 +188,13 @@ Game UIの方向Navigationを入力解決、Explicitリンク、自動候補探�
 `NavigateGameUiDirection` は115 NLOC / CCN 43から22 NLOC / CCN 8へ縮小し、
 `EditorSceneGameUi.cpp` は178行となった。方向Navigation処理の回帰上限は
 CCN 8 / 関数長28である。
+
+Project Input Settingsを保存・復元、Action参照集計、Binding一覧・編集、
+Create・Rename・Delete Dialogへ分け、専用ファイルへ移した。
+`DrawProjectInputSettings` は170 NLOC / CCN 41から16 NLOC / CCN 4へ縮小し、
+`DrawInputActionDialogs` は126 NLOC / CCN 33から5 NLOC / CCN 1へ縮小した。
+`EditorSceneProjectSettings.cpp` は788行から280行となった。Input Settings処理の
+回帰上限は CCN 12 / 関数長49、残るProject Settingsは CCN 17 / 関数長103である。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

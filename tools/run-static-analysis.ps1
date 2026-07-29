@@ -230,10 +230,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $projectSettingsLizardReport =
     Join-Path $reportDirectory "lizard-editor-project-settings-final.txt"
-& lizard "editor/src/EditorSceneProjectSettings.cpp" -l cpp -t 1 -C 41 -L 173 -w -i 0 `
+& lizard "editor/src/EditorSceneProjectSettings.cpp" -l cpp -t 1 -C 17 -L 103 -w -i 0 `
     -o $projectSettingsLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Project Settings exceeded their refactored complexity ceiling."
+}
+
+$projectInputSettingsLizardReport =
+    Join-Path $reportDirectory "lizard-editor-project-input-settings-final.txt"
+& lizard "editor/src/EditorSceneProjectInputSettings.cpp" -l cpp -t 1 -C 12 -L 49 -w -i 0 `
+    -o $projectInputSettingsLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Project Input Settings exceeded their refactored complexity ceiling."
 }
 
 $panelsLizardReport =
@@ -484,6 +492,7 @@ Write-Output "EditorScene Component Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy node Lizard regressions: 0"
 Write-Output "EditorScene Project Settings Lizard regressions: 0"
+Write-Output "EditorScene Project Input Settings Lizard regressions: 0"
 Write-Output "EditorScene Panels Lizard regressions: 0"
 Write-Output "EditorScene main menu Lizard regressions: 0"
 Write-Output "EditorScene Update Lizard regressions: 0"
