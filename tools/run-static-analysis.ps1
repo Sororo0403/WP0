@@ -53,6 +53,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "WorldSerializer exceeded its refactored complexity ceiling."
 }
 
+$inputSettingsLizardReport =
+    Join-Path $reportDirectory "lizard-input-settings-final.txt"
+& lizard "editor/src/InputSettingsStore.cpp" -l cpp -t 1 -C 12 -L 55 -w -i 0 `
+    -o $inputSettingsLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "InputSettingsStore exceeded its refactored complexity ceiling."
+}
+
 $projectScriptLibraryLizardReport =
     Join-Path $reportDirectory "lizard-project-script-library-final.txt"
 & lizard "editor/src/ProjectScriptLibrary.cpp" -l cpp -t 1 -C 7 -L 34 -w -i 0 `
@@ -378,6 +386,7 @@ try {
 
 Write-Output "Lizard warnings: 0"
 Write-Output "WorldSerializer Lizard regressions: 0"
+Write-Output "InputSettingsStore Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary validation Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"

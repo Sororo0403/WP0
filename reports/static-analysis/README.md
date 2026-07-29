@@ -44,6 +44,13 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 82 NLOC / CCN 38 へ縮小した。コンポーネント単位のデコーダを独立させ、
 新しい上限 CCN 74 / 関数長 410 を解析スクリプトで固定している。
 
+### InputSettingsStore
+
+Input Settings読込を文書検証、Keyboard・Gamepad項目検証、1 Action解析、
+重複検査・Binding構築、適用処理へ分けた。`InputSettingsStore::Load` は
+98 NLOC / CCN 52から37 NLOC / CCN 12へ縮小した。
+Input Settings処理の回帰上限は CCN 12 / 関数長55である。
+
 ### EditorScene
 
 14,090 行の単一ファイルから、まず次の責務を分離した。

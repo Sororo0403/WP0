@@ -85,6 +85,112 @@ bool ParseActionType(std::string_view name, InputActionType& type) {
     }
     return false;
 }
+
+struct ParsedInputAction {
+    std::string name;
+    std::string id;
+    InputActionBinding binding{};
+};
+
+bool ValidateInputSettingsDocument(const nlohmann::json& json, uint32_t& version,
+                                   std::string& error) {
+    if (!json.is_object()) {
+        error = "Input settings JSON structure is invalid.";
+        return false;
+    }
+    version = json.value("version", 0u);
+    if ((version != 1u && version != 2u) || !json.contains("actions") ||
+        !json["actions"].is_array() || json["actions"].size() > kMaxActions) {
+        error = "Input settings JSON structure is invalid.";
+        return false;
+    }
+    return true;
+}
+
+bool HasValidInputActionKeys(const nlohmann::json& action) {
+    return action.contains("negativeKey") && action["negativeKey"].is_number_integer() &&
+           action.contains("positiveKeys") && action["positiveKeys"].is_array() &&
+           action["positiveKeys"].size() == 2u &&
+           action["positiveKeys"][0].is_number_integer() &&
+           action["positiveKeys"][1].is_number_integer();
+}
+
+bool HasValidInputActionGamepad(const nlohmann::json& action) {
+    return action.contains("gamepadButton") && action["gamepadButton"].is_number_unsigned() &&
+           action.contains("gamepadAxis") && action["gamepadAxis"].is_string();
+}
+
+bool HasValidInputActionStructure(const nlohmann::json& action, uint32_t version) {
+    return action.is_object() && action.contains("name") && action["name"].is_string() &&
+           action.contains("type") && action["type"].is_string() &&
+           (version != 2u || (action.contains("id") && action["id"].is_string())) &&
+           HasValidInputActionKeys(action) && HasValidInputActionGamepad(action);
+}
+
+bool ParseInputAction(const nlohmann::json& action, uint32_t version,
+                      ParsedInputAction& parsed, std::string& error) {
+    if (!HasValidInputActionStructure(action, version)) {
+        error = "Input Action data is invalid.";
+        return false;
+    }
+    parsed.name = action["name"].get<std::string>();
+    const int64_t negativeKey = action["negativeKey"].get<int64_t>();
+    const int64_t positiveKey0 = action["positiveKeys"][0].get<int64_t>();
+    const int64_t positiveKey1 = action["positiveKeys"][1].get<int64_t>();
+    const uint64_t gamepadButton = action["gamepadButton"].get<uint64_t>();
+    if (negativeKey < -1 || negativeKey > 255 || positiveKey0 < -1 || positiveKey0 > 255 ||
+        positiveKey1 < -1 || positiveKey1 > 255 || gamepadButton > 0xffffu ||
+        !ParseAxis(action["gamepadAxis"].get<std::string>(), parsed.binding.gamepadAxis) ||
+        !ParseActionType(action["type"].get<std::string>(), parsed.binding.type)) {
+        error = "Input Action value is invalid or duplicated.";
+        return false;
+    }
+    parsed.binding.negativeKey = static_cast<int>(negativeKey);
+    parsed.binding.positiveKeys = {
+        static_cast<int>(positiveKey0),
+        static_cast<int>(positiveKey1),
+    };
+    parsed.binding.gamepadButton = static_cast<WORD>(gamepadButton);
+    parsed.id =
+        version == 2u ? action["id"].get<std::string>() : LegacyActionId(parsed.name);
+    return true;
+}
+
+bool ParseInputActions(const nlohmann::json& actions, uint32_t version, Input& staged,
+                       std::string& error) {
+    std::unordered_set<std::string> actionNames;
+    std::unordered_set<std::string> actionIds;
+    for (const nlohmann::json& action : actions) {
+        ParsedInputAction parsed;
+        if (!ParseInputAction(action, version, parsed, error)) {
+            return false;
+        }
+        if (!actionNames.insert(parsed.name).second) {
+            error = "Input Action value is invalid or duplicated.";
+            return false;
+        }
+        if (!actionIds.insert(parsed.id).second ||
+            !staged.SetActionBinding(parsed.name, parsed.binding, parsed.id)) {
+            error = "Input Action binding is invalid.";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ApplyInputActions(const Input& staged, Input& input, std::string& error) {
+    input.ClearActionBindings();
+    for (const std::string& name : staged.GetActionNames()) {
+        const InputActionBinding* binding = staged.GetActionBinding(name);
+        const std::string id = staged.GetActionId(name);
+        if (binding == nullptr || !input.SetActionBinding(name, *binding, id)) {
+            input.ResetDefaultActionBindings();
+            error = "Could not apply Input Action bindings.";
+            return false;
+        }
+    }
+    return true;
+}
 } // namespace
 
 InputSettingsStore::InputSettingsStore(std::filesystem::path path)
@@ -108,81 +214,20 @@ bool InputSettingsStore::Load(Input& input, std::string& error) const {
         std::ifstream stream(path_);
         nlohmann::json json;
         stream >> json;
-        const uint32_t version = json.value("version", 0u);
-        if (!stream || !json.is_object() || (version != 1u && version != 2u) ||
-            !json.contains("actions") || !json["actions"].is_array() ||
-            json["actions"].size() > kMaxActions) {
+        if (!stream) {
             error = "Input settings JSON structure is invalid.";
+            return false;
+        }
+        uint32_t version = 0u;
+        if (!ValidateInputSettingsDocument(json, version, error)) {
             return false;
         }
         Input staged;
         staged.ClearActionBindings();
-        std::unordered_set<std::string> actionNames;
-        std::unordered_set<std::string> actionIds;
-        for (const nlohmann::json& action : json["actions"]) {
-            if (!action.is_object() || !action.contains("name") ||
-                !action["name"].is_string() || !action.contains("negativeKey") ||
-                !action["negativeKey"].is_number_integer() ||
-                !action.contains("positiveKeys") ||
-                !action["positiveKeys"].is_array() ||
-                action["positiveKeys"].size() != 2u ||
-                !action["positiveKeys"][0].is_number_integer() ||
-                !action["positiveKeys"][1].is_number_integer() ||
-                !action.contains("gamepadButton") ||
-                !action["gamepadButton"].is_number_unsigned() ||
-                !action.contains("gamepadAxis") ||
-                !action["gamepadAxis"].is_string() ||
-                !action.contains("type") || !action["type"].is_string() ||
-                (version == 2u &&
-                 (!action.contains("id") || !action["id"].is_string()))) {
-                error = "Input Action data is invalid.";
-                return false;
-            }
-            const std::string name = action["name"].get<std::string>();
-            const int64_t negativeKey = action["negativeKey"].get<int64_t>();
-            const int64_t positiveKey0 = action["positiveKeys"][0].get<int64_t>();
-            const int64_t positiveKey1 = action["positiveKeys"][1].get<int64_t>();
-            const uint64_t gamepadButton = action["gamepadButton"].get<uint64_t>();
-            InputActionBinding binding{};
-            if (negativeKey < -1 || negativeKey > 255 ||
-                positiveKey0 < -1 || positiveKey0 > 255 ||
-                positiveKey1 < -1 || positiveKey1 > 255 ||
-                gamepadButton > 0xffffu ||
-                !ParseAxis(action["gamepadAxis"].get<std::string>(),
-                           binding.gamepadAxis) ||
-                !ParseActionType(action["type"].get<std::string>(),
-                                 binding.type) ||
-                !actionNames.insert(name).second) {
-                error = "Input Action value is invalid or duplicated.";
-                return false;
-            }
-            binding.negativeKey = static_cast<int>(negativeKey);
-            binding.positiveKeys = {static_cast<int>(positiveKey0),
-                                    static_cast<int>(positiveKey1)};
-            binding.gamepadButton = static_cast<WORD>(gamepadButton);
-            const std::string id =
-                version == 2u ? action["id"].get<std::string>()
-                              : LegacyActionId(name);
-            const bool added =
-                actionIds.insert(id).second &&
-                staged.SetActionBinding(name, binding, id);
-            if (!added) {
-                error = "Input Action binding is invalid.";
-                return false;
-            }
+        if (!ParseInputActions(json["actions"], version, staged, error)) {
+            return false;
         }
-        input.ClearActionBindings();
-        for (const std::string& name : staged.GetActionNames()) {
-            const InputActionBinding* binding = staged.GetActionBinding(name);
-            const std::string id = staged.GetActionId(name);
-            if (binding == nullptr ||
-                !input.SetActionBinding(name, *binding, id)) {
-                input.ResetDefaultActionBindings();
-                error = "Could not apply Input Action bindings.";
-                return false;
-            }
-        }
-        return true;
+        return ApplyInputActions(staged, input, error);
     } catch (const std::exception&) {
         error = "Input settings file is not valid JSON.";
         return false;
