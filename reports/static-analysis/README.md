@@ -87,6 +87,7 @@ Player Package構築をRequest・出力先検証、Runtime・ProjectのStaging�
 - `EditorSceneHierarchy.cpp`: Hierarchy、Entity 作成、選択、コピー、親子付け
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
 - `EditorSceneShortcuts.cpp`: Runtime、編集、Scene、履歴ショートカット
+- `EditorSceneUiEntityCreation.cpp`: Canvas、Event System、UI Preset生成
 - `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
 - `EditorSceneInspectorAddComponent.cpp`: Component追加、Script Drop
@@ -203,6 +204,13 @@ Scene保存、Undo・Redoへ分け、専用ファイルへ移した。
 `EditorSceneHierarchy.cpp` は1,097行から1,004行となった。
 Shortcut処理の回帰上限は CCN 12 / 関数長25、HierarchyのCCN上限も
 39から37へ引き下げた。
+
+UI Entity生成をCanvas親の解決・自動生成、Event System保証、Preset名・履歴名、
+Control別初期値、失敗時Rollbackへ分け、専用ファイルへ移した。
+`CreateUiEntity` は181 NLOC / CCN 37から23 NLOC / CCN 4へ縮小し、
+`EditorSceneHierarchy.cpp` は1,004行から816行となった。UI Entity生成処理の
+回帰上限は CCN 9 / 関数長28、Hierarchyの上限も CCN 34 / 関数長99へ
+引き下げた。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。

@@ -392,6 +392,27 @@ private:
     void CreatePrimitiveEntity(MeshPrimitive primitive, const DirectX::XMFLOAT3& position,
                                EntityId parent = {});
     void CreateUiEntity(UiEntityPreset preset, EntityId parent = {});
+    bool CreateUiCanvasEntity(EntityId parent, const std::string& before,
+                              EntityId selectionBefore);
+    [[nodiscard]] EntityId EnsureUiEventSystem();
+    [[nodiscard]] EntityId FindUiCanvasParent(EntityId requestedParent) const;
+    [[nodiscard]] EntityId ResolveUiEntityParent(EntityId requestedParent,
+                                                 EntityId& createdCanvas);
+    [[nodiscard]] EntityId CreateUiPresetEntity(UiEntityPreset preset, EntityId parent);
+    void RollbackUiSupportEntities(EntityId createdCanvas, EntityId createdEventSystem);
+    [[nodiscard]] const char* GetUiPresetName(UiEntityPreset preset) const;
+    [[nodiscard]] const char* GetUiPresetHistoryLabel(UiEntityPreset preset) const;
+    void ConfigureUiPreset(WorldEntity& entity, UiEntityPreset preset);
+    void ConfigureUiTextPreset(WorldEntity& entity);
+    void ConfigureUiImagePreset(WorldEntity& entity);
+    void ConfigureUiButtonPreset(WorldEntity& entity);
+    void ConfigureUiTogglePreset(WorldEntity& entity);
+    void ConfigureUiSliderPreset(WorldEntity& entity);
+    void ConfigureUiDropdownPreset(WorldEntity& entity);
+    void ConfigureUiInputFieldPreset(WorldEntity& entity);
+    void InitializeUiImage(WorldEntity& entity, const DirectX::XMFLOAT2& size,
+                           const DirectX::XMFLOAT4& color);
+    void InitializeUiText(WorldEntity& entity, const std::string& text, float fontSize);
     void DeleteSelection();
     void CreateModelEntityFromAsset(const std::filesystem::path& path,
                                     const DirectX::XMFLOAT3& position);

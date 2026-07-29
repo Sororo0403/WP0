@@ -214,7 +214,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $hierarchyLizardReport =
     Join-Path $reportDirectory "lizard-editor-hierarchy-final.txt"
-& lizard "editor/src/EditorSceneHierarchy.cpp" -l cpp -t 1 -C 37 -L 187 -w -i 0 `
+& lizard "editor/src/EditorSceneHierarchy.cpp" -l cpp -t 1 -C 34 -L 99 -w -i 0 `
     -o $hierarchyLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Hierarchy exceeded its refactored complexity ceiling."
@@ -226,6 +226,14 @@ $shortcutsLizardReport =
     -o $shortcutsLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene shortcuts exceeded their refactored complexity ceiling."
+}
+
+$uiEntityCreationLizardReport =
+    Join-Path $reportDirectory "lizard-editor-ui-entity-creation-final.txt"
+& lizard "editor/src/EditorSceneUiEntityCreation.cpp" -l cpp -t 1 -C 9 -L 28 -w -i 0 `
+    -o $uiEntityCreationLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene UI entity creation exceeded its refactored complexity ceiling."
 }
 
 $hierarchyNodeLizardReport =
@@ -499,6 +507,7 @@ Write-Output "EditorScene Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Component Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy Lizard regressions: 0"
 Write-Output "EditorScene shortcuts Lizard regressions: 0"
+Write-Output "EditorScene UI entity creation Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy node Lizard regressions: 0"
 Write-Output "EditorScene Project Settings Lizard regressions: 0"
 Write-Output "EditorScene Project Input Settings Lizard regressions: 0"
