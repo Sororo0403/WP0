@@ -71,7 +71,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $projectScriptValidationLizardReport =
     Join-Path $reportDirectory "lizard-project-script-library-validation-final.txt"
-& lizard "editor/src/ProjectScriptLibraryValidation.cpp" -l cpp -t 1 -C 35 -L 44 -w -i 0 `
+& lizard "editor/src/ProjectScriptLibraryValidation.cpp" -l cpp -t 1 -C 13 -L 34 -w -i 0 `
     -o $projectScriptValidationLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "ProjectScriptLibrary validation exceeded its refactored complexity ceiling."

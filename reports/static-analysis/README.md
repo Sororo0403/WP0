@@ -297,7 +297,10 @@ Project Script DLLの準備・API解決・型とProperty検証・Registry登録�
 `ProjectScriptLibraryValidation.cpp` へ分離した。
 `ProjectScriptLibrary::Load` は175 NLOC / CCN 72から32 NLOC / CCN 7へ
 縮小した。Library本体の回帰上限は CCN 7 / 関数長34、検証処理は
-CCN 35 / 関数長44である。
+CCN 35 / 関数長44である。さらにProperty検証を名前、型別既定値、
+Input Action種別、重複名へ分け、`IsInvalidScriptProperty` は
+44 NLOC / CCN 35から11 NLOC / CCN 8へ縮小した。検証処理全体の
+回帰上限も CCN 13 / 関数長34まで引き下げた。
 
 メインメニューはFile、Build、Edit、View、Runtime操作、タイトル表示へ分割し、
 専用ファイルへ移した。`DrawMainMenu` は186 NLOC / CCN 53から

@@ -16,49 +16,82 @@ namespace ProjectScriptLibraryUtils {
 namespace {
 constexpr size_t kMaximumScriptTypes = 1024u;
 
+bool IsInvalidFloatProperty(const ScriptPropertyDescriptor& property) {
+    return !std::isfinite(property.defaultFloat) ||
+           !std::isfinite(property.minimumFloat) ||
+           !std::isfinite(property.maximumFloat) ||
+           property.minimumFloat > property.maximumFloat ||
+           property.defaultFloat < property.minimumFloat ||
+           property.defaultFloat > property.maximumFloat;
+}
+
+bool IsInvalidIntegerProperty(const ScriptPropertyDescriptor& property) {
+    return property.minimumInteger > property.maximumInteger ||
+           property.defaultInteger < property.minimumInteger ||
+           property.defaultInteger > property.maximumInteger;
+}
+
+bool IsInvalidVector3Property(const ScriptPropertyDescriptor& property) {
+    return !std::isfinite(property.defaultVector3.x) ||
+           !std::isfinite(property.defaultVector3.y) ||
+           !std::isfinite(property.defaultVector3.z);
+}
+
+bool IsOversizedDefaultString(const ScriptPropertyDescriptor& property,
+                              const size_t maximumLength) {
+    return property.defaultString != nullptr &&
+           std::char_traits<char>::length(property.defaultString) > maximumLength;
+}
+
+bool IsInvalidPropertyDefault(const ScriptPropertyDescriptor& property) {
+    switch (property.type) {
+    case ScriptPropertyType::Float:
+        return IsInvalidFloatProperty(property);
+    case ScriptPropertyType::Integer:
+        return IsInvalidIntegerProperty(property);
+    case ScriptPropertyType::Vector3:
+        return IsInvalidVector3Property(property);
+    case ScriptPropertyType::String:
+    case ScriptPropertyType::AnimationClip:
+    case ScriptPropertyType::Scene:
+        return IsOversizedDefaultString(property, 1024u);
+    case ScriptPropertyType::InputAction:
+        return IsOversizedDefaultString(property, 64u);
+    case ScriptPropertyType::Entity:
+    case ScriptPropertyType::Boolean:
+        return false;
+    }
+    return true;
+}
+
+bool IsInvalidInputActionKind(const ScriptPropertyDescriptor& property) {
+    return property.inputActionKind < ScriptInputActionKind::Any ||
+           property.inputActionKind > ScriptInputActionKind::Axis ||
+           (property.type != ScriptPropertyType::InputAction &&
+            property.inputActionKind != ScriptInputActionKind::Any);
+}
+
+bool HasDuplicatePropertyName(const ScriptTypeRegistration& registration,
+                              const size_t propertyIndex,
+                              const std::string_view propertyName) {
+    for (size_t previous = 0u; previous < propertyIndex; ++previous) {
+        if (propertyName == registration.properties[previous].name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsInvalidScriptProperty(const ScriptTypeRegistration& registration, size_t propertyIndex) {
     const ScriptPropertyDescriptor& property = registration.properties[propertyIndex];
     if (property.name == nullptr) {
         return true;
     }
     const std::string_view propertyName(property.name);
-    const bool invalidFloat =
-        property.type == ScriptPropertyType::Float &&
-        (!std::isfinite(property.defaultFloat) || !std::isfinite(property.minimumFloat) ||
-         !std::isfinite(property.maximumFloat) || property.minimumFloat > property.maximumFloat ||
-         property.defaultFloat < property.minimumFloat ||
-         property.defaultFloat > property.maximumFloat);
-    const bool invalidInteger =
-        property.type == ScriptPropertyType::Integer &&
-        (property.minimumInteger > property.maximumInteger ||
-         property.defaultInteger < property.minimumInteger ||
-         property.defaultInteger > property.maximumInteger);
-    const bool invalidVector3 =
-        property.type == ScriptPropertyType::Vector3 &&
-        (!std::isfinite(property.defaultVector3.x) || !std::isfinite(property.defaultVector3.y) ||
-         !std::isfinite(property.defaultVector3.z));
-    const bool invalidString =
-        (property.type == ScriptPropertyType::String ||
-         property.type == ScriptPropertyType::AnimationClip ||
-         property.type == ScriptPropertyType::Scene) &&
-        property.defaultString != nullptr &&
-        std::char_traits<char>::length(property.defaultString) > 1024u;
-    const bool invalidInputAction =
-        property.type == ScriptPropertyType::InputAction && property.defaultString != nullptr &&
-        std::char_traits<char>::length(property.defaultString) > 64u;
-    const bool invalidInputActionKind =
-        property.inputActionKind < ScriptInputActionKind::Any ||
-        property.inputActionKind > ScriptInputActionKind::Axis ||
-        (property.type != ScriptPropertyType::InputAction &&
-         property.inputActionKind != ScriptInputActionKind::Any);
-    bool duplicate = false;
-    for (size_t previous = 0u; previous < propertyIndex; ++previous) {
-        duplicate = duplicate || propertyName == registration.properties[previous].name;
-    }
-    return propertyName.empty() || propertyName.size() > 128u || duplicate ||
+    return propertyName.empty() || propertyName.size() > 128u ||
            property.type < ScriptPropertyType::Float || property.type > ScriptPropertyType::Scene ||
-           invalidFloat || invalidInteger || invalidVector3 || invalidString ||
-           invalidInputAction || invalidInputActionKind;
+           IsInvalidPropertyDefault(property) || IsInvalidInputActionKind(property) ||
+           HasDuplicatePropertyName(registration, propertyIndex, propertyName);
 }
 
 bool IsInvalidScriptType(const ScriptTypeRegistration& registration,
