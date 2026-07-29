@@ -71,6 +71,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $inspectorSources = @(
     "editor/src/EditorSceneInspector.cpp",
+    "editor/src/EditorSceneInspectorMaterial.cpp",
     "editor/src/EditorSceneInspectorMedia.cpp",
     "editor/src/EditorSceneInspectorPhysics.cpp",
     "editor/src/EditorSceneInspectorRendering.cpp",
@@ -84,6 +85,14 @@ $inspectorLizardReport =
     -o $inspectorLizardReport
 if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Inspector exceeded its refactored complexity ceiling."
+}
+
+$materialInspectorLizardReport =
+    Join-Path $reportDirectory "lizard-editor-inspector-material-final.txt"
+& lizard "editor/src/EditorSceneInspectorMaterial.cpp" -l cpp -t 1 -C 11 -L 46 -w -i 0 `
+    -o $materialInspectorLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Material Inspector exceeded its refactored complexity ceiling."
 }
 
 $gameUiLizardReport =
@@ -337,6 +346,7 @@ Write-Output "WorldSerializer Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary Lizard regressions: 0"
 Write-Output "ProjectScriptLibrary validation Lizard regressions: 0"
 Write-Output "EditorScene Inspector Lizard regressions: 0"
+Write-Output "EditorScene Material Inspector Lizard regressions: 0"
 Write-Output "EditorScene Game UI Lizard regressions: 0"
 Write-Output "EditorScene Game UI visuals Lizard regressions: 0"
 Write-Output "EditorScene Game UI interaction Lizard regressions: 0"

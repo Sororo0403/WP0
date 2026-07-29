@@ -153,6 +153,21 @@ private:
     void DrawAddComponentInspector(WorldEntity* entity);
     void DrawMeshRendererInspector(WorldEntity* entity);
     void DrawScriptsInspector(WorldEntity* entity);
+    bool DrawMaterialOverrideHeader(WorldEntity* entity);
+    void DrawMaterialSurfaceSettings(MaterialOverrideComponent& material,
+                                     EntityId selectionBefore);
+    void DrawMaterialFloat(const char* label, float& value, float minimum, float maximum,
+                           const char* historyLabel = "Modify Material Override");
+    void DrawBaseColorTextureSlot(MaterialOverrideComponent& material, EntityId selectionBefore);
+    void DrawNormalTextureSettings(MaterialOverrideComponent& material, EntityId selectionBefore);
+    using MaterialTextureAssignFunction =
+        void (EditorScene::*)(EntityId, const std::filesystem::path&);
+    void DrawMaterialLinearTextureSlot(const char* label, const char* id, std::string& path,
+                                       EntityId selectionBefore,
+                                       MaterialTextureAssignFunction assignTexture);
+    void DrawMaterialPbrTextureSettings(MaterialOverrideComponent& material,
+                                        EntityId selectionBefore);
+    void DrawMaterialTexturePreview(TextureHandle texture, const char* unavailableText) const;
     bool DrawScriptEntryInspector(WorldEntity* entity, size_t scriptIndex);
     void DrawScriptPropertiesInspector(WorldEntity* entity, BehaviorComponent& behavior,
                                        EntityId selectionBefore);

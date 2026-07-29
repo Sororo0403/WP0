@@ -1,6 +1,6 @@
 # 静的解析レポート
 
-実施日: 2026-07-28
+実施日: 2026-07-29
 
 ## 対象
 
@@ -63,6 +63,7 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `EditorSceneHierarchyNode.cpp`: Entity行、Context Menu、Drag & Drop
 - `ProjectScriptLibraryValidation.cpp`: Script DLLのAPI・登録内容検証とRegistry登録
 - `EditorSceneInspector.cpp`: Inspector の統括、Transform、Script
+- `EditorSceneInspectorMaterial.cpp`: Material属性、Texture Slot、Preview
 - `EditorSceneInspectorPhysics.cpp`: Collider、Character Controller
 - `EditorSceneInspectorRendering.cpp`: Camera、Light、Material
 - `EditorSceneInspectorMedia.cpp`: Audio、Animator
@@ -89,12 +90,16 @@ Lizard は初回に既存の複雑度警告を 73 件検出した。大規模な
 - `internal/EditorSceneViewportUtils.h`: Ray、投影、モデル境界などの共有計算
 
 元の実装ファイルは 14,090 行から約 6,700 行まで縮小した。さらに
-3,500 行規模だった Inspector は、最大 1,010 行の7ファイルへ分割した。
+3,500 行規模だった Inspector は、最大 1,010 行の8ファイルへ分割した。
 `DrawInspectorPanel` は 3,360 NLOC / CCN 764 から 40 NLOC / CCN 6、
 Script プロパティの統括処理は 396 NLOC / CCN 113 から
 18 NLOC / CCN 6 へ縮小した。Inspector 群には新しい上限
-CCN 66 / 関数長 272 を解析スクリプトで固定している。公開 API と保存形式は
-変更していない。
+CCN 66 / 関数長 272 を解析スクリプトで固定している。さらにMaterialの
+Surface設定、Base Color・Normal・PBR Texture Slot、Previewを
+`EditorSceneInspectorMaterial.cpp` へ分離し、
+`DrawMaterialOverrideInspector` を263 NLOC / CCN 66から
+14 NLOC / CCN 4へ縮小した。Material処理の回帰上限は
+CCN 11 / 関数長46である。公開 API と保存形式は変更していない。
 
 その後、残っていた `EditorScene.cpp` 6,676 行から Game UI 約1,400行と
 Scene Gizmo 約1,000行を分離し、同ファイルを約3,570行まで縮小した。
