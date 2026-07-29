@@ -87,7 +87,8 @@ Input Settings処理の回帰上限は CCN 12 / 関数長55である。
 - `EditorSceneGameUiEditing.cpp`: Game View上の選択、ドラッグ、リサイズ
 - `EditorSceneInitialization.cpp`: 入力、Script、Surface、描画、Camera初期化
 - `EditorSceneLighting.cpp`: LightのWorld解決、種類別Scene Lighting反映
-- `EditorSceneGizmos.cpp`: Scene View のコンポーネント表示、選択枠、Gizmo
+- `EditorSceneComponentGizmos.cpp`: Camera・Light・Audio・Physicsアイコン
+- `EditorSceneGizmos.cpp`: Scene View のガイド、選択枠、Transform Gizmo
 - `EditorSceneMainMenu.cpp`: File・Build・Edit・View・Runtimeメニュー
 - `EditorScenePanels.cpp`: Scene・Game・補助パネルのウィンドウ統括
 - `EditorSceneProjectSettings.cpp`: General、Player、Physics、Input設定
@@ -158,9 +159,10 @@ Button・Slider・Dropdown・InputField操作、Popup描画を
 50 NLOC / CCN 13まで縮小した。さらに画像のAspect・Fill、Button色遷移、
 Toggle、Slider、Text描画を `EditorSceneGameUiVisuals.cpp` へ分離し、
 `DrawGameUiVisuals` を276 NLOC / CCN 81から64 NLOC / CCN 12へ縮小した。
-Gizmo はカメラ・ライト・音響ガイドと
-物理形状を分離し、統括関数を 361 NLOC / CCN 101 から
-121 NLOC / CCN 48へ縮小した。現在の回帰上限はGame UI描画が
+Gizmo はCamera・Light・Audio・Physicsアイコンを種類別関数へ分け、
+専用ファイルへ移した。`DrawSceneComponentGizmos` は
+361 NLOC / CCN 101から11 NLOC / CCN 3へ縮小し、Component Gizmoには
+CCN 13 / 関数長28の回帰上限を設定した。現在の回帰上限はGame UI描画が
 CCN 43 / 関数長116、Game UI固有表現が CCN 20 / 関数長61、
 Game UI操作が CCN 32 / 関数長70、
 Gizmo 群が CCN 48 / 関数長148である。

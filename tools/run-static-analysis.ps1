@@ -187,6 +187,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "EditorScene Gizmos exceeded their refactored complexity ceiling."
 }
 
+$componentGizmoLizardReport =
+    Join-Path $reportDirectory "lizard-editor-component-gizmos-final.txt"
+& lizard "editor/src/EditorSceneComponentGizmos.cpp" -l cpp -t 1 -C 13 -L 28 -w -i 0 `
+    -o $componentGizmoLizardReport
+if ($LASTEXITCODE -ne 0) {
+    throw "EditorScene Component Gizmos exceeded their refactored complexity ceiling."
+}
+
 $hierarchyLizardReport =
     Join-Path $reportDirectory "lizard-editor-hierarchy-final.txt"
 & lizard "editor/src/EditorSceneHierarchy.cpp" -l cpp -t 1 -C 39 -L 187 -w -i 0 `
@@ -426,6 +434,7 @@ Write-Output "EditorScene Game UI visuals Lizard regressions: 0"
 Write-Output "EditorScene Game UI interaction Lizard regressions: 0"
 Write-Output "EditorScene Game UI editing Lizard regressions: 0"
 Write-Output "EditorScene Gizmo Lizard regressions: 0"
+Write-Output "EditorScene Component Gizmo Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy Lizard regressions: 0"
 Write-Output "EditorScene Hierarchy node Lizard regressions: 0"
 Write-Output "EditorScene Project Settings Lizard regressions: 0"

@@ -584,6 +584,23 @@ private:
     bool TryRaycastSceneMesh(const ImVec2& imageMin, const ImVec2& imageMax, EntityId& picked) const;
     void ApplyScenePick(EntityId picked);
     void DrawSceneComponentGizmos(const ImVec2& imageMin, const ImVec2& imageMax) const;
+    bool HasSceneComponentGizmo(const WorldEntity& entity) const;
+    bool IsSceneComponentGizmoEnabled(const WorldEntity& entity) const;
+    bool ShouldDrawScenePhysicsShapes(const WorldEntity& entity) const;
+    uint32_t ResolveSceneComponentGizmoColor(const WorldEntity& entity,
+                                             bool active, bool selected,
+                                             bool enabled) const;
+    void DrawSceneCameraGizmoIcon(const ImVec2& center, uint32_t color) const;
+    void DrawSceneLightGizmoIcon(const ImVec2& center, uint32_t color) const;
+    void DrawSceneAudioSourceGizmoIcon(const ImVec2& center, uint32_t color) const;
+    void DrawSceneAudioListenerGizmoIcon(const ImVec2& center, uint32_t color) const;
+    void DrawSceneComponentGizmoIcon(const WorldEntity& entity,
+                                     const ImVec2& center, uint32_t color) const;
+    void DrawScenePhysicsLayerLabel(const WorldEntity& entity,
+                                    const ImVec2& center) const;
+    void DrawSingleSceneComponentGizmo(const WorldEntity& entity,
+                                       const ImVec2& imageMin,
+                                       const ImVec2& imageMax) const;
     void DrawSceneActiveComponentGuides(const WorldEntity& entity,
                                         const DirectX::XMFLOAT4X4& worldMatrix,
                                         const ImVec2& imageMin, const ImVec2& imageMax,
