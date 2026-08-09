@@ -43,123 +43,163 @@ bool DecodeMeshRendererComponent(const Json& encoded, WorldEntity& entity, std::
     return true;
 }
 
-bool DecodeMaterialOverrideComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("MaterialOverride")) {
-            const Json& material = encoded["components"]["MaterialOverride"];
-            if (!material.is_object() || !material.contains("enabled") ||
-                !material["enabled"].is_boolean() || !material.contains("baseColor") ||
-                !material.contains("metallic") || !material["metallic"].is_number() ||
-                !material.contains("roughness") || !material["roughness"].is_number() ||
-                (material.contains("baseColorTexture") &&
-                 !material["baseColorTexture"].is_string()) ||
-                (material.contains("normalTexture") &&
-                 !material["normalTexture"].is_string()) ||
-                (material.contains("normalStrength") &&
-                 !material["normalStrength"].is_number()) ||
-                (material.contains("roughnessTexture") &&
-                 !material["roughnessTexture"].is_string()) ||
-                (material.contains("metallicTexture") &&
-                 !material["metallicTexture"].is_string()) ||
-                (material.contains("pbrTexturePacking") &&
-                 !material["pbrTexturePacking"].is_string()) ||
-                (material.contains("blendMode") && !material["blendMode"].is_string()) ||
-                (material.contains("alphaCutoff") && !material["alphaCutoff"].is_number()) ||
-                (material.contains("cullMode") && !material["cullMode"].is_string()) ||
-                (material.contains("depthWrite") && !material["depthWrite"].is_boolean())) {
-                SetError(error, "Scene MaterialOverride component is invalid.");
-                return false;
-            }
-            MaterialOverrideComponent component{};
-            component.enabled = material["enabled"].get<bool>();
-            component.metallic = material["metallic"].get<float>();
-            component.roughness = material["roughness"].get<float>();
-            if (material.contains("baseColorTexture")) {
-                component.baseColorTexturePath =
-                    material["baseColorTexture"].get<std::string>();
-            }
-            if (material.contains("normalTexture")) {
-                component.normalTexturePath = material["normalTexture"].get<std::string>();
-            }
-            if (material.contains("normalStrength")) {
-                component.normalStrength = material["normalStrength"].get<float>();
-            }
-            if (material.contains("roughnessTexture")) {
-                component.roughnessTexturePath =
-                    material["roughnessTexture"].get<std::string>();
-            }
-            if (material.contains("metallicTexture")) {
-                component.metallicTexturePath =
-                    material["metallicTexture"].get<std::string>();
-            }
-            if (material.contains("pbrTexturePacking")) {
-                const std::string packing = material["pbrTexturePacking"].get<std::string>();
-                if (packing == "Separate") {
-                    component.pbrTexturePacking = MaterialPbrTexturePacking::Separate;
-                } else if (packing == "ORM") {
-                    component.pbrTexturePacking =
-                        MaterialPbrTexturePacking::OcclusionRoughnessMetallic;
-                } else if (packing == "MetallicRoughness") {
-                    component.pbrTexturePacking =
-                        MaterialPbrTexturePacking::MetallicRoughness;
-                } else {
-                    SetError(error, "Scene MaterialOverride PBR packing is invalid.");
-                    return false;
-                }
-            }
-            if (material.contains("blendMode")) {
-                const std::string blendMode = material["blendMode"].get<std::string>();
-                if (blendMode == "Opaque") {
-                    component.blendMode = MaterialSurfaceBlendMode::Opaque;
-                } else if (blendMode == "Cutout") {
-                    component.blendMode = MaterialSurfaceBlendMode::Cutout;
-                } else if (blendMode == "Transparent") {
-                    component.blendMode = MaterialSurfaceBlendMode::Transparent;
-                } else {
-                    SetError(error, "Scene MaterialOverride blend mode is invalid.");
-                    return false;
-                }
-            }
-            if (material.contains("alphaCutoff")) {
-                component.alphaCutoff = material["alphaCutoff"].get<float>();
-            }
-            if (material.contains("cullMode")) {
-                const std::string cullMode = material["cullMode"].get<std::string>();
-                if (cullMode == "None") {
-                    component.cullMode = MaterialSurfaceCullMode::None;
-                } else if (cullMode == "Front") {
-                    component.cullMode = MaterialSurfaceCullMode::Front;
-                } else if (cullMode == "Back") {
-                    component.cullMode = MaterialSurfaceCullMode::Back;
-                } else {
-                    SetError(error, "Scene MaterialOverride cull mode is invalid.");
-                    return false;
-                }
-            }
-            if (material.contains("depthWrite")) {
-                component.depthWrite = material["depthWrite"].get<bool>();
-            }
-            if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
-                component.baseColor.x < 0.0f || component.baseColor.y < 0.0f ||
-                component.baseColor.z < 0.0f || component.baseColor.w < 0.0f ||
-                component.baseColor.w > 1.0f || !std::isfinite(component.metallic) ||
-                component.metallic < 0.0f || component.metallic > 1.0f ||
-                !std::isfinite(component.roughness) || component.roughness < 0.0f ||
-                component.roughness > 1.0f || component.baseColorTexturePath.size() > 1024u ||
-                component.baseColorTexturePath.find('\0') != std::string::npos ||
-                component.normalTexturePath.size() > 1024u ||
-                component.normalTexturePath.find('\0') != std::string::npos ||
-                !std::isfinite(component.normalStrength) || component.normalStrength < 0.0f ||
-                component.roughnessTexturePath.size() > 1024u ||
-                component.roughnessTexturePath.find('\0') != std::string::npos ||
-                component.metallicTexturePath.size() > 1024u ||
-                component.metallicTexturePath.find('\0') != std::string::npos ||
-                !std::isfinite(component.alphaCutoff) || component.alphaCutoff < 0.0f ||
-                component.alphaCutoff > 1.0f) {
-                SetError(error, "Scene MaterialOverride settings are invalid.");
-                return false;
-            }
-            entity.materialOverride = component;
-        }
+bool IsMaterialDocumentValid(const Json& material) {
+    return material.is_object() && material.contains("enabled") &&
+           material["enabled"].is_boolean() && material.contains("baseColor") &&
+           material.contains("metallic") && material["metallic"].is_number() &&
+           material.contains("roughness") && material["roughness"].is_number() &&
+           (!material.contains("baseColorTexture") ||
+            material["baseColorTexture"].is_string()) &&
+           (!material.contains("normalTexture") || material["normalTexture"].is_string()) &&
+           (!material.contains("normalStrength") || material["normalStrength"].is_number()) &&
+           (!material.contains("roughnessTexture") ||
+            material["roughnessTexture"].is_string()) &&
+           (!material.contains("metallicTexture") ||
+            material["metallicTexture"].is_string()) &&
+           (!material.contains("pbrTexturePacking") ||
+            material["pbrTexturePacking"].is_string()) &&
+           (!material.contains("blendMode") || material["blendMode"].is_string()) &&
+           (!material.contains("alphaCutoff") || material["alphaCutoff"].is_number()) &&
+           (!material.contains("cullMode") || material["cullMode"].is_string()) &&
+           (!material.contains("depthWrite") || material["depthWrite"].is_boolean());
+}
+
+void DecodeMaterialTextures(const Json& material, MaterialOverrideComponent& component) {
+    if (material.contains("baseColorTexture")) {
+        component.baseColorTexturePath = material["baseColorTexture"].get<std::string>();
+    }
+    if (material.contains("normalTexture")) {
+        component.normalTexturePath = material["normalTexture"].get<std::string>();
+    }
+    if (material.contains("normalStrength")) {
+        component.normalStrength = material["normalStrength"].get<float>();
+    }
+    if (material.contains("roughnessTexture")) {
+        component.roughnessTexturePath = material["roughnessTexture"].get<std::string>();
+    }
+    if (material.contains("metallicTexture")) {
+        component.metallicTexturePath = material["metallicTexture"].get<std::string>();
+    }
+}
+
+bool DecodePbrPacking(const Json& material, MaterialOverrideComponent& component,
+                      std::string* error) {
+    if (!material.contains("pbrTexturePacking")) {
+        return true;
+    }
+    const std::string value = material["pbrTexturePacking"].get<std::string>();
+    if (value == "Separate") {
+        component.pbrTexturePacking = MaterialPbrTexturePacking::Separate;
+    } else if (value == "ORM") {
+        component.pbrTexturePacking =
+            MaterialPbrTexturePacking::OcclusionRoughnessMetallic;
+    } else if (value == "MetallicRoughness") {
+        component.pbrTexturePacking = MaterialPbrTexturePacking::MetallicRoughness;
+    } else {
+        SetError(error, "Scene MaterialOverride PBR packing is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeBlendMode(const Json& material, MaterialOverrideComponent& component,
+                     std::string* error) {
+    if (!material.contains("blendMode")) {
+        return true;
+    }
+    const std::string value = material["blendMode"].get<std::string>();
+    if (value == "Opaque") {
+        component.blendMode = MaterialSurfaceBlendMode::Opaque;
+    } else if (value == "Cutout") {
+        component.blendMode = MaterialSurfaceBlendMode::Cutout;
+    } else if (value == "Transparent") {
+        component.blendMode = MaterialSurfaceBlendMode::Transparent;
+    } else {
+        SetError(error, "Scene MaterialOverride blend mode is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeCullMode(const Json& material, MaterialOverrideComponent& component,
+                    std::string* error) {
+    if (!material.contains("cullMode")) {
+        return true;
+    }
+    const std::string value = material["cullMode"].get<std::string>();
+    if (value == "None") {
+        component.cullMode = MaterialSurfaceCullMode::None;
+    } else if (value == "Front") {
+        component.cullMode = MaterialSurfaceCullMode::Front;
+    } else if (value == "Back") {
+        component.cullMode = MaterialSurfaceCullMode::Back;
+    } else {
+        SetError(error, "Scene MaterialOverride cull mode is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeMaterialSurface(const Json& material, MaterialOverrideComponent& component,
+                           std::string* error) {
+    if (!DecodePbrPacking(material, component, error) ||
+        !DecodeBlendMode(material, component, error) ||
+        !DecodeCullMode(material, component, error)) {
+        return false;
+    }
+    if (material.contains("alphaCutoff")) {
+        component.alphaCutoff = material["alphaCutoff"].get<float>();
+    }
+    if (material.contains("depthWrite")) {
+        component.depthWrite = material["depthWrite"].get<bool>();
+    }
+    return true;
+}
+
+bool IsMaterialSettingsValid(const MaterialOverrideComponent& component) {
+    return component.baseColor.x >= 0.0f && component.baseColor.y >= 0.0f &&
+           component.baseColor.z >= 0.0f && component.baseColor.w >= 0.0f &&
+           component.baseColor.w <= 1.0f && std::isfinite(component.metallic) &&
+           component.metallic >= 0.0f && component.metallic <= 1.0f &&
+           std::isfinite(component.roughness) && component.roughness >= 0.0f &&
+           component.roughness <= 1.0f &&
+           component.baseColorTexturePath.size() <= 1024u &&
+           component.baseColorTexturePath.find('\0') == std::string::npos &&
+           component.normalTexturePath.size() <= 1024u &&
+           component.normalTexturePath.find('\0') == std::string::npos &&
+           std::isfinite(component.normalStrength) && component.normalStrength >= 0.0f &&
+           component.roughnessTexturePath.size() <= 1024u &&
+           component.roughnessTexturePath.find('\0') == std::string::npos &&
+           component.metallicTexturePath.size() <= 1024u &&
+           component.metallicTexturePath.find('\0') == std::string::npos &&
+           std::isfinite(component.alphaCutoff) && component.alphaCutoff >= 0.0f &&
+           component.alphaCutoff <= 1.0f;
+}
+
+bool DecodeMaterialOverrideComponent(const Json& encoded, WorldEntity& entity,
+                                     std::string* error) {
+    if (!encoded["components"].contains("MaterialOverride")) {
+        return true;
+    }
+    const Json& material = encoded["components"]["MaterialOverride"];
+    if (!IsMaterialDocumentValid(material)) {
+        SetError(error, "Scene MaterialOverride component is invalid.");
+        return false;
+    }
+    MaterialOverrideComponent component{};
+    component.enabled = material["enabled"].get<bool>();
+    component.metallic = material["metallic"].get<float>();
+    component.roughness = material["roughness"].get<float>();
+    DecodeMaterialTextures(material, component);
+    if (!DecodeMaterialSurface(material, component, error)) {
+        return false;
+    }
+    if (!DecodeFloat4(material["baseColor"], component.baseColor) ||
+        !IsMaterialSettingsValid(component)) {
+        SetError(error, "Scene MaterialOverride settings are invalid.");
+        return false;
+    }
+    entity.materialOverride = component;
     return true;
 }
 

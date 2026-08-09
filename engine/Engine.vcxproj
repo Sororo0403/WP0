@@ -214,6 +214,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)src\runtime\TriggerSystem.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\World.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldCollision.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldEntityValidation.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializer.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerDeserialize.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)src\world\WorldSerializerPhysicsDecoders.cpp" />

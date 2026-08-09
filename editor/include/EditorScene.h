@@ -117,6 +117,12 @@ private:
     void ReleaseGameInputCapture();
     bool BeginRuntimeWorld(std::string* error = nullptr);
     bool BeginRuntimeAnimators(std::string* error = nullptr);
+    bool StartRuntimeAnimator(const WorldEntity& entity, ModelManager& models,
+                              std::string* error);
+    ModelHandle ResolveRuntimeAnimatorModel(const WorldEntity& entity,
+                                            ModelManager& models);
+    void InitializeRuntimeAnimatorState(EntityId entity, const AnimatorComponent& animator,
+                                        const std::string& clip, const Model& model);
     bool BeginEditAnimatorPreview(EntityId entity);
     void UpdateEditAnimatorPreview(float deltaTime);
     void EndEditAnimatorPreview();
@@ -130,7 +136,17 @@ private:
     bool DispatchPendingButtonClicks();
     bool DispatchPendingRuntimeUiEvents();
     bool ApplyPendingRuntimeSceneLoad();
+    struct RuntimeAnimator;
     void UpdateRuntimeAnimators(float deltaTime);
+    void UpdateRuntimeAnimator(const RuntimeAnimator& runtime, ModelManager& models,
+                               float deltaTime);
+    void ApplyRuntimeAnimatorCommand(const RuntimeAnimator& runtime,
+                                     AnimatorComponent& animator, Model& model,
+                                     ModelManager& models);
+    void SyncRuntimeAnimatorState(EntityId entity, AnimatorComponent& animator,
+                                  const Model& model);
+    static void ClearRuntimeAnimatorPlaybackState(AnimatorComponent& animator);
+    static void ResetRuntimeAnimatorState(AnimatorComponent& animator);
     void EndRuntimeWorld();
     void EndRuntimeAnimators();
     struct RuntimeAudioSource;
