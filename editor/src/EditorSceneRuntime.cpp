@@ -93,6 +93,8 @@ void EditorScene::EnterPlayMode() {
     runtimeScenePath_ = scenePath_;
     world_.SetPhysicsSettings(physicsSettings_);
     std::string runtimeError;
+    if (ctx_ != nullptr && ctx_->systems.input != nullptr) ctx_->systems.input->ResetGameInput();
+    gameInputSuspended_ = false;
     const bool allBehaviorsStarted = BeginRuntimeWorld(&runtimeError);
     playModeState_ = PlayModeState::Playing;
     showGamePanel_ = true;
@@ -111,8 +113,9 @@ void EditorScene::StopPlayMode() {
         status_ = "Could not stop Play Mode: Edit World is unavailable.";
         return;
     }
-    ReleaseGameInputCapture();
+    ReleaseGameInputFocus();
     EndRuntimeWorld();
+    if (ctx_ != nullptr && ctx_->systems.input != nullptr) ctx_->systems.input->ResetGameInput();
     world_ = std::move(*editModeWorld_);
     editModeWorld_.reset();
     runtimeScenePath_ = scenePath_;
@@ -139,29 +142,42 @@ void EditorScene::StopPlayMode() {
 
 void EditorScene::TogglePlayPause() {
     if (playModeState_ == PlayModeState::Playing) {
-        ReleaseGameInputCapture();
+        ReleaseGameInputFocus();
         PauseRuntimeAudio(true);
         playModeState_ = PlayModeState::Paused;
         status_ = "Paused Play Mode.";
     } else if (playModeState_ == PlayModeState::Paused) {
         PauseRuntimeAudio(false);
+        gameInputSuspended_ = false;
+        focusGamePanelRequested_ = true;
         playModeState_ = PlayModeState::Playing;
         status_ = "Resumed Play Mode.";
     }
 }
 
-void EditorScene::ReleaseGameInputCapture() {
-    if (!gameInputCaptured_) {
-        return;
+void EditorScene::ReleaseGameInputFocus() {
+    gameInputFocused_ = false;
+    gamePointerInside_ = false;
+    pressedButton_ = {};
+    activeSlider_ = {};
+    activeInputField_ = {};
+    openDropdown_ = {};
+    if (ctx_ != nullptr && ctx_->systems.input != nullptr) {
+        ctx_->systems.input->RouteGameInput(false, false, {});
     }
-    SetCursorPos(gameInputCursorRestoreX_, gameInputCursorRestoreY_);
-    gameInputCaptured_ = false;
+    if (ctx_ != nullptr && ctx_->systems.winApp != nullptr) {
+        ctx_->systems.winApp->SetCursorVisible(true);
+    }
+    if (ImGui::GetCurrentContext() != nullptr) {
+        ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    }
 }
 
 void EditorScene::StepRuntimeWorld() {
     if (playModeState_ != PlayModeState::Paused) {
         return;
     }
+    ReleaseGameInputFocus();
     UpdateRuntimeWorld(kRuntimeStepDeltaTime);
     status_ = "Advanced the paused Runtime World by one frame.";
 }
@@ -414,6 +430,10 @@ bool EditorScene::ApplyPendingRuntimeSceneLoad() {
 }
 
 void EditorScene::EndRuntimeWorld() {
+    if (ctx_ != nullptr && ctx_->systems.input != nullptr) {
+        ctx_->systems.input->SetCursorMode(CursorMode::Free);
+        ctx_->systems.input->SetCursorVisible(true);
+    }
     EndRuntimeAnimators();
     EndRuntimeAudio();
     runtimeTriggers_.Clear();

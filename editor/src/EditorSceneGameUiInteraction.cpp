@@ -6,6 +6,7 @@
 #include "imgui_internal.h"
 #include "input/Input.h"
 #include "internal/EditorSceneGameUiUtils.h"
+#include "internal/EditorSceneGameUiInput.h"
 #include "sprite/SpriteRenderer.h"
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <ranges>
 
 using namespace EditorSceneGameUiUtils;
+using namespace EditorSceneGameUiInput;
 
 namespace {
 struct GameUiControlState {
@@ -67,17 +69,17 @@ int GetGameUiSliderInputDirection(const SliderComponent& slider, const Input* in
     const bool horizontal = slider.direction == SliderDirection::LeftToRight ||
                             slider.direction == SliderDirection::RightToLeft;
     const bool negative =
-        horizontal ? ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
+        horizontal ? KeyPressed(input, ImGuiKey_LeftArrow, false) ||
                          IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_LEFT)
-                   : ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+                   : KeyPressed(input, ImGuiKey_DownArrow, false) ||
                          IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_DOWN);
     if (negative) {
         return -1;
     }
     const bool positive =
-        horizontal ? ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+        horizontal ? KeyPressed(input, ImGuiKey_RightArrow, false) ||
                          IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_RIGHT)
-                   : ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+                   : KeyPressed(input, ImGuiKey_UpArrow, false) ||
                          IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_UP);
     return positive ? 1 : 0;
 }
@@ -92,11 +94,11 @@ GameUiSubmitState GetGameUiSubmitState(bool canNavigateUi, const Input* input) {
     GameUiSubmitState state{};
     state.gamepad = canNavigateUi && IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_A);
     state.held = canNavigateUi &&
-                 (ImGui::IsKeyDown(ImGuiKey_Enter) || ImGui::IsKeyDown(ImGuiKey_Space) ||
+                 (KeyDown(input, ImGuiKey_Enter) || KeyDown(input, ImGuiKey_Space) ||
                   (input != nullptr && input->IsGamepadButtonPress(XINPUT_GAMEPAD_A)));
     state.pressed = canNavigateUi &&
-                    (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-                     ImGui::IsKeyPressed(ImGuiKey_Space, false) || state.gamepad);
+                    (KeyPressed(input, ImGuiKey_Enter, false) ||
+                     KeyPressed(input, ImGuiKey_Space, false) || state.gamepad);
     return state;
 }
 
@@ -129,7 +131,9 @@ bool EditorScene::PrepareGameUiFrame(int width, int height) {
 
 bool EditorScene::CanPointAtGameUi(const ImVec2& imageScreenMin, const ImVec2& mouse,
                                    bool uiEventsEnabled) const {
-    return playModeState_ == PlayModeState::Playing && uiEventsEnabled && !gameInputCaptured_ &&
+    return playModeState_ == PlayModeState::Playing && uiEventsEnabled && gameInputFocused_ &&
+           ctx_ != nullptr && ctx_->systems.input != nullptr &&
+           ctx_->systems.input->GetCursorMode() != CursorMode::Locked &&
            ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
            requestedGameWidth_ > 0 && requestedGameHeight_ > 0 && mouse.x >= imageScreenMin.x &&
            mouse.y >= imageScreenMin.y && mouse.x <= imageScreenMin.x + requestedGameWidth_ &&
@@ -149,7 +153,8 @@ DirectX::XMFLOAT2 EditorScene::CalculateGameUiPointer(const ImVec2& imageScreenM
 
 bool EditorScene::CanNavigateGameUi(const EventSystemComponent* eventSystem,
                                     bool uiEventsEnabled) const {
-    return playModeState_ == PlayModeState::Playing && uiEventsEnabled && !gameInputCaptured_ &&
+    return playModeState_ == PlayModeState::Playing && uiEventsEnabled && gameInputFocused_ &&
+
            (eventSystem == nullptr || eventSystem->sendNavigationEvents) &&
            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
            !ImGui::GetIO().WantTextInput;
@@ -370,7 +375,7 @@ void EditorScene::UpdateActiveGameUiInputField(WorldEntity* activeInputFieldEnti
     }
     InputFieldComponent& inputField = *activeInputFieldEntity->inputField;
     bool changed = false;
-    if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true) && !inputField.text.empty()) {
+    if (KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_Backspace, true) && !inputField.text.empty()) {
         PopUtf8Codepoint(inputField.text);
         changed = true;
     }
@@ -399,7 +404,7 @@ void EditorScene::UpdateActiveGameUiInputField(WorldEntity* activeInputFieldEnti
 bool EditorScene::NavigateGameUiTab(const std::vector<EntityId>& selectableButtons,
                                     bool canNavigateUi) {
     if (!canNavigateUi || activeInputField_.IsValid() ||
-        !ImGui::IsKeyPressed(ImGuiKey_Tab, false) || selectableButtons.empty()) {
+        !KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_Tab, false) || selectableButtons.empty()) {
         return false;
     }
     const bool selectPrevious = ImGui::GetIO().KeyShift;
@@ -428,10 +433,10 @@ bool EditorScene::NavigateOpenGameUiDropdown(WorldEntity* openDropdownEntity,
         return false;
     }
     const Input* runtimeInput = ctx_ != nullptr ? ctx_->systems.input : nullptr;
-    const bool selectPrevious = ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+    const bool selectPrevious = KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_UpArrow, false) ||
                                 (runtimeInput != nullptr &&
                                  runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_UP));
-    const bool selectNext = ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+    const bool selectNext = KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_DownArrow, false) ||
                             (runtimeInput != nullptr &&
                              runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_DOWN));
     if (selectPrevious) {
@@ -463,7 +468,8 @@ void EditorScene::HandleGameUiPointerPress(EntityId hoveredButton,
                                            bool hoveredSliderInteractable,
                                            const DirectX::XMFLOAT2& pointer, int width,
                                            int height) {
-    if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (ctx_ == nullptr || ctx_->systems.input == nullptr ||
+        !ctx_->systems.input->IsMouseTrigger(0)) {
         return;
     }
     WorldEntity* openDropdownEntity = world_.Find(openDropdown_);
@@ -501,7 +507,8 @@ void EditorScene::HandleGameUiPointerPress(EntityId hoveredButton,
 
 void EditorScene::UpdateActiveGameUiSlider(const DirectX::XMFLOAT2& pointer, int width,
                                            int height) {
-    if (!activeSlider_.IsValid() || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    if (!activeSlider_.IsValid() || ctx_ == nullptr || ctx_->systems.input == nullptr ||
+        !ctx_->systems.input->IsMousePress(0)) {
         return;
     }
     WorldEntity* sliderEntity = world_.Find(activeSlider_);
@@ -534,7 +541,8 @@ void EditorScene::ActivatePressedGameUiControl(WorldEntity& clicked) {
 
 void EditorScene::HandleGameUiPointerRelease(EntityId hoveredButton,
                                              bool hoveredButtonInteractable) {
-    if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    if (ctx_ == nullptr || ctx_->systems.input == nullptr ||
+        !ctx_->systems.input->IsMouseRelease(0)) {
         return;
     }
     if (pressedButton_.IsValid() && pressedButton_ == hoveredButton &&
@@ -556,7 +564,7 @@ bool EditorScene::HandleGameUiSubmit(bool canNavigateUi) {
         !submitEntity->button->enabled) {
         return submit.held;
     }
-    const bool inputFieldSubmit = ImGui::IsKeyPressed(ImGuiKey_Enter, false) || submit.gamepad;
+    const bool inputFieldSubmit = KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_Enter, false) || submit.gamepad;
     if (IsInteractableGameUiInputField(*submitEntity)) {
         HandleFocusedGameUiInputFieldSubmit(*submitEntity, inputFieldSubmit);
     } else if (IsInteractableGameUiDropdown(*submitEntity)) {
@@ -619,7 +627,7 @@ void EditorScene::HandleGameUiKeyboardSlider(bool canNavigateUi, bool navigatedU
 void EditorScene::HandleGameUiCancel(bool canNavigateUi) {
     const Input* runtimeInput = ctx_ != nullptr ? ctx_->systems.input : nullptr;
     if (!canNavigateUi ||
-        (!ImGui::IsKeyPressed(ImGuiKey_Escape, false) &&
+        (!KeyPressed(ctx_ != nullptr ? ctx_->systems.input : nullptr, ImGuiKey_Escape, false) &&
          (runtimeInput == nullptr ||
           !runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_B)))) {
         return;

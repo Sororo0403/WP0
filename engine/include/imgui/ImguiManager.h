@@ -36,6 +36,8 @@ public:
     /// ImGuiの新しいフレームを開始する
     /// </summary>
     /// <param name="commandList">コマンドリスト</param>
+    void NewFrame() const;
+    void CancelFrame() const;
     void Begin(ID3D12GraphicsCommandList* commandList) const;
 
     /// <summary>

@@ -6,7 +6,11 @@ void EditorScene::HandleEditorShortcuts() {
     if (pendingSceneAction_ != PendingSceneAction::None) {
         return;
     }
-    if (HandleGameInputReleaseShortcut() || HandleRuntimeShortcut()) {
+    if (HandleGameInputReleaseShortcut()) {
+        return;
+    }
+    if (gameInputFocused_) return;
+    if (HandleRuntimeShortcut()) {
         return;
     }
     const ImGuiIO& io = ImGui::GetIO();
@@ -21,11 +25,11 @@ void EditorScene::HandleEditorShortcuts() {
 }
 
 bool EditorScene::HandleGameInputReleaseShortcut() {
-    if (!gameInputCaptured_ || !ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-        return false;
-    }
-    ReleaseGameInputCapture();
-    status_ = "Released Game input.";
+    if (!gameInputFocused_ || !ImGui::GetIO().KeyShift ||
+        !ImGui::IsKeyPressed(ImGuiKey_Escape, false)) return false;
+    gameInputSuspended_ = true;
+    ReleaseGameInputFocus();
+    status_ = "Returned input to Editor. Click Game View to resume input.";
     return true;
 }
 

@@ -115,6 +115,7 @@ Input::Input() : state_(std::make_unique<State>()) {
 }
 
 Input::~Input() {
+    ReleaseCursorMode();
     FinishRecording();
 }
 
@@ -305,21 +306,19 @@ float Input::GetActionAxis(std::string_view name) const {
 bool Input::EvaluateActionButton(const InputActionBinding& binding,
                                  bool previous) const {
     if (state_->keyboardQueryEnabled) {
-        const auto& keys = previous ? state_->keyPrev : state_->keyNow;
+        const auto& keys = state_->routing.keys;
         for (int key : binding.positiveKeys) {
-            if (key >= 0 && std::cmp_less(key, keys.size()) &&
-                (keys[static_cast<size_t>(key)] & kPressMask) != 0) {
-                return true;
-            }
+            if (key >= 0 && keys.Allowed(static_cast<size_t>(key), state_->uiQueryMode) &&
+                (previous ? keys.previous[key] : keys.now[key])) return true;
         }
     }
-    const bool connected = previous ? state_->gamepadPrevConnected
-                                    : state_->gamepadConnected;
-    if (state_->gamepadQueryEnabled && connected &&
-        binding.gamepadButton != 0) {
-        const XINPUT_STATE& gamepad =
-            previous ? state_->gamepadPrevState : state_->gamepadState;
-        return (gamepad.Gamepad.wButtons & binding.gamepadButton) != 0;
+    if (state_->gamepadQueryEnabled) {
+        const auto& pad = state_->routing.pad;
+        for (size_t i = 0; i < 16; ++i) {
+            if ((binding.gamepadButton & (1u << i)) != 0 &&
+                pad.Allowed(i, state_->uiQueryMode) &&
+                (previous ? pad.previous[i] : pad.now[i])) return true;
+        }
     }
     return false;
 }
@@ -365,15 +364,19 @@ const std::wstring& Input::GetReplayPath() const {
 }
 
 long Input::GetMouseDX() const {
-    return state_->mouseQueryEnabled ? state_->mouseState.lX : 0L;
+    return state_->mouseQueryEnabled && !state_->discardMouseDelta
+               ? state_->mouseState.lX : 0L;
 }
 
 long Input::GetMouseDY() const {
-    return state_->mouseQueryEnabled ? state_->mouseState.lY : 0L;
+    return state_->mouseQueryEnabled && !state_->discardMouseDelta
+               ? state_->mouseState.lY : 0L;
 }
 
 long Input::GetMouseWheel() const {
-    return state_->mouseQueryEnabled ? state_->mouseState.lZ : 0L;
+    return state_->mouseQueryEnabled && state_->routing.inside &&
+                   (state_->uiQueryMode || !state_->wheelConsumed)
+               ? state_->mouseState.lZ : 0L;
 }
 
 bool Input::IsGamepadConnected() const {
@@ -381,27 +384,33 @@ bool Input::IsGamepadConnected() const {
 }
 
 float Input::GetGamepadLeftStickX() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadLeftStickX : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[0]
+               ? state_->gamepadLeftStickX : 0.0f;
 }
 
 float Input::GetGamepadLeftStickY() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadLeftStickY : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[1]
+               ? state_->gamepadLeftStickY : 0.0f;
 }
 
 float Input::GetGamepadRightStickX() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadRightStickX : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[2]
+               ? state_->gamepadRightStickX : 0.0f;
 }
 
 float Input::GetGamepadRightStickY() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadRightStickY : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[3]
+               ? state_->gamepadRightStickY : 0.0f;
 }
 
 float Input::GetGamepadLeftTrigger() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadLeftTrigger : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[4]
+               ? state_->gamepadLeftTrigger : 0.0f;
 }
 
 float Input::GetGamepadRightTrigger() const {
-    return state_->gamepadQueryEnabled ? state_->gamepadRightTrigger : 0.0f;
+    return state_->gamepadQueryEnabled && !state_->routing.axisBlocked[5]
+               ? state_->gamepadRightTrigger : 0.0f;
 }
 
 void Input::SetQueryEnabled(bool keyboardEnabled, bool mouseEnabled, bool gamepadEnabled) {
@@ -423,6 +432,11 @@ void Input::ClearInputState(bool clearPrevious) {
     state_->gamepadRightTrigger = 0.0f;
 
     if (clearPrevious) {
+        state_->routing.keys = {};
+        state_->routing.mouse = {};
+        state_->routing.pad = {};
+        state_->routing.mouseOwned = {};
+        state_->routing.mouseAllowed = {};
         state_->keyPrev.fill(0);
         state_->mousePrevState = {};
         state_->gamepadPrevState = {};
@@ -431,6 +445,7 @@ void Input::ClearInputState(bool clearPrevious) {
 }
 
 void Input::Initialize(HINSTANCE hInstance, HWND hwnd) {
+    state_->window = hwnd;
     if (state_->replayDirectory.empty()) {
         state_->replayDirectory = GetDefaultReplayDirectory();
     }
@@ -481,6 +496,10 @@ void Input::Initialize(HINSTANCE hInstance, HWND hwnd) {
 
 void Input::Update(float deltaTime) {
     (void)deltaTime;
+    state_->uiQueryMode = false;
+    state_->wheelConsumed = false;
+    state_->discardMouseDelta = state_->discardNextMouseDelta;
+    state_->discardNextMouseDelta = false;
 
     if (state_->replayMode == ReplayMode::Replay) {
         state_->keyPrev = state_->keyNow;
@@ -496,12 +515,14 @@ void Input::Update(float deltaTime) {
             state_->replayFinished = true;
             ClearInputState(false);
         }
+        SampleRoutingButtons();
         return;
     }
 
     UpdateKeyboard();
     UpdateMouse();
     UpdateGamepad();
+    SampleRoutingButtons();
 
     if (state_->replayMode == ReplayMode::Record &&
         state_->recordedFrames.size() < InputReplayLimits::kMaxFrames) {
@@ -587,80 +608,188 @@ void Input::UpdateGamepad() {
 }
 
 bool Input::IsKeyPress(int dik) const {
-    if (!state_->keyboardQueryEnabled || dik < 0 ||
-        std::cmp_greater_equal(dik, state_->keyNow.size())) {
-        return false;
-    }
-    return (state_->keyNow[dik] & kPressMask) != 0;
+    return state_->keyboardQueryEnabled && dik >= 0 &&
+           state_->routing.keys.Held(static_cast<size_t>(dik), state_->uiQueryMode);
 }
 
 bool Input::IsKeyTrigger(int dik) const {
-    if (!state_->keyboardQueryEnabled || dik < 0 ||
-        std::cmp_greater_equal(dik, state_->keyNow.size())) {
-        return false;
-    }
-    return (state_->keyNow[dik] & kPressMask) && !(state_->keyPrev[dik] & kPressMask);
+    return state_->keyboardQueryEnabled && dik >= 0 &&
+           state_->routing.keys.Pressed(static_cast<size_t>(dik), state_->uiQueryMode);
 }
 
 bool Input::IsKeyRelease(int dik) const {
-    if (!state_->keyboardQueryEnabled || dik < 0 ||
-        std::cmp_greater_equal(dik, state_->keyNow.size())) {
-        return false;
-    }
-    return !(state_->keyNow[dik] & kPressMask) && (state_->keyPrev[dik] & kPressMask);
+    return state_->keyboardQueryEnabled && dik >= 0 &&
+           state_->routing.keys.Released(static_cast<size_t>(dik), state_->uiQueryMode);
 }
 
 bool Input::IsMousePress(int button) const {
-    if (!state_->mouseQueryEnabled || button < 0 ||
-        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
-        return false;
-    }
-    return (state_->mouseState.rgbButtons[button] & 0x80) != 0;
+    return state_->mouseQueryEnabled && button >= 0 &&
+           state_->routing.MouseAllowed(static_cast<size_t>(button)) &&
+           state_->routing.mouse.Held(static_cast<size_t>(button), state_->uiQueryMode);
 }
 
 bool Input::IsMouseTrigger(int button) const {
-    if (!state_->mouseQueryEnabled || button < 0 ||
-        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
-        return false;
-    }
-    return (state_->mouseState.rgbButtons[button] & 0x80) &&
-           !(state_->mousePrevState.rgbButtons[button] & 0x80);
+    return state_->mouseQueryEnabled && button >= 0 &&
+           state_->routing.MouseAllowed(static_cast<size_t>(button)) &&
+           state_->routing.mouse.Pressed(static_cast<size_t>(button), state_->uiQueryMode);
 }
 
 bool Input::IsMouseRelease(int button) const {
-    if (!state_->mouseQueryEnabled || button < 0 ||
-        std::cmp_greater_equal(button, _countof(state_->mouseState.rgbButtons))) {
-        return false;
-    }
-    return !(state_->mouseState.rgbButtons[button] & 0x80) &&
-           (state_->mousePrevState.rgbButtons[button] & 0x80);
+    return state_->mouseQueryEnabled && button >= 0 &&
+           state_->routing.MouseAllowed(static_cast<size_t>(button)) &&
+           state_->routing.mouse.Released(static_cast<size_t>(button), state_->uiQueryMode);
 }
 
 bool Input::IsGamepadButtonPress(WORD button) const {
-    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
-           (state_->gamepadState.Gamepad.wButtons & button) != 0;
+    if (!state_->gamepadQueryEnabled) return false;
+    for (size_t i = 0; i < 16; ++i) {
+        if ((button & (1u << i)) != 0 &&
+            state_->routing.pad.Held(i, state_->uiQueryMode)) return true;
+    }
+    return false;
 }
 
 bool Input::IsGamepadButtonTrigger(WORD button) const {
-    return state_->gamepadQueryEnabled && state_->gamepadConnected &&
-           (state_->gamepadState.Gamepad.wButtons & button) != 0 &&
-           (state_->gamepadPrevState.Gamepad.wButtons & button) == 0;
+    if (!state_->gamepadQueryEnabled) return false;
+    for (size_t i = 0; i < 16; ++i) {
+        if ((button & (1u << i)) != 0 &&
+            state_->routing.pad.Pressed(i, state_->uiQueryMode)) return true;
+    }
+    return false;
 }
 
 bool Input::IsGamepadButtonRelease(WORD button) const {
-    return state_->gamepadQueryEnabled && state_->gamepadPrevConnected &&
-           (state_->gamepadState.Gamepad.wButtons & button) == 0 &&
-           (state_->gamepadPrevState.Gamepad.wButtons & button) != 0;
+    if (!state_->gamepadQueryEnabled) return false;
+    for (size_t i = 0; i < 16; ++i) {
+        if ((button & (1u << i)) != 0 &&
+            state_->routing.pad.Released(i, state_->uiQueryMode)) return true;
+    }
+    return false;
 }
 
 bool Input::IsGamepadLeftTriggerTrigger(float threshold) const {
     return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           !state_->routing.axisBlocked[4] &&
            state_->gamepadLeftTrigger > threshold &&
            NormalizeTrigger(state_->gamepadPrevState.Gamepad.bLeftTrigger) <= threshold;
 }
 
 bool Input::IsGamepadRightTriggerTrigger(float threshold) const {
     return state_->gamepadQueryEnabled && state_->gamepadConnected &&
+           !state_->routing.axisBlocked[5] &&
            state_->gamepadRightTrigger > threshold &&
            NormalizeTrigger(state_->gamepadPrevState.Gamepad.bRightTrigger) <= threshold;
+}
+
+void Input::SampleRoutingButtons() {
+    std::array<bool, 256> keys{};
+    std::array<bool, 4> mouse{};
+    std::array<bool, 16> pad{};
+    for (size_t i = 0; i < keys.size(); ++i) keys[i] = (state_->keyNow[i] & 0x80) != 0;
+    for (size_t i = 0; i < mouse.size(); ++i) mouse[i] = (state_->mouseState.rgbButtons[i] & 0x80) != 0;
+    for (size_t i = 0; i < pad.size(); ++i) pad[i] = (state_->gamepadState.Gamepad.wButtons & (1u << i)) != 0;
+    state_->routing.keys.Sample(keys);
+    state_->routing.mouse.Sample(mouse);
+    state_->routing.pad.Sample(pad);
+}
+
+void Input::SetCursorMode(CursorMode mode) { state_->cursorMode = mode; }
+CursorMode Input::GetCursorMode() const { return state_->cursorMode; }
+CursorMode Input::GetEffectiveCursorMode() const { return state_->effectiveCursorMode; }
+void Input::SetCursorVisible(bool visible) { state_->cursorVisible = visible; }
+bool Input::IsCursorVisibleRequested() const { return state_->cursorVisible; }
+bool Input::HasGameInputFocus() const { return state_->routing.focused; }
+bool Input::IsPointerInsideGame() const { return state_->routing.focused && state_->routing.inside; }
+GamePointerPosition Input::GetPointerPosition() const { return state_->pointerPosition; }
+bool Input::HasGamePointerDrag() const { return state_->routing.HasDrag(); }
+void Input::SetUiQueryMode(bool enabled) { state_->uiQueryMode = enabled; }
+
+void Input::RouteGameInput(bool focused, bool pointerInside, GamePointerPosition position) {
+    const bool changed = state_->routing.focused != focused;
+    state_->routing.Route(focused, pointerInside, state_->effectiveCursorMode == CursorMode::Locked,
+                         {state_->gamepadLeftStickX, state_->gamepadLeftStickY,
+                          state_->gamepadRightStickX, state_->gamepadRightStickY,
+                          state_->gamepadLeftTrigger, state_->gamepadRightTrigger});
+    state_->pointerPosition = position;
+    const bool pointer = pointerInside || state_->routing.HasDrag() ||
+                         state_->effectiveCursorMode == CursorMode::Locked;
+    // Preserve button-up outside the viewport for an owned drag.
+    bool releasedDrag = false;
+    for (bool allowed : state_->routing.mouseAllowed) releasedDrag |= allowed;
+    SetQueryEnabled(focused, focused && (pointer || releasedDrag), focused);
+    if (changed) state_->discardMouseDelta = true;
+    if (!focused) ReleaseCursorMode();
+}
+
+void Input::ConsumeKey(int dik) {
+    if (dik >= 0 && dik < 256) state_->routing.keys.Consume(static_cast<size_t>(dik));
+}
+void Input::ConsumeKeyboard() {
+    for (size_t i = 0; i < 256; ++i) state_->routing.keys.Consume(i);
+}
+void Input::ConsumeMouseButton(int button) {
+    if (button >= 0 && button < 4) state_->routing.mouse.Consume(static_cast<size_t>(button));
+}
+void Input::ConsumeMouseWheel() { state_->wheelConsumed = true; }
+void Input::ConsumeGamepadButtons(WORD buttons) {
+    for (size_t i = 0; i < 16; ++i) {
+        if ((buttons & (1u << i)) != 0) state_->routing.pad.Consume(i);
+    }
+}
+
+void Input::ApplyCursorMode(const RECT& screenBounds) {
+    const bool active = state_->routing.focused && state_->window != nullptr &&
+                        GetForegroundWindow() == state_->window && !IsIconic(state_->window);
+    if (!active || state_->cursorMode == CursorMode::Free ||
+        screenBounds.right <= screenBounds.left || screenBounds.bottom <= screenBounds.top) {
+        ReleaseCursorMode();
+        return;
+    }
+    if (state_->effectiveCursorMode == CursorMode::Locked && state_->cursorMode != CursorMode::Locked) {
+        ReleaseCursorMode();
+    }
+    RECT bounds = screenBounds;
+    if (state_->cursorMode == CursorMode::Locked) {
+        bounds.left = (screenBounds.left + screenBounds.right) / 2;
+        bounds.top = (screenBounds.top + screenBounds.bottom) / 2;
+        bounds.right = bounds.left + 1;
+        bounds.bottom = bounds.top + 1;
+    }
+    const bool changed = state_->effectiveCursorMode != state_->cursorMode ||
+                         !EqualRect(&bounds, &state_->cursorBounds);
+    if (state_->effectiveCursorMode != CursorMode::Locked && state_->cursorMode == CursorMode::Locked) {
+        GetCursorPos(&state_->cursorRestore);
+    }
+    if (ClipCursor(&bounds)) {
+        state_->effectiveCursorMode = state_->cursorMode;
+        state_->cursorBounds = bounds;
+        if (changed) {
+            state_->discardMouseDelta = true;
+            state_->discardNextMouseDelta = true;
+        }
+    }
+}
+
+void Input::ReleaseCursorMode() {
+    if (state_->effectiveCursorMode == CursorMode::Free) return;
+    ClipCursor(nullptr);
+    if (state_->effectiveCursorMode == CursorMode::Locked && state_->routing.focused &&
+        state_->window != nullptr && GetForegroundWindow() == state_->window) {
+        SetCursorPos(state_->cursorRestore.x, state_->cursorRestore.y);
+    }
+    state_->effectiveCursorMode = CursorMode::Free;
+    state_->discardMouseDelta = true;
+    state_->discardNextMouseDelta = true;
+}
+
+void Input::OnWindowFocusLost() {
+    if (state_->routing.routed) RouteGameInput(false, false, {});
+    else ReleaseCursorMode();
+}
+
+void Input::ResetGameInput() {
+    RouteGameInput(false, false, {});
+    SetCursorMode(CursorMode::Free);
+    SetCursorVisible(true);
+    state_->uiQueryMode = false;
 }

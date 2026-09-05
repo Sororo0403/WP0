@@ -57,10 +57,12 @@
 
 using namespace EditorSceneGameUiUtils;
 
-bool EditorScene::DrawGameUi(int width, int height, bool gameCameraAvailable) {
-    if (!PrepareGameUiFrame(width, height)) {
-        return false;
-    }
+void EditorScene::ProcessGameUiInput(int width, int height, bool gameCameraAvailable) {
+    if (ctx_ == nullptr || width <= 0 || height <= 0) return;
+    Input* input = ctx_->systems.input;
+    const bool hadPointerInteraction = pressedButton_.IsValid() || activeSlider_.IsValid();
+    const bool hadTextInput = activeInputField_.IsValid();
+    const bool hadSelection = focusedButton_.IsValid() || openDropdown_.IsValid() || hadTextInput;
 
     const WorldEntity* eventSystemEntity = FindEventSystemEntity(world_);
     const EventSystemComponent* eventSystem =
@@ -97,18 +99,56 @@ bool EditorScene::DrawGameUi(int width, int height, bool gameCameraAvailable) {
         navigatedUi;
     const bool hoveredButtonInteractable = IsGameUiButtonInteractable(hoveredButton);
     const bool hoveredSliderInteractable = IsGameUiSliderInteractable(hoveredButton);
-    HandleGameUiPointerInteractions(hoveredButton, hoveredDropdownOption,
-                                    hoveredButtonInteractable, hoveredSliderInteractable, pointer,
-                                    width, height);
+    const bool pointerEnabled = gameInputFocused_ && uiEventsEnabled && input != nullptr &&
+                                input->GetCursorMode() != CursorMode::Locked;
+    if (pointerEnabled && (canPoint || hadPointerInteraction)) {
+        HandleGameUiPointerInteractions(hoveredButton, hoveredDropdownOption,
+                                        hoveredButtonInteractable, hoveredSliderInteractable, pointer,
+                                        width, height);
+    } else if (!pointerEnabled) {
+        pressedButton_ = {};
+        activeSlider_ = {};
+    }
     const bool submitHeld = HandleGameUiSubmit(canNavigateUi);
     HandleGameUiKeyboardSlider(canNavigateUi, navigatedUi);
     HandleGameUiCancel(canNavigateUi);
 
-    DrawGameUiVisuals(width, height, hoveredButton, submitHeld);
-    DrawGameUiDropdownPopup(width, height);
+    gameUiHoveredButton_ = hoveredButton;
+    gameUiSubmitHeld_ = submitHeld;
+    if (input == nullptr) return;
+    const bool overUi = hoveredButton.IsValid() || hoveredDropdownOption >= 0;
+    // Ownership is decided on press. Moving a gameplay drag over UI must not
+    // steal it; a drag that started on UI remains consumed through release.
+    const bool pointerUsed = pointerEnabled && (hadPointerInteraction ||
+        (input->IsMouseTrigger(0) && (overUi || dropdownWasOpen)));
+    if (pointerUsed) input->ConsumeMouseButton(0);
+    if (pointerEnabled && overUi) input->ConsumeMouseWheel();
+    if (canNavigateUi) {
+        if (hadTextInput || activeInputField_.IsValid()) input->ConsumeKeyboard();
+        if (navigatedUi) input->ConsumeKey(DIK_TAB);
+        if (navigatedUi || focusedSlider) {
+            for (int key : {DIK_LEFT, DIK_RIGHT, DIK_UP, DIK_DOWN}) input->ConsumeKey(key);
+            input->ConsumeGamepadButtons(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT |
+                                         XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN);
+        }
+        if (hadSelection || focusedButton_.IsValid()) {
+            input->ConsumeKey(DIK_RETURN);
+            input->ConsumeKey(DIK_SPACE);
+            input->ConsumeGamepadButtons(XINPUT_GAMEPAD_A);
+        }
+        if (hadSelection) {
+            input->ConsumeKey(DIK_ESCAPE);
+            input->ConsumeGamepadButtons(XINPUT_GAMEPAD_B);
+        }
+    }
+}
 
-    return hoveredButton.IsValid() || hoveredDropdownOption >= 0 ||
-           (dropdownWasOpen && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
+bool EditorScene::DrawGameUi(int width, int height, bool gameCameraAvailable) {
+    (void)gameCameraAvailable;
+    if (!PrepareGameUiFrame(width, height)) return false;
+    DrawGameUiVisuals(width, height, gameUiHoveredButton_, gameUiSubmitHeld_);
+    DrawGameUiDropdownPopup(width, height);
+    return gameUiHoveredButton_.IsValid();
 }
 
 void EditorScene::DrawGameUiVisuals(int width, int height, EntityId hoveredButton,

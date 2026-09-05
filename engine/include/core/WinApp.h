@@ -107,13 +107,10 @@ private:
     static LRESULT HandleKeyDownMessage(HWND, WPARAM wParam, LPARAM, bool& handled);
     static LRESULT HandleSysCommandMessage(HWND, WPARAM wParam, LPARAM, bool& handled);
     static LRESULT HandleDestroyMessage(HWND hwnd, WPARAM, LPARAM, bool& handled);
-    static void ApplyHiddenCursorState(HWND hwnd, bool lockToClient);
+    static void ApplyHiddenCursorState();
     static void ApplyVisibleCursorState();
     static void ApplyRequestedCursorState(HWND hwnd);
-    static void LockCursorToClient(HWND hwnd);
-    static void CenterCursorInClient(HWND hwnd);
     static void ReleaseCursorLock();
-    static bool ShouldLockHiddenCursor(HWND hwnd);
     static bool ShouldHideCursor(HWND hwnd);
     /// <summary>
     /// RestoreCursorForAppInteractionを実行する

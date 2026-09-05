@@ -56,7 +56,14 @@
 #include <utility>
 
 void EditorScene::Update() {
+    if (!playerMode_) {
+        HandleEditorShortcuts();
+        DrawMainMenu();
+        DrawDockSpace();
+    }
+    PrepareGameInputFrame();
     UpdateEditorSimulation();
+    ApplyGameCursor();
     UpdateSceneViewResources();
     UpdateGameViewResources();
     UpdatePreviewResources();

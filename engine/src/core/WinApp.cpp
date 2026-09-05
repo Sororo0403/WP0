@@ -29,6 +29,7 @@ LRESULT WinApp::HandleSetCursorMessage(HWND hwnd, WPARAM, LPARAM lParam, bool& h
 
 LRESULT WinApp::HandleActivateAppMessage(HWND, WPARAM wParam, LPARAM, bool& handled) {
     if (wParam == FALSE) {
+        ReleaseCursorLock();
         ApplyVisibleCursorState();
     } else {
         RestoreCursorForAppInteraction();
@@ -44,6 +45,7 @@ LRESULT WinApp::HandleFocusMessage(HWND, WPARAM, LPARAM, bool& handled) {
 }
 
 LRESULT WinApp::HandleKillFocusMessage(HWND, WPARAM, LPARAM, bool& handled) {
+    ReleaseCursorLock();
     ApplyVisibleCursorState();
     handled = false;
     return 0;
@@ -60,6 +62,7 @@ LRESULT WinApp::HandleKeyDownMessage(HWND, WPARAM wParam, LPARAM, bool& handled)
 
 LRESULT WinApp::HandleSysCommandMessage(HWND, WPARAM wParam, LPARAM, bool& handled) {
     if ((wParam & 0xFFF0) == SC_MINIMIZE || (wParam & 0xFFF0) == SC_TASKLIST) {
+        ReleaseCursorLock();
         ApplyVisibleCursorState();
     }
     handled = false;
@@ -70,6 +73,7 @@ LRESULT WinApp::HandleDestroyMessage(HWND hwnd, WPARAM, LPARAM, bool& handled) {
     handled = true;
     if (cursorWindow_ == hwnd) {
         requestedCursorVisible_ = true;
+        ReleaseCursorLock();
         ApplyVisibleCursorState();
         cursorWindow_ = nullptr;
     }
@@ -108,6 +112,7 @@ bool WinApp::TryHandleWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 WinApp::~WinApp() {
     if (cursorWindow_ == hwnd_) {
         requestedCursorVisible_ = true;
+        ReleaseCursorLock();
         ApplyVisibleCursorState();
         cursorWindow_ = nullptr;
     }
@@ -363,7 +368,7 @@ void WinApp::SetFullscreen(bool fullscreen) {
     UpdateClientSize();
 }
 
-void WinApp::ApplyHiddenCursorState(HWND hwnd, bool lockToClient) {
+void WinApp::ApplyHiddenCursorState() {
     CURSORINFO cursorInfo{};
     cursorInfo.cbSize = sizeof(cursorInfo);
     const bool osCursorVisible =
@@ -376,17 +381,11 @@ void WinApp::ApplyHiddenCursorState(HWND hwnd, bool lockToClient) {
         while (ShowCursor(FALSE) >= 0) {
         }
     }
-    if (lockToClient) {
-        LockCursorToClient(hwnd);
-        CenterCursorInClient(hwnd);
-    } else {
-        ReleaseCursorLock();
-    }
+
 }
 
 void WinApp::ApplyVisibleCursorState() {
     cursorVisible_ = true;
-    ReleaseCursorLock();
     while (ShowCursor(TRUE) < 0) {
     }
     SetCursor(LoadCursor(nullptr, IDC_ARROW));
@@ -398,55 +397,14 @@ void WinApp::ApplyRequestedCursorState(HWND hwnd) {
         return;
     }
 
-    ApplyHiddenCursorState(hwnd, ShouldLockHiddenCursor(hwnd));
-}
-
-void WinApp::LockCursorToClient(HWND hwnd) {
-    if (hwnd == nullptr) {
-        return;
-    }
-
-    RECT clientRect{};
-    if (!GetClientRect(hwnd, &clientRect)) {
-        return;
-    }
-
-    POINT topLeft{clientRect.left, clientRect.top};
-    POINT bottomRight{clientRect.right, clientRect.bottom};
-    if (!ClientToScreen(hwnd, &topLeft) || !ClientToScreen(hwnd, &bottomRight)) {
-        return;
-    }
-
-    RECT screenRect{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
-    ClipCursor(&screenRect);
-}
-
-void WinApp::CenterCursorInClient(HWND hwnd) {
-    if (hwnd == nullptr) {
-        return;
-    }
-
-    RECT clientRect{};
-    if (!GetClientRect(hwnd, &clientRect)) {
-        return;
-    }
-
-    POINT center{(clientRect.left + clientRect.right) / 2,
-                 (clientRect.top + clientRect.bottom) / 2};
-    if (!ClientToScreen(hwnd, &center)) {
-        return;
-    }
-
-    SetCursorPos(center.x, center.y);
+    ApplyHiddenCursorState();
 }
 
 void WinApp::ReleaseCursorLock() {
     ClipCursor(nullptr);
 }
 
-bool WinApp::ShouldLockHiddenCursor(HWND hwnd) {
-    return ShouldHideCursor(hwnd);
-}
+
 
 bool WinApp::ShouldHideCursor(HWND hwnd) {
     return hwnd != nullptr && GetActiveWindow() == hwnd && !IsIconic(hwnd);

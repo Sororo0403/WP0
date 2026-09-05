@@ -230,15 +230,9 @@ void EditorScene::DrawPostProcessOverlay() {
     ImGuizmo::BeginFrame();
     CaptureConsoleStatus();
     if (playerMode_) {
-        if (gameInputCaptured_ && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-            ReleaseGameInputCapture();
-        }
         DrawPanels();
         return;
     }
-    HandleEditorShortcuts();
-    DrawMainMenu();
-    DrawDockSpace();
     DrawUnsavedChangesDialog();
     DrawEntityRenameDialog();
     DrawAssetOperationDialogs();

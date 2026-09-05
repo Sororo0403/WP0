@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{BCBD9189-985A-44D0-9B8F-7F4FDD246AB2}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>InputTests</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType><PlatformToolset>v145</PlatformToolset>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'!='Debug'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)..\..\generated\outputs\$(Platform)\$(Configuration)\InputTests\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\..\generated\intermediate\$(Platform)\$(Configuration)\InputTests\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel><TreatWarningAsError>true</TreatWarningAsError>
+      <LanguageStandard>stdcpp20</LanguageStandard><ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\include;$(MSBuildThisFileDirectory)..\externals;$(MSBuildThisFileDirectory)..\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link><SubSystem>Console</SubSystem><AdditionalDependencies>user32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="InputRoutingTests.cpp" /><ClCompile Include="InputApiTests.cpp" />
+    <ClCompile Include="..\src\input\Input.cpp" />
+    <ClCompile Include="..\src\input\InputReplay.cpp" />
+    <ClCompile Include="..\src\input\InputReplaySerialization.cpp" />
+    <ClCompile Include="..\externals\imgui\imgui.cpp" />
+    <ClCompile Include="..\externals\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\externals\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\externals\imgui\imgui_tables.cpp" />
+    <None Include="input_api_replay.json" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

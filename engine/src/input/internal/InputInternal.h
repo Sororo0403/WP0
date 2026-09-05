@@ -1,6 +1,7 @@
 #pragma once
 
 #include "input/Input.h"
+#include "input/InputRouting.h"
 
 #include <array>
 #include <string>
@@ -52,6 +53,18 @@ struct Input::State {
     bool mouseQueryEnabled = true;
     bool gamepadQueryEnabled = true;
     std::vector<ActionBindingEntry> actionBindings;
+    InputRouting::State routing;
+    bool uiQueryMode = false;
+    bool wheelConsumed = false;
+    bool discardMouseDelta = false;
+    bool discardNextMouseDelta = false;
+    GamePointerPosition pointerPosition{};
+    CursorMode cursorMode = CursorMode::Free;
+    CursorMode effectiveCursorMode = CursorMode::Free;
+    bool cursorVisible = true;
+    HWND window = nullptr;
+    RECT cursorBounds{};
+    POINT cursorRestore{};
 
     Input::ReplayMode replayMode = Input::ReplayMode::Live;
     std::wstring replayPath;

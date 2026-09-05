@@ -70,13 +70,6 @@ void EditorScene::DrawPanels() {
     projectPanelMinY_ = 0.0f;
     projectPanelMaxX_ = 0.0f;
     projectPanelMaxY_ = 0.0f;
-    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
-    if (input != nullptr) {
-        input->SetQueryEnabled(false, false, false);
-    }
-    if (gameInputCaptured_ && (playModeState_ != PlayModeState::Playing || !showGamePanel_)) {
-        ReleaseGameInputCapture();
-    }
     DrawHierarchyAndProjectPanels();
     DrawScenePanelWindow();
     DrawGamePanelWindow();

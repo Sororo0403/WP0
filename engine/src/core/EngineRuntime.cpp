@@ -23,6 +23,7 @@ EngineRuntime::~EngineRuntime() {
         return;
     }
 
+    systems_->input.ResetGameInput();
     systems_->soundManager.StopAll();
     systems_->winApp.SetCursorVisible(true);
     systems_->dxCommon.WaitForGpuIfPossible();
@@ -201,6 +202,10 @@ EngineFrameResult EngineRuntime::Tick() {
     if (!systems_->winApp.ProcessMessage()) {
         return EngineFrameResult::ExitRequested;
     }
+    // Also release while minimized: ResizeIfNeeded may skip input/simulation.
+    if (GetForegroundWindow() != systems_->winApp.GetHwnd() || IsIconic(systems_->winApp.GetHwnd())) {
+        systems_->input.OnWindowFocusLost();
+    }
     if (systems_->winApp.ConsumeCloseRequest() && systems_->sceneManager.OnCloseRequested()) {
         systems_->winApp.RequestClose();
     }
@@ -226,6 +231,9 @@ EngineFrameResult EngineRuntime::Tick() {
         CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "Input");
         systems_->input.Update(systems_->sceneContext.frame.deltaTime);
     }
+#ifdef ENGINE_WITH_IMGUI
+    systems_->imguiManager.NewFrame();
+#endif
     {
         CpuProfiler::ScopedEvent event(systems_->cpuProfiler, "SceneUpdate");
         systems_->sceneManager.Update();
@@ -235,6 +243,9 @@ EngineFrameResult EngineRuntime::Tick() {
         systems_->soundManager.Update();
     }
     if (!RenderFrame()) {
+#ifdef ENGINE_WITH_IMGUI
+        systems_->imguiManager.CancelFrame();
+#endif
         Log("Render frame failed");
         RequestClose();
         return EngineFrameResult::Failed;

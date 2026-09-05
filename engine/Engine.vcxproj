@@ -678,6 +678,9 @@
   <PropertyGroup>
     <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
   </PropertyGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)include\input\InputRouting.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets">
   </Import>
   <ImportGroup Label="ExtensionTargets">

@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "input/Input.h"
+#include "internal/EditorSceneGameUiInput.h"
 
 #include <Windows.h>
 
@@ -11,7 +12,7 @@
 
 namespace {
 bool IsNavigationPressed(const Input* input, const ImGuiKey key, const WORD gamepadButton) {
-    return ImGui::IsKeyPressed(key, false) ||
+    return EditorSceneGameUiInput::KeyPressed(input, key, false) ||
            (input != nullptr && input->IsGamepadButtonTrigger(gamepadButton));
 }
 

@@ -1,6 +1,7 @@
 #include "EditorScene.h"
 
 #include "graphics/DirectXCommon.h"
+#include "core/WinApp.h"
 #include "imgui.h"
 #include "input/Input.h"
 
@@ -10,7 +11,8 @@
 #include <cmath>
 
 namespace {
-constexpr ImGuiWindowFlags kGamePanelFlags = ImGuiWindowFlags_NoCollapse;
+constexpr ImGuiWindowFlags kGamePanelFlags = ImGuiWindowFlags_NoCollapse |
+    ImGuiWindowFlags_NoNavInputs | ImGuiWindowFlags_NoNavFocus;
 }
 
 void EditorScene::DrawGamePanelWindow() {
@@ -19,7 +21,7 @@ void EditorScene::DrawGamePanelWindow() {
     }
     const bool visible = BeginGamePanelWindow();
     if (visible) {
-        DrawGamePanelContent(ctx_ != nullptr ? ctx_->systems.input : nullptr);
+        DrawGamePanelContent();
     }
     ImGui::End();
 }
@@ -48,24 +50,17 @@ bool EditorScene::BeginGamePanelWindow() {
     return visible;
 }
 
-void EditorScene::DrawGamePanelContent(Input* input) {
-    const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    if (gameInputCaptured_ && !focused) {
-        ReleaseGameInputCapture();
-        status_ = "Released Game input because the Game View lost focus.";
-    }
-    UpdateGamePanelRequestedSize();
+void EditorScene::DrawGamePanelContent() {
     if (!IsGamePanelRenderReady()) {
-        ReleaseGameInputCapture();
         ImGui::TextDisabled("Game View RenderSurface is not ready.");
         return;
     }
-    bool gameUiHovered = false;
-    const bool hasGameCamera = RenderGamePanelFrame(gameUiHovered);
+    const bool hasGameCamera = RenderGamePanelFrame();
     ImVec2 imageMin{};
     ImVec2 imageMax{};
     DrawGamePanelImage(imageMin, imageMax);
-    HandleGamePanelInteraction(imageMin, imageMax, hasGameCamera, gameUiHovered, focused, input);
+    if (playModeState_ == PlayModeState::Edit) HandleGameUiEditing(imageMin, imageMax);
+    DrawGamePanelOverlay(imageMin, hasGameCamera);
 }
 
 void EditorScene::UpdateGamePanelRequestedSize() {
@@ -79,13 +74,12 @@ bool EditorScene::IsGamePanelRenderReady() const {
            ctx_->rendering.dxCommon != nullptr && ctx_->rendering.model != nullptr;
 }
 
-bool EditorScene::RenderGamePanelFrame(bool& gameUiHovered) {
+bool EditorScene::RenderGamePanelFrame() {
     const bool hasGameCamera = UpdateGameViewCamera();
     if (hasGameCamera) {
         BuildRenderScene();
     } else {
         renderScene_.BeginFrame();
-        ReleaseGameInputCapture();
     }
     sceneRenderer_.Render(renderScene_, gameViewCamera_, gameViewSurface_,
                           {0.025f, 0.035f, 0.055f, 1.0f});
@@ -99,8 +93,7 @@ bool EditorScene::RenderGamePanelFrame(bool& gameUiHovered) {
     };
     gameViewPostProcess_.DrawToTarget(gameViewSurface_.GetSceneColorGpuHandle(),
                                       gameViewSurface_.GetDepthGpuHandle(), target);
-    gameUiHovered =
-        DrawGameUi(gameViewSurface_.GetWidth(), gameViewSurface_.GetHeight(), hasGameCamera);
+    (void)DrawGameUi(gameViewSurface_.GetWidth(), gameViewSurface_.GetHeight(), hasGameCamera);
     gameViewSurface_.EndOutputPass();
     gameViewSurface_.TransitionDepthToWrite();
     ctx_->rendering.dxCommon->SetBackBufferRenderTarget(false, false);
@@ -116,77 +109,94 @@ void EditorScene::DrawGamePanelImage(ImVec2& imageMin, ImVec2& imageMax) {
     imageMax = ImGui::GetItemRectMax();
 }
 
-void EditorScene::HandleGamePanelInteraction(
-    const ImVec2& imageMin, const ImVec2& imageMax, const bool hasGameCamera,
-    const bool gameUiHovered, const bool gameViewFocused, Input* input) {
-    const bool imageHovered = ImGui::IsItemHovered();
-    if (playModeState_ == PlayModeState::Edit) {
-        HandleGameUiEditing(imageMin, imageMax);
+void EditorScene::PrepareGameInputFrame() {
+    gameUiHoveredButton_ = {};
+    gameUiSubmitHeld_ = false;
+    Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    if (input == nullptr) return;
+    input->SetUiQueryMode(false);
+    if (gameInputFocused_ && !input->HasGameInputFocus() && !playerMode_) {
+        gameInputSuspended_ = true;
     }
-    TryCaptureGameInput(hasGameCamera, gameUiHovered, imageHovered);
-    CenterCapturedGameCursor(imageMin, imageMax);
-    UpdateGameInputQuery(input, gameViewFocused, imageHovered);
-    DrawGamePanelOverlay(imageMin, hasGameCamera);
-}
-
-void EditorScene::TryCaptureGameInput(const bool hasGameCamera,
-                                      const bool gameUiHovered,
-                                      const bool gameImageHovered) {
-    if (!hasGameCamera || playModeState_ != PlayModeState::Playing ||
-        !gameImageHovered || gameUiHovered ||
-        !ImGui::IsMouseClicked(ImGuiMouseButton_Left) || gameInputCaptured_) {
+    if (!showGamePanel_) {
+        ReleaseGameInputFocus();
         return;
     }
-    POINT cursor{};
-    if (GetCursorPos(&cursor)) {
-        gameInputCursorRestoreX_ = cursor.x;
-        gameInputCursorRestoreY_ = cursor.y;
+
+    // First Begin establishes this frame's layout and focus; drawing appends to
+    // the same window later, without changing any routing state.
+    const bool visible = BeginGamePanelWindow();
+    UpdateGamePanelRequestedSize();
+    const ImVec2 minimum = ImGui::GetCursorScreenPos();
+    const ImVec2 maximum{minimum.x + requestedGameWidth_, minimum.y + requestedGameHeight_};
+    gameInputScreenBounds_ = {static_cast<LONG>(std::floor(minimum.x)),
+                             static_cast<LONG>(std::floor(minimum.y)),
+                             static_cast<LONG>(std::ceil(maximum.x)),
+                             static_cast<LONG>(std::ceil(maximum.y))};
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const bool hovered = visible && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+                         mouse.x >= minimum.x && mouse.x < maximum.x &&
+                         mouse.y >= minimum.y && mouse.y < maximum.y;
+    bool clicked = false;
+    for (int button = 0; button < 3; ++button) clicked |= ImGui::IsMouseClicked(button);
+    if (hovered && clicked) {
+        gameInputSuspended_ = false;
+        ImGui::SetWindowFocus();
     }
-    focusedButton_ = {};
-    pressedButton_ = {};
-    activeSlider_ = {};
-    openDropdown_ = {};
-    activeInputField_ = {};
-    gameInputCaptured_ = true;
-    status_ = "Game input captured. Press Escape to release.";
+    const WinApp* window = ctx_->systems.winApp;
+    const bool foreground = window != nullptr && GetForegroundWindow() == window->GetHwnd() &&
+                            !IsIconic(window->GetHwnd());
+    const bool focused = playerMode_ || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    const bool popup = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    const bool active = visible && foreground && focused && !popup &&
+                        !gameInputSuspended_ && playModeState_ == PlayModeState::Playing &&
+                        !(clicked && !hovered);
+    if (!active) {
+        // A background game must not reacquire a requested lock by itself.
+        if (gameInputFocused_ && !playerMode_) gameInputSuspended_ = true;
+        ReleaseGameInputFocus();
+    }
+    gameInputFocused_ = active;
+    gamePointerInside_ = active && hovered;
+    input->RouteGameInput(active, gamePointerInside_, {mouse.x - minimum.x, mouse.y - minimum.y});
+    if (visible) {
+        input->SetUiQueryMode(true);
+        ProcessGameUiInput(requestedGameWidth_, requestedGameHeight_, UpdateGameViewCamera());
+        input->SetUiQueryMode(false);
+    }
+    ImGui::End();
 }
 
-void EditorScene::CenterCapturedGameCursor(const ImVec2& imageMin,
-                                           const ImVec2& imageMax) {
-    if (!gameInputCaptured_) {
-        return;
+void EditorScene::ApplyGameCursor() {
+    if (ctx_ == nullptr || ctx_->systems.input == nullptr || ctx_->systems.winApp == nullptr) return;
+    Input& input = *ctx_->systems.input;
+    const bool running = gameInputFocused_ && showGamePanel_ && playModeState_ == PlayModeState::Playing;
+    if (!running) input.RouteGameInput(false, false, input.GetPointerPosition());
+    const bool show = !running || input.IsCursorVisibleRequested() ||
+                      (!gamePointerInside_ && input.GetCursorMode() == CursorMode::Free);
+    ctx_->systems.winApp->SetCursorVisible(show);
+    if (show) {
+        ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    } else {
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
     }
-    const int centerX =
-        static_cast<int>(std::lround((imageMin.x + imageMax.x) * 0.5f));
-    const int centerY =
-        static_cast<int>(std::lround((imageMin.y + imageMax.y) * 0.5f));
-    SetCursorPos(centerX, centerY);
-    ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-}
-
-void EditorScene::UpdateGameInputQuery(Input* input, const bool gameViewFocused,
-                                       const bool gameImageHovered) {
-    if (input == nullptr || playModeState_ != PlayModeState::Playing) {
-        return;
-    }
-    input->SetQueryEnabled(gameViewFocused,
-                           gameViewFocused && (gameImageHovered || gameInputCaptured_),
-                           gameViewFocused);
+    input.ApplyCursorMode(gameInputScreenBounds_);
 }
 
 void EditorScene::DrawGamePanelOverlay(const ImVec2& imageMin,
                                        const bool hasGameCamera) const {
-    if (!hasGameCamera && !playerMode_) {
+    if (playerMode_) return;
+    if (!hasGameCamera) {
         DrawGamePanelHint(imageMin, "No Primary Camera - displaying Runtime UI only",
-                          IM_COL32(255, 196, 90, 240));
+                         IM_COL32(255, 196, 90, 240));
         return;
     }
-    if (playModeState_ != PlayModeState::Playing) {
-        return;
+    const Input* input = ctx_ != nullptr ? ctx_->systems.input : nullptr;
+    if (playModeState_ == PlayModeState::Playing && input != nullptr &&
+        input->GetEffectiveCursorMode() != CursorMode::Free) {
+        DrawGamePanelHint(imageMin, "Shift+Esc to return to Editor", IM_COL32(220, 225, 235, 230));
     }
-    const char* hint = gameInputCaptured_ ? "Input captured - Esc to release"
-                                          : "Click Game View to capture input";
-    DrawGamePanelHint(imageMin, hint, IM_COL32(220, 225, 235, 230));
 }
 
 void EditorScene::DrawGamePanelHint(const ImVec2& imageMin, const char* text,

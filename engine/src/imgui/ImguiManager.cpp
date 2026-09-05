@@ -323,9 +323,17 @@ void ImguiManager::Begin(ID3D12GraphicsCommandList* commandList) const {
     ID3D12DescriptorHeap* heaps[] = {srvManager_->GetHeap()};
     commandList->SetDescriptorHeaps(1, heaps);
 
+}
+
+void ImguiManager::NewFrame() const {
+    if (!IsReady()) return;
     ImGui_ImplWin32_NewFrame();
     ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
+}
+
+void ImguiManager::CancelFrame() const {
+    if (IsReady()) ImGui::EndFrame();
 }
 
 void ImguiManager::End(ID3D12GraphicsCommandList* commandList) const {

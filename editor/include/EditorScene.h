@@ -114,7 +114,7 @@ private:
     void StopPlayMode();
     void TogglePlayPause();
     void StepRuntimeWorld();
-    void ReleaseGameInputCapture();
+    void ReleaseGameInputFocus();
     bool BeginRuntimeWorld(std::string* error = nullptr);
     bool BeginRuntimeAnimators(std::string* error = nullptr);
     bool StartRuntimeAnimator(const WorldEntity& entity, ModelManager& models,
@@ -185,19 +185,14 @@ private:
     void DrawScenePanelWindow();
     void DrawGamePanelWindow();
     [[nodiscard]] bool BeginGamePanelWindow();
-    void DrawGamePanelContent(Input* input);
+    void PrepareGameInputFrame();
+    void ApplyGameCursor();
+    void DrawGamePanelContent();
     void UpdateGamePanelRequestedSize();
     [[nodiscard]] bool IsGamePanelRenderReady() const;
-    bool RenderGamePanelFrame(bool& gameUiHovered);
+    bool RenderGamePanelFrame();
     void DrawGamePanelImage(ImVec2& imageMin, ImVec2& imageMax);
-    void HandleGamePanelInteraction(const ImVec2& imageMin, const ImVec2& imageMax,
-                                    bool hasGameCamera, bool gameUiHovered,
-                                    bool gameViewFocused, Input* input);
-    void TryCaptureGameInput(bool hasGameCamera, bool gameUiHovered,
-                             bool gameImageHovered);
-    void CenterCapturedGameCursor(const ImVec2& imageMin, const ImVec2& imageMax);
-    void UpdateGameInputQuery(Input* input, bool gameViewFocused,
-                              bool gameImageHovered);
+    void ProcessGameUiInput(int width, int height, bool gameCameraAvailable);
     void DrawGamePanelOverlay(const ImVec2& imageMin, bool hasGameCamera) const;
     static void DrawGamePanelHint(const ImVec2& imageMin, const char* text,
                                   uint32_t textColor);
@@ -980,7 +975,12 @@ private:
     EntityId playModeSelectionSnapshot_{};
     bool playModeDirtySnapshot_ = false;
     bool focusGamePanelRequested_ = false;
-    bool gameInputCaptured_ = false;
+    bool gameInputFocused_ = false;
+    bool gameInputSuspended_ = false;
+    bool gamePointerInside_ = false;
+    RECT gameInputScreenBounds_{};
+    EntityId gameUiHoveredButton_{};
+    bool gameUiSubmitHeld_ = false;
     EntityId gameUiDragEntity_{};
     EntityId gameUiResizeEntity_{};
     enum class UiResizeHandle : uint8_t {
@@ -991,8 +991,6 @@ private:
         BottomRight,
     };
     UiResizeHandle gameUiResizeHandle_ = UiResizeHandle::None;
-    int gameInputCursorRestoreX_ = 0;
-    int gameInputCursorRestoreY_ = 0;
     uint64_t runtimeFrameCount_ = 0;
     double runtimeElapsedSeconds_ = 0.0;
     PlayerSettingsStore playerSettingsStore_;

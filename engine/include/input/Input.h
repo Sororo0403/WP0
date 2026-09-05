@@ -13,6 +13,13 @@
 #include <string_view>
 #include <vector>
 
+enum class CursorMode : uint8_t { Free, Confined, Locked };
+
+struct GamePointerPosition {
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 enum class InputActionAxisSource : uint8_t {
     None = 0,
     GamepadLeftX = 1,
@@ -64,6 +71,30 @@ public:
     /// 入力状態の取得をデバイス種別ごとに有効化する
     /// </summary>
     void SetQueryEnabled(bool keyboardEnabled, bool mouseEnabled, bool gamepadEnabled);
+
+    // Game-facing requests. Focus loss temporarily overrides these requests.
+    void SetCursorMode(CursorMode mode);
+    CursorMode GetCursorMode() const;
+    CursorMode GetEffectiveCursorMode() const;
+    void SetCursorVisible(bool visible);
+    bool IsCursorVisibleRequested() const;
+    bool HasGameInputFocus() const;
+    bool IsPointerInsideGame() const;
+    GamePointerPosition GetPointerPosition() const;
+
+    // Host routing: called before UI and gameplay update, never during drawing.
+    void RouteGameInput(bool focused, bool pointerInside, GamePointerPosition position);
+    bool HasGamePointerDrag() const;
+    void SetUiQueryMode(bool enabled);
+    void ConsumeKey(int dik);
+    void ConsumeKeyboard();
+    void ConsumeMouseButton(int button);
+    void ConsumeMouseWheel();
+    void ConsumeGamepadButtons(WORD buttons);
+    void ApplyCursorMode(const RECT& screenBounds);
+    void ReleaseCursorMode();
+    void ResetGameInput();
+    void OnWindowFocusLost();
 
     /// <summary>
     /// 現在の入力をフレーム単位でJSONへ保存する録画を開始する
@@ -288,6 +319,7 @@ private:
     /// <summary>
     /// DirectInputからキーボードの現在状態を読み込む
     /// </summary>
+    void SampleRoutingButtons();
     void UpdateKeyboard();
 
     /// <summary>
