@@ -285,6 +285,10 @@ private:
                                         EntityId selectionBefore);
     void DrawMaterialTexturePreview(TextureHandle texture, const char* unavailableText) const;
     bool DrawScriptEntryInspector(WorldEntity* entity, size_t scriptIndex);
+    bool DrawScriptOrderControls(WorldEntity* entity, size_t scriptIndex);
+    void DrawScriptAssetPicker(const BehaviorComponent& behavior, size_t scriptIndex);
+    void DrawScriptRequirements(WorldEntity* entity, BehaviorComponent& behavior,
+                                EntityId selectionBefore);
     void DrawScriptPropertiesInspector(WorldEntity* entity, BehaviorComponent& behavior,
                                        EntityId selectionBefore);
     bool DrawScalarScriptPropertyInspector(BehaviorComponent& behavior,
@@ -392,6 +396,9 @@ private:
     void DrawButtonRequirements(const WorldEntity& entity) const;
     void DrawToggleInspector(WorldEntity* entity);
     void DrawSliderInspector(WorldEntity* entity);
+    void DrawSliderRangeInspector(SliderComponent& slider, EntityId selectionBefore);
+    void DrawSliderDirectionInspector(SliderComponent& slider, EntityId selectionBefore);
+    void DrawSliderAppearanceInspector(SliderComponent& slider);
     void DrawDropdownInspector(WorldEntity* entity);
     enum class DropdownOptionAction : uint8_t {
         None,
@@ -414,6 +421,9 @@ private:
     void EditDropdownColor(const char* label, DirectX::XMFLOAT4& color);
     void DrawDropdownRequirements(const WorldEntity& entity) const;
     void DrawInputFieldInspector(WorldEntity* entity);
+    void DrawInputFieldTextInspector(InputFieldComponent& inputField);
+    void DrawInputFieldSettingsInspector(InputFieldComponent& inputField,
+                                         EntityId selectionBefore);
     void DrawMaterialOverrideInspector(WorldEntity* entity);
     void DrawConsolePanel();
     void DrawConsoleToolbar();
@@ -742,7 +752,16 @@ private:
                                          bool hoveredButtonInteractable,
                                          bool hoveredSliderInteractable,
                                          const DirectX::XMFLOAT2& pointer, int width, int height);
+    void HandleGameUiPointerPress(EntityId hoveredButton, int32_t hoveredDropdownOption,
+                                  bool hoveredButtonInteractable,
+                                  bool hoveredSliderInteractable,
+                                  const DirectX::XMFLOAT2& pointer, int width, int height);
+    void UpdateActiveGameUiSlider(const DirectX::XMFLOAT2& pointer, int width, int height);
+    void HandleGameUiPointerRelease(EntityId hoveredButton, bool hoveredButtonInteractable);
+    void ActivatePressedGameUiControl(WorldEntity& clicked);
     bool HandleGameUiSubmit(bool canNavigateUi);
+    void HandleFocusedGameUiInputFieldSubmit(WorldEntity& entity, bool submit);
+    void HandleFocusedGameUiDropdownSubmit(WorldEntity& entity);
     void HandleGameUiKeyboardSlider(bool canNavigateUi, bool navigatedUi);
     void HandleGameUiCancel(bool canNavigateUi);
     void DrawGameUiDropdownPopup(int width, int height);

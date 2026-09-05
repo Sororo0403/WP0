@@ -50,6 +50,49 @@ bool Validate(const PhysicsSettings& settings, std::string& error) {
     error.clear();
     return true;
 }
+
+bool IsReadableSettingsFile(const std::filesystem::path& path, std::string& error) {
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(path, filesystemError) || filesystemError) {
+        error = "Physics settings file is missing, invalid, or too large.";
+        return false;
+    }
+    const uintmax_t size = std::filesystem::file_size(path, filesystemError);
+    if (filesystemError || size > kMaxSettingsBytes) {
+        error = "Physics settings file is missing, invalid, or too large.";
+        return false;
+    }
+    return true;
+}
+
+bool HasValidSettingsStructure(const nlohmann::json& json) {
+    return json.is_object() && json.contains("version") &&
+           json["version"].is_number_unsigned() && json["version"].get<uint64_t>() == 1u &&
+           json.contains("layers") && json["layers"].is_array() &&
+           json["layers"].size() == PhysicsSettings::kLayerCount &&
+           json.contains("collisionMasks") && json["collisionMasks"].is_array() &&
+           json["collisionMasks"].size() == PhysicsSettings::kLayerCount;
+}
+
+bool DecodeSettings(const nlohmann::json& json, PhysicsSettings& loaded,
+                    std::string& error) {
+    for (size_t index = 0u; index < PhysicsSettings::kLayerCount; ++index) {
+        const nlohmann::json& layer = json["layers"][index];
+        const nlohmann::json& collisionMask = json["collisionMasks"][index];
+        if (!layer.is_string() || !collisionMask.is_number_unsigned()) {
+            error = "Physics settings Layer data is invalid.";
+            return false;
+        }
+        const uint64_t mask = collisionMask.get<uint64_t>();
+        if (mask > UINT32_MAX) {
+            error = "Physics collision mask is out of range.";
+            return false;
+        }
+        loaded.layerNames[index] = layer.get<std::string>();
+        loaded.collisionMasks[index] = static_cast<uint32_t>(mask);
+    }
+    return Validate(loaded, error);
+}
 } // namespace
 
 PhysicsSettingsStore::PhysicsSettingsStore(std::filesystem::path path)
@@ -62,41 +105,22 @@ bool PhysicsSettingsStore::Load(PhysicsSettings& settings, std::string& error) c
     if (!std::filesystem::exists(path_, filesystemError) && !filesystemError) {
         return true;
     }
-    if (filesystemError || !std::filesystem::is_regular_file(path_, filesystemError) ||
-        filesystemError || std::filesystem::file_size(path_, filesystemError) >
-                               kMaxSettingsBytes ||
-        filesystemError) {
-        error = "Physics settings file is missing, invalid, or too large.";
+    if (filesystemError || !IsReadableSettingsFile(path_, error)) {
+        if (error.empty()) {
+            error = "Physics settings file is missing, invalid, or too large.";
+        }
         return false;
     }
     try {
         std::ifstream stream(path_);
         nlohmann::json json;
         stream >> json;
-        if (!stream || !json.is_object() || json.value("version", 0u) != 1u ||
-            !json.contains("layers") || !json["layers"].is_array() ||
-            json["layers"].size() != PhysicsSettings::kLayerCount ||
-            !json.contains("collisionMasks") || !json["collisionMasks"].is_array() ||
-            json["collisionMasks"].size() != PhysicsSettings::kLayerCount) {
+        if (!stream || !HasValidSettingsStructure(json)) {
             error = "Physics settings JSON structure is invalid.";
             return false;
         }
         PhysicsSettings loaded{};
-        for (size_t index = 0u; index < PhysicsSettings::kLayerCount; ++index) {
-            if (!json["layers"][index].is_string() ||
-                !json["collisionMasks"][index].is_number_unsigned()) {
-                error = "Physics settings Layer data is invalid.";
-                return false;
-            }
-            loaded.layerNames[index] = json["layers"][index].get<std::string>();
-            const uint64_t mask = json["collisionMasks"][index].get<uint64_t>();
-            if (mask > 0xffffffffull) {
-                error = "Physics collision mask is out of range.";
-                return false;
-            }
-            loaded.collisionMasks[index] = static_cast<uint32_t>(mask);
-        }
-        if (!Validate(loaded, error)) {
+        if (!DecodeSettings(json, loaded, error)) {
             return false;
         }
         settings = std::move(loaded);

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion><Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{5E4892FD-8050-46B8-AC75-0D29816A29D3}</ProjectGuid>
+    <RootNamespace>ProjectScripts</RootNamespace><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>ProjectScripts</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType><UseDebugLibraries>true</UseDebugLibraries><PlatformToolset>v145</PlatformToolset><CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v145</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>C:/Users/k024g/source/repos/WP0/generated/ScriptBuildCheck/bin/$(Platform)/$(Configuration)/</OutDir>
+    <IntDir>C:/Users/k024g/source/repos/WP0/generated/ScriptBuildCheck/obj2/$(Platform)/$(Configuration)/</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary><DebugInformationFormat>OldStyle</DebugInformationFormat><MultiProcessorCompilation>false</MultiProcessorCompilation><AdditionalIncludeDirectories>C:/Users/k024g/source/repos/Job/assets/Scripts;C:/Users/k024g/source/repos/WP0/engine/public;C:/Users/k024g/source/repos/WP0/engine/include;C:/Users/k024g/source/repos/WP0/engine/externals;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions></ClCompile>
+    <Link><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><DebugInformationFormat>None</DebugInformationFormat><MultiProcessorCompilation>false</MultiProcessorCompilation><AdditionalIncludeDirectories>C:/Users/k024g/source/repos/Job/assets/Scripts;C:/Users/k024g/source/repos/WP0/engine/public;C:/Users/k024g/source/repos/WP0/engine/include;C:/Users/k024g/source/repos/WP0/engine/externals;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions></ClCompile>
+    <Link><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)GeneratedScriptRegistry.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="C:/Users/k024g/source/repos/WP0/engine/Engine.vcxproj"><Project>{8D69C2B4-4F39-47F0-9A40-4CB78EC442A1}</Project><SetPlatform>Platform=$(Platform)</SetPlatform><Properties>Configuration=$(Configuration);Platform=$(Platform)</Properties></ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

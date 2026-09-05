@@ -79,39 +79,67 @@ const char* ValidateMeshRenderer(const WorldEntity& entity) {
                : "Scene contains an invalid MeshRenderer component.";
 }
 
+bool IsValidMaterialColor(const MaterialOverrideComponent& material) {
+    return IsFinite(material.baseColor) && material.baseColor.x >= 0.0f &&
+           material.baseColor.y >= 0.0f && material.baseColor.z >= 0.0f &&
+           material.baseColor.w >= 0.0f && material.baseColor.w <= 1.0f;
+}
+
+bool IsValidMaterialScalars(const MaterialOverrideComponent& material) {
+    return std::isfinite(material.metallic) && material.metallic >= 0.0f &&
+           material.metallic <= 1.0f && std::isfinite(material.roughness) &&
+           material.roughness >= 0.0f && material.roughness <= 1.0f &&
+           std::isfinite(material.normalStrength) && material.normalStrength >= 0.0f &&
+           std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f &&
+           material.alphaCutoff <= 1.0f;
+}
+
+bool IsValidMaterialTextures(const MaterialOverrideComponent& material) {
+    return IsBoundedText(material.baseColorTexturePath, 1024u) &&
+           IsBoundedText(material.normalTexturePath, 1024u) &&
+           IsBoundedText(material.roughnessTexturePath, 1024u) &&
+           IsBoundedText(material.metallicTexturePath, 1024u);
+}
+
+bool IsValidMaterialEnums(const MaterialOverrideComponent& material) {
+    return material.pbrTexturePacking >= MaterialPbrTexturePacking::Separate &&
+           material.pbrTexturePacking <= MaterialPbrTexturePacking::MetallicRoughness &&
+           material.blendMode >= MaterialSurfaceBlendMode::Opaque &&
+           material.blendMode <= MaterialSurfaceBlendMode::Transparent &&
+           material.cullMode >= MaterialSurfaceCullMode::None &&
+           material.cullMode <= MaterialSurfaceCullMode::Back;
+}
+
 const char* ValidateMaterial(const WorldEntity& entity) {
     if (!entity.materialOverride) {
         return nullptr;
     }
     const MaterialOverrideComponent& material = *entity.materialOverride;
-    if (!IsFinite(material.baseColor) || !std::isfinite(material.metallic) ||
-        !std::isfinite(material.roughness) || material.baseColor.x < 0.0f ||
-        material.baseColor.y < 0.0f || material.baseColor.z < 0.0f ||
-        material.baseColor.w < 0.0f || material.baseColor.w > 1.0f ||
-        material.metallic < 0.0f || material.metallic > 1.0f ||
-        material.roughness < 0.0f || material.roughness > 1.0f ||
-        !IsBoundedText(material.baseColorTexturePath, 1024u) ||
-        !IsBoundedText(material.normalTexturePath, 1024u) ||
-        !std::isfinite(material.normalStrength) || material.normalStrength < 0.0f ||
-        !IsBoundedText(material.roughnessTexturePath, 1024u) ||
-        !IsBoundedText(material.metallicTexturePath, 1024u) ||
-        material.pbrTexturePacking < MaterialPbrTexturePacking::Separate ||
-        material.pbrTexturePacking > MaterialPbrTexturePacking::MetallicRoughness ||
-        material.blendMode < MaterialSurfaceBlendMode::Opaque ||
-        material.blendMode > MaterialSurfaceBlendMode::Transparent ||
-        !std::isfinite(material.alphaCutoff) || material.alphaCutoff < 0.0f ||
-        material.alphaCutoff > 1.0f || material.cullMode < MaterialSurfaceCullMode::None ||
-        material.cullMode > MaterialSurfaceCullMode::Back) {
+    if (!IsValidMaterialColor(material) || !IsValidMaterialScalars(material) ||
+        !IsValidMaterialTextures(material) || !IsValidMaterialEnums(material)) {
         return "Scene contains an invalid MaterialOverride component.";
     }
     return nullptr;
 }
 
+bool IsValidAnimator(const AnimatorComponent& animator) {
+    return IsBoundedText(animator.clip, 256u) && std::isfinite(animator.speed) &&
+           animator.speed >= 0.0f && animator.speed <= 100.0f;
+}
+
+bool IsValidAudioSource(const AudioSourceComponent& source) {
+    return IsBoundedText(source.clipPath, 1024u) && std::isfinite(source.volume) &&
+           source.volume >= 0.0f && source.volume <= 1.0f &&
+           std::isfinite(source.pitch) && source.pitch >= AudioSourceComponent::kMinPitch &&
+           source.pitch <= AudioSourceComponent::kMaxPitch &&
+           std::isfinite(source.minDistance) && std::isfinite(source.maxDistance) &&
+           source.minDistance >= 0.0f && source.maxDistance > source.minDistance;
+}
+
 const char* ValidateMedia(const WorldEntity& entity) {
     if (entity.animator) {
         const AnimatorComponent& animator = *entity.animator;
-        if (!IsBoundedText(animator.clip, 256u) || !std::isfinite(animator.speed) ||
-            animator.speed < 0.0f || animator.speed > 100.0f) {
+        if (!IsValidAnimator(animator)) {
             return "Scene contains an invalid Animator component.";
         }
     }
@@ -119,30 +147,29 @@ const char* ValidateMedia(const WorldEntity& entity) {
         return nullptr;
     }
     const AudioSourceComponent& source = *entity.audioSource;
-    if (!IsBoundedText(source.clipPath, 1024u) || !std::isfinite(source.volume) ||
-        source.volume < 0.0f || source.volume > 1.0f ||
-        !std::isfinite(source.pitch) || source.pitch < AudioSourceComponent::kMinPitch ||
-        source.pitch > AudioSourceComponent::kMaxPitch ||
-        !std::isfinite(source.minDistance) || !std::isfinite(source.maxDistance) ||
-        source.minDistance < 0.0f || source.maxDistance <= source.minDistance) {
+    if (!IsValidAudioSource(source)) {
         return "Scene contains an invalid AudioSource component.";
     }
     return nullptr;
 }
 
+bool IsValidCanvas(const CanvasComponent& canvas) {
+    return IsFinite(canvas.referenceResolution) && canvas.referenceResolution.x >= 1.0f &&
+           canvas.referenceResolution.y >= 1.0f &&
+           canvas.referenceResolution.x <= 16384.0f &&
+           canvas.referenceResolution.y <= 16384.0f &&
+           canvas.scaleMode >= CanvasScaleMode::ConstantPixelSize &&
+           canvas.scaleMode <= CanvasScaleMode::ScaleWithScreenSize &&
+           canvas.screenMatchMode >= CanvasScreenMatchMode::MatchWidthOrHeight &&
+           canvas.screenMatchMode <= CanvasScreenMatchMode::Shrink &&
+           std::isfinite(canvas.matchWidthOrHeight) &&
+           canvas.matchWidthOrHeight >= 0.0f && canvas.matchWidthOrHeight <= 1.0f;
+}
+
 const char* ValidateCanvas(const WorldEntity& entity) {
     if (entity.canvas) {
         const CanvasComponent& canvas = *entity.canvas;
-        if (!IsFinite(canvas.referenceResolution) || canvas.referenceResolution.x < 1.0f ||
-            canvas.referenceResolution.y < 1.0f ||
-            canvas.referenceResolution.x > 16384.0f ||
-            canvas.referenceResolution.y > 16384.0f ||
-            canvas.scaleMode < CanvasScaleMode::ConstantPixelSize ||
-            canvas.scaleMode > CanvasScaleMode::ScaleWithScreenSize ||
-            canvas.screenMatchMode < CanvasScreenMatchMode::MatchWidthOrHeight ||
-            canvas.screenMatchMode > CanvasScreenMatchMode::Shrink ||
-            !std::isfinite(canvas.matchWidthOrHeight) ||
-            canvas.matchWidthOrHeight < 0.0f || canvas.matchWidthOrHeight > 1.0f ||
+        if (!IsValidCanvas(canvas) ||
             canvas.sortingOrder < -1000000 || canvas.sortingOrder > 1000000) {
             return "Scene contains an invalid Canvas component.";
         }
@@ -156,24 +183,50 @@ const char* ValidateCanvas(const WorldEntity& entity) {
     return nullptr;
 }
 
+bool IsValidTextLayout(const TextComponent& text) {
+    return IsFinite(text.position) && std::abs(text.position.x) <= 1000000.0f &&
+           std::abs(text.position.y) <= 1000000.0f && std::isfinite(text.fontSize) &&
+           text.fontSize >= 1.0f && text.fontSize <= 512.0f &&
+           std::isfinite(text.lineSpacing) && text.lineSpacing >= 0.0f &&
+           text.lineSpacing <= 512.0f && std::isfinite(text.wrapWidth) &&
+           text.wrapWidth >= 0.0f && text.wrapWidth <= 16384.0f;
+}
+
+bool IsValidTextStyle(const TextComponent& text) {
+    return IsUnitColor(text.color) && text.alignment >= TextAlignment::Left &&
+           text.alignment <= TextAlignment::Right && text.anchor >= UiAnchor::TopLeft &&
+           text.anchor <= UiAnchor::BottomRight;
+}
+
 const char* ValidateText(const WorldEntity& entity) {
     if (!entity.text) {
         return nullptr;
     }
     const TextComponent& text = *entity.text;
     if (!IsBoundedText(text.text, 4096u) || !IsBoundedText(text.fontPath, 1024u) ||
-        !IsFinite(text.position) || std::abs(text.position.x) > 1000000.0f ||
-        std::abs(text.position.y) > 1000000.0f || !std::isfinite(text.fontSize) ||
-        text.fontSize < 1.0f || text.fontSize > 512.0f ||
-        !std::isfinite(text.lineSpacing) || text.lineSpacing < 0.0f ||
-        text.lineSpacing > 512.0f || !std::isfinite(text.wrapWidth) ||
-        text.wrapWidth < 0.0f || text.wrapWidth > 16384.0f ||
-        !IsUnitColor(text.color) || text.alignment < TextAlignment::Left ||
-        text.alignment > TextAlignment::Right || text.anchor < UiAnchor::TopLeft ||
-        text.anchor > UiAnchor::BottomRight) {
+        !IsValidTextLayout(text) || !IsValidTextStyle(text)) {
         return "Scene contains an invalid Text component.";
     }
     return nullptr;
+}
+
+bool IsValidImageLayout(const ImageComponent& image) {
+    return IsFinite(image.position) && IsFinite(image.size) && IsFinite(image.pivot) &&
+           image.size.x >= 0.0f && image.size.y >= 0.0f &&
+           image.size.x <= 1000000.0f && image.size.y <= 1000000.0f &&
+           std::abs(image.position.x) <= 1000000.0f &&
+           std::abs(image.position.y) <= 1000000.0f && image.pivot.x >= 0.0f &&
+           image.pivot.x <= 1.0f && image.pivot.y >= 0.0f && image.pivot.y <= 1.0f;
+}
+
+bool IsValidImageStyle(const ImageComponent& image) {
+    return IsUnitColor(image.color) && image.anchor >= UiAnchor::TopLeft &&
+           image.anchor <= UiAnchor::BottomRight && image.type >= ImageType::Simple &&
+           image.type <= ImageType::Filled &&
+           image.fillMethod >= ImageFillMethod::Horizontal &&
+           image.fillMethod <= ImageFillMethod::Vertical &&
+           std::isfinite(image.fillAmount) && image.fillAmount >= 0.0f &&
+           image.fillAmount <= 1.0f;
 }
 
 const char* ValidateImage(const WorldEntity& entity) {
@@ -181,39 +234,37 @@ const char* ValidateImage(const WorldEntity& entity) {
         return nullptr;
     }
     const ImageComponent& image = *entity.image;
-    if (!IsBoundedText(image.texturePath, 1024u) || !IsFinite(image.position) ||
-        !IsFinite(image.size) || !IsFinite(image.pivot) || image.size.x < 0.0f ||
-        image.size.y < 0.0f || image.size.x > 1000000.0f ||
-        image.size.y > 1000000.0f || std::abs(image.position.x) > 1000000.0f ||
-        std::abs(image.position.y) > 1000000.0f || image.pivot.x < 0.0f ||
-        image.pivot.x > 1.0f || image.pivot.y < 0.0f || image.pivot.y > 1.0f ||
-        !IsUnitColor(image.color) || image.anchor < UiAnchor::TopLeft ||
-        image.anchor > UiAnchor::BottomRight || image.type < ImageType::Simple ||
-        image.type > ImageType::Filled || image.fillMethod < ImageFillMethod::Horizontal ||
-        image.fillMethod > ImageFillMethod::Vertical ||
-        !std::isfinite(image.fillAmount) || image.fillAmount < 0.0f ||
-        image.fillAmount > 1.0f) {
+    if (!IsBoundedText(image.texturePath, 1024u) || !IsValidImageLayout(image) ||
+        !IsValidImageStyle(image)) {
         return "Scene contains an invalid Image component.";
     }
     return nullptr;
 }
 
+bool IsValidButton(const ButtonComponent& button) {
+    return IsUnitColor(button.normalColor) && IsUnitColor(button.hoveredColor) &&
+           IsUnitColor(button.pressedColor) && IsUnitColor(button.disabledColor) &&
+           button.navigation >= ButtonNavigationMode::Automatic &&
+           button.navigation <= ButtonNavigationMode::None &&
+           std::isfinite(button.fadeDuration) && button.fadeDuration >= 0.0f &&
+           button.fadeDuration <= 10.0f;
+}
+
+bool IsValidToggle(const ToggleComponent& toggle) {
+    return IsUnitColor(toggle.checkmarkColor) && std::isfinite(toggle.checkmarkScale) &&
+           toggle.checkmarkScale >= 0.0f && toggle.checkmarkScale <= 1.0f;
+}
+
 const char* ValidateButtonAndToggle(const WorldEntity& entity) {
     if (entity.button) {
         const ButtonComponent& button = *entity.button;
-        if (!IsUnitColor(button.normalColor) || !IsUnitColor(button.hoveredColor) ||
-            !IsUnitColor(button.pressedColor) || !IsUnitColor(button.disabledColor) ||
-            button.navigation < ButtonNavigationMode::Automatic ||
-            button.navigation > ButtonNavigationMode::None ||
-            !std::isfinite(button.fadeDuration) || button.fadeDuration < 0.0f ||
-            button.fadeDuration > 10.0f) {
+        if (!IsValidButton(button)) {
             return "Scene contains an invalid Button component.";
         }
     }
     if (entity.toggle) {
         const ToggleComponent& toggle = *entity.toggle;
-        if (!IsUnitColor(toggle.checkmarkColor) || !std::isfinite(toggle.checkmarkScale) ||
-            toggle.checkmarkScale < 0.0f || toggle.checkmarkScale > 1.0f) {
+        if (!IsValidToggle(toggle)) {
             return "Scene contains an invalid Toggle component.";
         }
     }
@@ -271,29 +322,37 @@ const char* ValidateInputField(const WorldEntity& entity) {
     return nullptr;
 }
 
+bool HasValidScriptPropertyHeader(const ScriptPropertyValue& property) {
+    return !property.name.empty() && IsBoundedText(property.name, 128u) &&
+           property.type >= ScriptPropertyType::Float &&
+           property.type <= ScriptPropertyType::Scene;
+}
+
+bool HasValidScriptPropertyValue(const ScriptPropertyValue& property) {
+    if (property.type == ScriptPropertyType::Float) {
+        return std::isfinite(property.floatValue);
+    }
+    if (property.type == ScriptPropertyType::Vector3) {
+        return std::isfinite(property.vector3Value.x) &&
+               std::isfinite(property.vector3Value.y) &&
+               std::isfinite(property.vector3Value.z);
+    }
+    if (property.type == ScriptPropertyType::String ||
+        property.type == ScriptPropertyType::AnimationClip ||
+        property.type == ScriptPropertyType::Scene) {
+        return IsBoundedText(property.stringValue, 1024u);
+    }
+    if (property.type == ScriptPropertyType::InputAction) {
+        return IsBoundedText(property.stringValue, 64u);
+    }
+    return true;
+}
+
 bool IsValidScriptProperty(const ScriptPropertyValue& property) {
-    if (property.name.empty() || !IsBoundedText(property.name, 128u) ||
-        property.type < ScriptPropertyType::Float ||
-        property.type > ScriptPropertyType::Scene) {
+    if (!HasValidScriptPropertyHeader(property)) {
         return false;
     }
-    if (property.type == ScriptPropertyType::Float && !std::isfinite(property.floatValue)) {
-        return false;
-    }
-    if (property.type == ScriptPropertyType::Vector3 &&
-        (!std::isfinite(property.vector3Value.x) ||
-         !std::isfinite(property.vector3Value.y) ||
-         !std::isfinite(property.vector3Value.z))) {
-        return false;
-    }
-    if ((property.type == ScriptPropertyType::String ||
-         property.type == ScriptPropertyType::AnimationClip ||
-         property.type == ScriptPropertyType::Scene) &&
-        !IsBoundedText(property.stringValue, 1024u)) {
-        return false;
-    }
-    return property.type != ScriptPropertyType::InputAction ||
-           IsBoundedText(property.stringValue, 64u);
+    return HasValidScriptPropertyValue(property);
 }
 
 const char* ValidateScripts(const WorldEntity& entity) {
@@ -308,23 +367,45 @@ const char* ValidateScripts(const WorldEntity& entity) {
             return "Scene contains too many Script properties.";
         }
         std::unordered_set<std::string> propertyNames;
-        for (const ScriptPropertyValue& property : script.properties) {
-            if (!IsValidScriptProperty(property) ||
-                !propertyNames.insert(property.name).second) {
-                return "Scene contains an invalid Script property.";
-            }
+        const bool invalidProperty = std::ranges::any_of(
+            script.properties, [&propertyNames](const ScriptPropertyValue& property) {
+                return !IsValidScriptProperty(property) ||
+                       !propertyNames.insert(property.name).second;
+            });
+        if (invalidProperty) {
+            return "Scene contains an invalid Script property.";
         }
     }
     return nullptr;
 }
 
+bool IsValidBoxCollider(const BoxColliderComponent& collider) {
+    return IsFinite(collider.center) && IsFinite(collider.size) &&
+           collider.size.x >= 0.001f && collider.size.y >= 0.001f &&
+           collider.size.z >= 0.001f && collider.size.x <= 1000000.0f &&
+           collider.size.y <= 1000000.0f && collider.size.z <= 1000000.0f;
+}
+
+bool IsValidControllerDimensions(const CharacterControllerComponent& controller) {
+    return IsFinite(controller.center) && std::isfinite(controller.radius) &&
+           std::isfinite(controller.height) && controller.radius >= 0.001f &&
+           controller.height >= controller.radius * 2.0f;
+}
+
+bool IsValidControllerMovement(const CharacterControllerComponent& controller) {
+    return std::isfinite(controller.slopeLimitDegrees) &&
+           std::isfinite(controller.stepOffset) && std::isfinite(controller.skinWidth) &&
+           std::isfinite(controller.minMoveDistance) &&
+           controller.slopeLimitDegrees >= 0.0f &&
+           controller.slopeLimitDegrees <= 90.0f && controller.stepOffset >= 0.0f &&
+           controller.stepOffset <= controller.height && controller.skinWidth >= 0.0f &&
+           controller.skinWidth < controller.radius && controller.minMoveDistance >= 0.0f;
+}
+
 const char* ValidatePhysics(const WorldEntity& entity) {
     if (entity.boxCollider) {
         const BoxColliderComponent& collider = *entity.boxCollider;
-        if (!IsFinite(collider.center) || !IsFinite(collider.size) ||
-            collider.size.x < 0.001f || collider.size.y < 0.001f ||
-            collider.size.z < 0.001f || collider.size.x > 1000000.0f ||
-            collider.size.y > 1000000.0f || collider.size.z > 1000000.0f) {
+        if (!IsValidBoxCollider(collider)) {
             return "Scene contains an invalid BoxCollider component.";
         }
     }
@@ -332,15 +413,8 @@ const char* ValidatePhysics(const WorldEntity& entity) {
         return nullptr;
     }
     const CharacterControllerComponent& controller = *entity.characterController;
-    if (!IsFinite(controller.center) || !std::isfinite(controller.radius) ||
-        !std::isfinite(controller.height) || !std::isfinite(controller.slopeLimitDegrees) ||
-        !std::isfinite(controller.stepOffset) || !std::isfinite(controller.skinWidth) ||
-        !std::isfinite(controller.minMoveDistance) || controller.radius < 0.001f ||
-        controller.height < controller.radius * 2.0f ||
-        controller.slopeLimitDegrees < 0.0f || controller.slopeLimitDegrees > 90.0f ||
-        controller.stepOffset < 0.0f || controller.stepOffset > controller.height ||
-        controller.skinWidth < 0.0f || controller.skinWidth >= controller.radius ||
-        controller.minMoveDistance < 0.0f) {
+    if (!IsValidControllerDimensions(controller) ||
+        !IsValidControllerMovement(controller)) {
         return "Scene contains an invalid CharacterController component.";
     }
     return nullptr;

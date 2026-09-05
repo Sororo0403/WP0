@@ -27,6 +27,91 @@ void SetError(std::string* error, const char* message) {
         *error = message;
     }
 }
+
+using EntityIdMap = std::unordered_map<EntityId, EntityId, EntityIdHash>;
+
+void ResetDuplicatedRuntimeState(WorldEntity& entity) {
+    if (entity.audioSource) {
+        entity.audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
+        entity.audioSource->pendingOneShots = 0u;
+        entity.audioSource->runtimePlaying = false;
+    }
+    if (entity.animator) {
+        entity.animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
+        entity.animator->runtimeRequestedClip.clear();
+        entity.animator->runtimeClip.clear();
+        entity.animator->runtimeLoop = true;
+        entity.animator->runtimeFadeDuration = 0.0f;
+        entity.animator->runtimePlaying = false;
+        entity.animator->runtimeFinished = false;
+        entity.animator->runtimeTime = 0.0f;
+        entity.animator->runtimeDuration = 0.0f;
+        entity.animator->runtimeNormalizedTime = 0.0f;
+        entity.animator->runtimeTransitioning = false;
+        entity.animator->runtimeTransitionProgress = 0.0f;
+    }
+}
+
+void CopyDuplicatedComponents(const WorldEntity& source, WorldEntity& destination) {
+    destination.active = source.active;
+    destination.layer = source.layer;
+    destination.transform = source.transform;
+    destination.meshRenderer = source.meshRenderer;
+    destination.materialOverride = source.materialOverride;
+    destination.camera = source.camera;
+    destination.light = source.light;
+    destination.audioSource = source.audioSource;
+    destination.audioListener = source.audioListener;
+    destination.animator = source.animator;
+    destination.canvas = source.canvas;
+    destination.canvasGroup = source.canvasGroup;
+    destination.eventSystem = source.eventSystem;
+    destination.text = source.text;
+    destination.image = source.image;
+    destination.button = source.button;
+    destination.toggle = source.toggle;
+    destination.slider = source.slider;
+    destination.dropdown = source.dropdown;
+    destination.inputField = source.inputField;
+    destination.scripts = source.scripts;
+    destination.boxCollider = source.boxCollider;
+    destination.characterController = source.characterController;
+    ResetDuplicatedRuntimeState(destination);
+    if (destination.camera) {
+        destination.camera->primary = false;
+    }
+}
+
+void RemapReference(const EntityIdMap& ids, EntityId& target,
+                    bool clearExternalReference) {
+    const auto remapped = ids.find(target);
+    if (remapped != ids.end()) {
+        target = remapped->second;
+    } else if (clearExternalReference && target.IsValid()) {
+        target = {};
+    }
+}
+
+void RemapComponentReferences(WorldEntity& entity, const EntityIdMap& ids,
+                              bool clearExternalReferences) {
+    for (BehaviorComponent& script : entity.scripts) {
+        for (ScriptPropertyValue& property : script.properties) {
+            if (property.type == ScriptPropertyType::Entity) {
+                RemapReference(ids, property.entityValue, clearExternalReferences);
+            }
+        }
+    }
+    if (entity.button) {
+        RemapReference(ids, entity.button->selectOnLeft, clearExternalReferences);
+        RemapReference(ids, entity.button->selectOnRight, clearExternalReferences);
+        RemapReference(ids, entity.button->selectOnUp, clearExternalReferences);
+        RemapReference(ids, entity.button->selectOnDown, clearExternalReferences);
+    }
+    if (entity.eventSystem) {
+        RemapReference(ids, entity.eventSystem->firstSelected,
+                       clearExternalReferences);
+    }
+}
 } // namespace
 
 EntityId World::CreateEntity(std::string name) {
@@ -51,63 +136,19 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
     std::vector<WorldEntity> originals;
     originals.reserve(entities_.size());
     originals.push_back(*sourceEntity);
-    for (const WorldEntity& entity : entities_) {
-        if (entity.id != source && IsDescendantOf(entity.id, source)) {
-            originals.push_back(entity);
-        }
-    }
+    std::ranges::copy_if(entities_, std::back_inserter(originals),
+                         [this, source](const WorldEntity& entity) {
+                             return entity.id != source &&
+                                    IsDescendantOf(entity.id, source);
+                         });
 
-    std::unordered_map<EntityId, EntityId, EntityIdHash> duplicateIds;
+    EntityIdMap duplicateIds;
     duplicateIds.reserve(originals.size());
     for (const WorldEntity& original : originals) {
         const EntityId duplicateId = CreateEntity(original.name);
         duplicateIds.emplace(original.id, duplicateId);
         WorldEntity* duplicate = Find(duplicateId);
-        duplicate->active = original.active;
-        duplicate->layer = original.layer;
-        duplicate->transform = original.transform;
-        duplicate->meshRenderer = original.meshRenderer;
-        duplicate->materialOverride = original.materialOverride;
-        duplicate->camera = original.camera;
-        duplicate->light = original.light;
-        duplicate->audioSource = original.audioSource;
-        duplicate->audioListener = original.audioListener;
-        duplicate->animator = original.animator;
-        duplicate->canvas = original.canvas;
-        duplicate->canvasGroup = original.canvasGroup;
-        duplicate->eventSystem = original.eventSystem;
-        duplicate->text = original.text;
-        duplicate->image = original.image;
-        duplicate->button = original.button;
-        duplicate->toggle = original.toggle;
-        duplicate->slider = original.slider;
-        duplicate->dropdown = original.dropdown;
-        duplicate->inputField = original.inputField;
-        if (duplicate->audioSource) {
-            duplicate->audioSource->runtimeCommand = AudioSourceComponent::RuntimeCommand::None;
-            duplicate->audioSource->pendingOneShots = 0u;
-            duplicate->audioSource->runtimePlaying = false;
-        }
-        if (duplicate->animator) {
-            duplicate->animator->runtimeCommand = AnimatorComponent::RuntimeCommand::None;
-            duplicate->animator->runtimeRequestedClip.clear();
-            duplicate->animator->runtimeClip.clear();
-            duplicate->animator->runtimeLoop = true;
-            duplicate->animator->runtimeFadeDuration = 0.0f;
-            duplicate->animator->runtimePlaying = false;
-            duplicate->animator->runtimeFinished = false;
-            duplicate->animator->runtimeTime = 0.0f;
-            duplicate->animator->runtimeDuration = 0.0f;
-            duplicate->animator->runtimeNormalizedTime = 0.0f;
-            duplicate->animator->runtimeTransitioning = false;
-            duplicate->animator->runtimeTransitionProgress = 0.0f;
-        }
-        duplicate->scripts = original.scripts;
-        duplicate->boxCollider = original.boxCollider;
-        duplicate->characterController = original.characterController;
-        if (duplicate->camera) {
-            duplicate->camera->primary = false;
-        }
+        CopyDuplicatedComponents(original, *duplicate);
     }
 
     for (const WorldEntity& original : originals) {
@@ -118,39 +159,7 @@ EntityId World::DuplicateEntityHierarchy(EntityId source) {
         } else {
             duplicate->parent = duplicateIds.at(original.parent);
         }
-        for (BehaviorComponent& script : duplicate->scripts) {
-            for (ScriptPropertyValue& property : script.properties) {
-                if (property.type != ScriptPropertyType::Entity) {
-                    continue;
-                }
-                const auto remapped = duplicateIds.find(property.entityValue);
-                if (remapped != duplicateIds.end()) {
-                    property.entityValue = remapped->second;
-                }
-            }
-        }
-        if (duplicate->button) {
-            const auto remapNavigation =
-                [&](EntityId& target) {
-                    const auto remapped = duplicateIds.find(target);
-                    if (remapped != duplicateIds.end()) {
-                        target = remapped->second;
-                    }
-                };
-            remapNavigation(duplicate->button->selectOnLeft);
-            remapNavigation(duplicate->button->selectOnRight);
-            remapNavigation(duplicate->button->selectOnUp);
-            remapNavigation(duplicate->button->selectOnDown);
-        }
-        if (duplicate->eventSystem) {
-            const auto remapped =
-                duplicateIds.find(
-                    duplicate->eventSystem->firstSelected);
-            if (remapped != duplicateIds.end()) {
-                duplicate->eventSystem->firstSelected =
-                    remapped->second;
-            }
-        }
+        RemapComponentReferences(*duplicate, duplicateIds, false);
     }
     return duplicateIds.at(source);
 }
@@ -174,7 +183,7 @@ bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
     for (const WorldEntity& entity : entities_) {
         usedIds.insert(entity.id);
     }
-    std::unordered_map<EntityId, EntityId, EntityIdHash> instantiatedIds;
+    EntityIdMap instantiatedIds;
     instantiatedIds.reserve(sourceEntities.size());
     for (const WorldEntity& sourceEntity : sourceEntities) {
         EntityId instantiated{};
@@ -205,43 +214,7 @@ bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
         if (instantiated.camera) {
             instantiated.camera->primary = false;
         }
-        for (BehaviorComponent& script : instantiated.scripts) {
-            for (ScriptPropertyValue& property : script.properties) {
-                if (property.type != ScriptPropertyType::Entity ||
-                    !property.entityValue.IsValid()) {
-                    continue;
-                }
-                const auto mapped = instantiatedIds.find(property.entityValue);
-                property.entityValue = mapped != instantiatedIds.end()
-                                           ? mapped->second
-                                           : EntityId{};
-            }
-        }
-        if (instantiated.button) {
-            const auto remapNavigation =
-                [&](EntityId& target) {
-                    if (!target.IsValid()) {
-                        return;
-                    }
-                    const auto mapped = instantiatedIds.find(target);
-                    target = mapped != instantiatedIds.end()
-                                 ? mapped->second
-                                 : EntityId{};
-                };
-            remapNavigation(instantiated.button->selectOnLeft);
-            remapNavigation(instantiated.button->selectOnRight);
-            remapNavigation(instantiated.button->selectOnUp);
-            remapNavigation(instantiated.button->selectOnDown);
-        }
-        if (instantiated.eventSystem &&
-            instantiated.eventSystem->firstSelected.IsValid()) {
-            const auto mapped = instantiatedIds.find(
-                instantiated.eventSystem->firstSelected);
-            instantiated.eventSystem->firstSelected =
-                mapped != instantiatedIds.end()
-                    ? mapped->second
-                    : EntityId{};
-        }
+        RemapComponentReferences(instantiated, instantiatedIds, true);
         combined.push_back(std::move(instantiated));
     }
     if (instantiatedRoots.empty() || !ReplaceEntities(std::move(combined), error)) {
@@ -255,7 +228,7 @@ bool World::InstantiateEntityHierarchies(const World& source, EntityId parent,
 }
 
 bool World::SetPrimaryCamera(EntityId id) {
-    WorldEntity* target = Find(id);
+    const WorldEntity* target = Find(id);
     if (target == nullptr || !target->camera) {
         return false;
     }
@@ -595,20 +568,25 @@ bool World::ReplaceEntities(std::vector<WorldEntity> entities, std::string* erro
     for (const WorldEntity& entity : entities) {
         ids.insert(entity.id);
     }
-    for (const WorldEntity& entity : entities) {
-        if (entity.parent.IsValid() && !ids.contains(entity.parent)) {
-            SetError(error, "Scene contains a missing parent entity.");
-            return false;
-        }
+    const bool hasMissingParent = std::ranges::any_of(
+        entities, [&ids](const WorldEntity& entity) {
+            return entity.parent.IsValid() && !ids.contains(entity.parent);
+        });
+    if (hasMissingParent) {
+        SetError(error, "Scene contains a missing parent entity.");
+        return false;
     }
 
     World candidate;
     candidate.entities_ = entities;
-    for (const WorldEntity& entity : candidate.entities_) {
-        if (entity.parent.IsValid() && candidate.IsDescendantOf(entity.parent, entity.id)) {
-            SetError(error, "Scene hierarchy contains a cycle.");
-            return false;
-        }
+    const bool hasHierarchyCycle = std::ranges::any_of(
+        candidate.entities_, [&candidate](const WorldEntity& entity) {
+            return entity.parent.IsValid() &&
+                   candidate.IsDescendantOf(entity.parent, entity.id);
+        });
+    if (hasHierarchyCycle) {
+        SetError(error, "Scene hierarchy contains a cycle.");
+        return false;
     }
 
     entities_ = std::move(entities);

@@ -14,6 +14,101 @@
 
 using namespace EditorSceneGameUiUtils;
 
+namespace {
+struct GameUiControlState {
+    bool enabled = false;
+    bool slider = false;
+    bool interactable = false;
+    bool navigationEnabled = false;
+    bool blocksRaycasts = false;
+};
+
+bool IsEnabledGameUiButton(const WorldEntity& entity) {
+    return entity.button && entity.button->enabled &&
+           (!entity.toggle || entity.toggle->enabled) &&
+           (!entity.dropdown || entity.dropdown->enabled) &&
+           (!entity.inputField || entity.inputField->enabled);
+}
+
+bool IsGameUiControlInteractable(const WorldEntity& entity, bool isButton, bool isSlider,
+                                 const UiGroupState& groupState) {
+    if (!groupState.interactable) {
+        return false;
+    }
+    if (isSlider) {
+        return entity.slider->interactable;
+    }
+    return isButton && entity.button->interactable &&
+           (!entity.dropdown || entity.dropdown->interactable) &&
+           (!entity.inputField || entity.inputField->interactable);
+}
+
+GameUiControlState GetGameUiControlState(const World& world, const WorldEntity& entity) {
+    const bool isButton = IsEnabledGameUiButton(entity);
+    const bool isSlider = entity.slider && entity.slider->enabled;
+    const UiGroupState groupState = GetUiGroupState(world, entity);
+    GameUiControlState state{};
+    state.enabled = (isButton || isSlider) && entity.image && entity.image->enabled;
+    state.slider = isSlider;
+    state.interactable =
+        IsGameUiControlInteractable(entity, isButton, isSlider, groupState);
+    state.navigationEnabled = isSlider ||
+                              (isButton && entity.button->navigation !=
+                                               ButtonNavigationMode::None);
+    state.blocksRaycasts = groupState.blocksRaycasts;
+    return state;
+}
+
+bool IsGamepadButtonTriggered(const Input* input, uint16_t button) {
+    return input != nullptr && input->IsGamepadButtonTrigger(button);
+}
+
+int GetGameUiSliderInputDirection(const SliderComponent& slider, const Input* input) {
+    const bool horizontal = slider.direction == SliderDirection::LeftToRight ||
+                            slider.direction == SliderDirection::RightToLeft;
+    const bool negative =
+        horizontal ? ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
+                         IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_LEFT)
+                   : ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+                         IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_DOWN);
+    if (negative) {
+        return -1;
+    }
+    const bool positive =
+        horizontal ? ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+                         IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_RIGHT)
+                   : ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+                         IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_DPAD_UP);
+    return positive ? 1 : 0;
+}
+
+struct GameUiSubmitState {
+    bool gamepad = false;
+    bool held = false;
+    bool pressed = false;
+};
+
+GameUiSubmitState GetGameUiSubmitState(bool canNavigateUi, const Input* input) {
+    GameUiSubmitState state{};
+    state.gamepad = canNavigateUi && IsGamepadButtonTriggered(input, XINPUT_GAMEPAD_A);
+    state.held = canNavigateUi &&
+                 (ImGui::IsKeyDown(ImGuiKey_Enter) || ImGui::IsKeyDown(ImGuiKey_Space) ||
+                  (input != nullptr && input->IsGamepadButtonPress(XINPUT_GAMEPAD_A)));
+    state.pressed = canNavigateUi &&
+                    (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                     ImGui::IsKeyPressed(ImGuiKey_Space, false) || state.gamepad);
+    return state;
+}
+
+bool IsInteractableGameUiInputField(const WorldEntity& entity) {
+    return entity.inputField && entity.inputField->enabled && entity.inputField->interactable;
+}
+
+bool IsInteractableGameUiDropdown(const WorldEntity& entity) {
+    return entity.dropdown && entity.dropdown->enabled && entity.dropdown->interactable;
+}
+} // namespace
+
 bool EditorScene::PrepareGameUiFrame(int width, int height) {
     if (ctx_ == nullptr || ctx_->rendering.text == nullptr ||
         ctx_->rendering.spriteRenderer == nullptr || width <= 0 || height <= 0 ||
@@ -170,28 +265,15 @@ EntityId EditorScene::CollectGameUiControls(
     EntityId hoveredButton{};
     for (const OrderedUiEntity& entry : GetOrderedUiEntities(world_)) {
         const WorldEntity& entity = *entry.entity;
-        const bool isButton = entity.button && entity.button->enabled &&
-                              (!entity.toggle || entity.toggle->enabled) &&
-                              (!entity.dropdown || entity.dropdown->enabled) &&
-                              (!entity.inputField || entity.inputField->enabled);
-        const bool isSlider = entity.slider && entity.slider->enabled;
-        if ((!isButton && !isSlider) || !entity.image || !entity.image->enabled) {
+        const GameUiControlState state = GetGameUiControlState(world_, entity);
+        if (!state.enabled) {
             continue;
         }
-        const UiGroupState groupState = GetUiGroupState(world_, entity);
-        const bool controlInteractable =
-            groupState.interactable &&
-            (isSlider ? entity.slider->interactable
-                      : entity.button->interactable &&
-                            (!entity.dropdown || entity.dropdown->interactable) &&
-                            (!entity.inputField || entity.inputField->interactable));
-        const bool navigationEnabled =
-            isSlider || entity.button->navigation != ButtonNavigationMode::None;
         float left = 0.0f;
         float top = 0.0f;
         float right = 0.0f;
         float bottom = 0.0f;
-        if (controlInteractable && navigationEnabled) {
+        if (state.interactable && state.navigationEnabled) {
             selectableButtons.push_back(entity.id);
             if (TryCalculateRuntimeGameUiImageRect(entity, width, height, left, top, right,
                                                    bottom)) {
@@ -199,7 +281,7 @@ EntityId EditorScene::CollectGameUiControls(
                     entity.id, DirectX::XMFLOAT2{(left + right) * 0.5f, (top + bottom) * 0.5f});
             }
         }
-        if (canPoint && groupState.blocksRaycasts &&
+        if (canPoint && state.blocksRaycasts &&
             TryCalculateRuntimeGameUiImageRect(entity, width, height, left, top, right, bottom) &&
             pointer.x >= left && pointer.x <= right && pointer.y >= top && pointer.y <= bottom) {
             hoveredButton = entity.id;
@@ -369,65 +451,97 @@ void EditorScene::HandleGameUiPointerInteractions(EntityId hoveredButton,
                                                   bool hoveredSliderInteractable,
                                                   const DirectX::XMFLOAT2& pointer, int width,
                                                   int height) {
+    HandleGameUiPointerPress(hoveredButton, hoveredDropdownOption, hoveredButtonInteractable,
+                             hoveredSliderInteractable, pointer, width, height);
+    UpdateActiveGameUiSlider(pointer, width, height);
+    HandleGameUiPointerRelease(hoveredButton, hoveredButtonInteractable);
+}
+
+void EditorScene::HandleGameUiPointerPress(EntityId hoveredButton,
+                                           int32_t hoveredDropdownOption,
+                                           bool hoveredButtonInteractable,
+                                           bool hoveredSliderInteractable,
+                                           const DirectX::XMFLOAT2& pointer, int width,
+                                           int height) {
+    if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        return;
+    }
     WorldEntity* openDropdownEntity = world_.Find(openDropdown_);
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (activeInputField_.IsValid() && hoveredButton != activeInputField_) {
-            activeInputField_ = {};
+    if (activeInputField_.IsValid() && hoveredButton != activeInputField_) {
+        activeInputField_ = {};
+    }
+    if (openDropdownEntity != nullptr && hoveredDropdownOption >= 0) {
+        DropdownComponent& dropdown = *openDropdownEntity->dropdown;
+        if (dropdown.value != hoveredDropdownOption) {
+            dropdown.value = hoveredDropdownOption;
+            pendingDropdownValueChanges_.push_back({openDropdown_, dropdown.value});
         }
-        if (openDropdownEntity != nullptr && hoveredDropdownOption >= 0) {
-            DropdownComponent& dropdown = *openDropdownEntity->dropdown;
-            if (dropdown.value != hoveredDropdownOption) {
-                dropdown.value = hoveredDropdownOption;
-                pendingDropdownValueChanges_.push_back({openDropdown_, dropdown.value});
-            }
-            focusedButton_ = openDropdown_;
+        focusedButton_ = openDropdown_;
+        openDropdown_ = {};
+        pressedButton_ = {};
+        activeSlider_ = {};
+        return;
+    }
+    if (hoveredSliderInteractable) {
+        activeSlider_ = hoveredButton;
+        pressedButton_ = {};
+        focusedButton_ = hoveredButton;
+        if (WorldEntity* slider = world_.Find(activeSlider_); slider != nullptr) {
+            SetGameUiSliderValueFromPointer(*slider, width, height, pointer);
+        }
+        return;
+    }
+    activeSlider_ = {};
+    if (openDropdownEntity != nullptr && hoveredButton != openDropdown_) {
+        openDropdown_ = {};
+    }
+    pressedButton_ = hoveredButtonInteractable ? hoveredButton : EntityId{};
+    focusedButton_ = hoveredButtonInteractable ? hoveredButton : EntityId{};
+}
+
+void EditorScene::UpdateActiveGameUiSlider(const DirectX::XMFLOAT2& pointer, int width,
+                                           int height) {
+    if (!activeSlider_.IsValid() || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        return;
+    }
+    WorldEntity* sliderEntity = world_.Find(activeSlider_);
+    if (sliderEntity != nullptr && sliderEntity->slider && sliderEntity->slider->enabled &&
+        sliderEntity->slider->interactable &&
+        GetUiGroupState(world_, *sliderEntity).interactable) {
+        SetGameUiSliderValueFromPointer(*sliderEntity, width, height, pointer);
+    } else {
+        activeSlider_ = {};
+    }
+}
+
+void EditorScene::ActivatePressedGameUiControl(WorldEntity& clicked) {
+    if (clicked.dropdown && clicked.dropdown->enabled && clicked.dropdown->interactable) {
+        if (openDropdown_ == clicked.id) {
             openDropdown_ = {};
-            pressedButton_ = {};
-            activeSlider_ = {};
-        } else if (hoveredSliderInteractable) {
-            activeSlider_ = hoveredButton;
-            pressedButton_ = {};
-            focusedButton_ = hoveredButton;
-            SetGameUiSliderValueFromPointer(*world_.Find(activeSlider_), width, height, pointer);
         } else {
-            activeSlider_ = {};
-            if (openDropdownEntity != nullptr && hoveredButton != openDropdown_) {
-                openDropdown_ = {};
-            }
-            pressedButton_ = hoveredButtonInteractable ? hoveredButton : EntityId{};
-            focusedButton_ = hoveredButtonInteractable ? hoveredButton : EntityId{};
+            openDropdown_ = clicked.id;
+            dropdownHighlightedIndex_ = clicked.dropdown->value;
         }
+        return;
     }
-    if (activeSlider_.IsValid() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        WorldEntity* sliderEntity = world_.Find(activeSlider_);
-        if (sliderEntity != nullptr && sliderEntity->slider && sliderEntity->slider->enabled &&
-            sliderEntity->slider->interactable &&
-            GetUiGroupState(world_, *sliderEntity).interactable) {
-            SetGameUiSliderValueFromPointer(*sliderEntity, width, height, pointer);
-        } else {
-            activeSlider_ = {};
-        }
+    if (clicked.inputField && clicked.inputField->enabled && clicked.inputField->interactable) {
+        activeInputField_ = clicked.id;
+        openDropdown_ = {};
+        return;
     }
+    pendingButtonClicks_.push_back(clicked.id);
+}
+
+void EditorScene::HandleGameUiPointerRelease(EntityId hoveredButton,
+                                             bool hoveredButtonInteractable) {
     if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         return;
     }
     if (pressedButton_.IsValid() && pressedButton_ == hoveredButton &&
         hoveredButtonInteractable) {
         WorldEntity* clicked = world_.Find(pressedButton_);
-        if (clicked != nullptr && clicked->dropdown && clicked->dropdown->enabled &&
-            clicked->dropdown->interactable) {
-            if (openDropdown_ == pressedButton_) {
-                openDropdown_ = {};
-            } else {
-                openDropdown_ = pressedButton_;
-                dropdownHighlightedIndex_ = clicked->dropdown->value;
-            }
-        } else if (clicked != nullptr && clicked->inputField && clicked->inputField->enabled &&
-                   clicked->inputField->interactable) {
-            activeInputField_ = clicked->id;
-            openDropdown_ = {};
-        } else {
-            pendingButtonClicks_.push_back(pressedButton_);
+        if (clicked != nullptr) {
+            ActivatePressedGameUiControl(*clicked);
         }
     }
     pressedButton_ = {};
@@ -436,48 +550,48 @@ void EditorScene::HandleGameUiPointerInteractions(EntityId hoveredButton,
 
 bool EditorScene::HandleGameUiSubmit(bool canNavigateUi) {
     const Input* runtimeInput = ctx_ != nullptr ? ctx_->systems.input : nullptr;
-    const bool gamepadSubmit = canNavigateUi && runtimeInput != nullptr &&
-                               runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_A);
-    const bool submitHeld =
-        canNavigateUi &&
-        (ImGui::IsKeyDown(ImGuiKey_Enter) || ImGui::IsKeyDown(ImGuiKey_Space) ||
-         (runtimeInput != nullptr && runtimeInput->IsGamepadButtonPress(XINPUT_GAMEPAD_A)));
-    const WorldEntity* submitEntity = world_.Find(focusedButton_);
-    if (!canNavigateUi || submitEntity == nullptr || !submitEntity->button ||
-        !submitEntity->button->enabled ||
-        (!ImGui::IsKeyPressed(ImGuiKey_Enter, false) &&
-         !ImGui::IsKeyPressed(ImGuiKey_Space, false) && !gamepadSubmit)) {
-        return submitHeld;
+    const GameUiSubmitState submit = GetGameUiSubmitState(canNavigateUi, runtimeInput);
+    WorldEntity* submitEntity = world_.Find(focusedButton_);
+    if (!submit.pressed || submitEntity == nullptr || !submitEntity->button ||
+        !submitEntity->button->enabled) {
+        return submit.held;
     }
-    const bool inputFieldSubmit = ImGui::IsKeyPressed(ImGuiKey_Enter, false) || gamepadSubmit;
-    if (submitEntity->inputField && submitEntity->inputField->enabled &&
-        submitEntity->inputField->interactable) {
-        if (inputFieldSubmit) {
-            if (activeInputField_ == focusedButton_) {
-                QueueGameUiInputFieldEvent(focusedButton_, submitEntity->inputField->text, true);
-                activeInputField_ = {};
-            } else {
-                activeInputField_ = focusedButton_;
-                openDropdown_ = {};
-            }
-        }
-    } else if (submitEntity->dropdown && submitEntity->dropdown->enabled &&
-               submitEntity->dropdown->interactable) {
-        if (openDropdown_ == focusedButton_) {
-            DropdownComponent& dropdown = *world_.Find(openDropdown_)->dropdown;
-            if (dropdown.value != dropdownHighlightedIndex_) {
-                dropdown.value = dropdownHighlightedIndex_;
-                pendingDropdownValueChanges_.push_back({openDropdown_, dropdown.value});
-            }
-            openDropdown_ = {};
-        } else {
-            openDropdown_ = focusedButton_;
-            dropdownHighlightedIndex_ = submitEntity->dropdown->value;
-        }
+    const bool inputFieldSubmit = ImGui::IsKeyPressed(ImGuiKey_Enter, false) || submit.gamepad;
+    if (IsInteractableGameUiInputField(*submitEntity)) {
+        HandleFocusedGameUiInputFieldSubmit(*submitEntity, inputFieldSubmit);
+    } else if (IsInteractableGameUiDropdown(*submitEntity)) {
+        HandleFocusedGameUiDropdownSubmit(*submitEntity);
     } else {
         pendingButtonClicks_.push_back(focusedButton_);
     }
-    return submitHeld;
+    return submit.held;
+}
+
+void EditorScene::HandleFocusedGameUiInputFieldSubmit(WorldEntity& entity, bool submit) {
+    if (!submit) {
+        return;
+    }
+    if (activeInputField_ == entity.id) {
+        QueueGameUiInputFieldEvent(entity.id, entity.inputField->text, true);
+        activeInputField_ = {};
+    } else {
+        activeInputField_ = entity.id;
+        openDropdown_ = {};
+    }
+}
+
+void EditorScene::HandleFocusedGameUiDropdownSubmit(WorldEntity& entity) {
+    DropdownComponent& dropdown = *entity.dropdown;
+    if (openDropdown_ != entity.id) {
+        openDropdown_ = entity.id;
+        dropdownHighlightedIndex_ = dropdown.value;
+        return;
+    }
+    if (dropdown.value != dropdownHighlightedIndex_) {
+        dropdown.value = dropdownHighlightedIndex_;
+        pendingDropdownValueChanges_.push_back({entity.id, dropdown.value});
+    }
+    openDropdown_ = {};
 }
 
 void EditorScene::HandleGameUiKeyboardSlider(bool canNavigateUi, bool navigatedUi) {
@@ -489,30 +603,15 @@ void EditorScene::HandleGameUiKeyboardSlider(bool canNavigateUi, bool navigatedU
         return;
     }
     const Input* runtimeInput = ctx_ != nullptr ? ctx_->systems.input : nullptr;
-    SliderComponent& slider = *keyboardSlider->slider;
-    const bool horizontal = slider.direction == SliderDirection::LeftToRight ||
-                            slider.direction == SliderDirection::RightToLeft;
-    const bool negative =
-        horizontal ? (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
-                      (runtimeInput != nullptr &&
-                       runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_LEFT)))
-                   : (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
-                      (runtimeInput != nullptr &&
-                       runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_DOWN)));
-    const bool positive =
-        horizontal ? (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
-                      (runtimeInput != nullptr &&
-                       runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_RIGHT)))
-                   : (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
-                      (runtimeInput != nullptr &&
-                       runtimeInput->IsGamepadButtonTrigger(XINPUT_GAMEPAD_DPAD_UP)));
-    if (!negative && !positive) {
+    const SliderComponent& slider = *keyboardSlider->slider;
+    const int inputDirection = GetGameUiSliderInputDirection(slider, runtimeInput);
+    if (inputDirection == 0) {
         return;
     }
     const bool reverse = slider.direction == SliderDirection::RightToLeft ||
                          slider.direction == SliderDirection::TopToBottom;
     const float step = slider.wholeNumbers ? 1.0f : (slider.maxValue - slider.minValue) * 0.1f;
-    const float visualDirection = positive ? 1.0f : -1.0f;
+    const float visualDirection = static_cast<float>(inputDirection);
     SetGameUiSliderValue(*keyboardSlider,
                          slider.value + visualDirection * (reverse ? -step : step));
 }
@@ -535,7 +634,6 @@ void EditorScene::HandleGameUiCancel(bool canNavigateUi) {
 }
 
 void EditorScene::DrawGameUiDropdownPopup(int width, int height) {
-    TextRenderer& textRenderer = *ctx_->rendering.text;
     SpriteRenderer& spriteRenderer = *ctx_->rendering.spriteRenderer;
     WorldEntity* openDropdownEntity = world_.Find(openDropdown_);
     float dropdownLeft = 0.0f;
@@ -547,6 +645,7 @@ void EditorScene::DrawGameUiDropdownPopup(int width, int height) {
                                            dropdownTop, dropdownRight, dropdownBottom)) {
         const DropdownComponent& dropdown = *openDropdownEntity->dropdown;
         const TextComponent& text = *openDropdownEntity->text;
+        TextRenderer& textRenderer = *ctx_->rendering.text;
         const UiGroupState groupState = GetUiGroupState(world_, *openDropdownEntity);
         float popupScale = 1.0f;
         DirectX::XMFLOAT2 popupOrigin{};

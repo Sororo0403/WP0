@@ -61,7 +61,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)externals\imguizmo;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include\assimp;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -87,7 +87,7 @@ if exist "$(MSBuildThisFileDirectory)resources" "%SystemRoot%\System32\xcopy.exe
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)externals\imguizmo;$(MSBuildThisFileDirectory)..\engine\public;$(MSBuildThisFileDirectory)..\engine\include;$(MSBuildThisFileDirectory)..\engine\externals;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include;$(MSBuildThisFileDirectory)..\engine\externals\assimp\include\assimp;$(MSBuildThisFileDirectory)..\engine\externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>

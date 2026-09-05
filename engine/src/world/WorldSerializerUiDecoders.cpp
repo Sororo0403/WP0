@@ -1,80 +1,102 @@
 #include "internal/WorldSerializerComponentDecoders.h"
 
+#include <limits>
+
 using namespace WorldSerializerJson;
 
 namespace WorldSerializerDecoding {
 namespace {
-bool DecodeCanvasComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Canvas")) {
-            const Json& canvas = encoded["components"]["Canvas"];
-            CanvasComponent component{};
-            if (!canvas.is_object() || !canvas.contains("enabled") ||
-                !canvas["enabled"].is_boolean() ||
-                !canvas.contains("referenceResolution") ||
-                !DecodeFloat2(canvas["referenceResolution"],
-                              component.referenceResolution) ||
-                component.referenceResolution.x < 1.0f ||
-                component.referenceResolution.y < 1.0f ||
-                component.referenceResolution.x > 16384.0f ||
-                component.referenceResolution.y > 16384.0f) {
-                SetError(error, "Scene Canvas component is invalid.");
-                return false;
-            }
-            component.enabled = canvas["enabled"].get<bool>();
-            if (canvas.contains("scaleMode") &&
-                !DecodeCanvasScaleMode(canvas["scaleMode"],
-                                       component.scaleMode)) {
-                SetError(error, "Scene Canvas scale mode is invalid.");
-                return false;
-            }
-            if (canvas.contains("screenMatchMode") &&
-                !DecodeCanvasScreenMatchMode(canvas["screenMatchMode"],
-                                             component.screenMatchMode)) {
-                SetError(error, "Scene Canvas screen match mode is invalid.");
-                return false;
-            }
-            if (canvas.contains("matchWidthOrHeight")) {
-                if (!canvas["matchWidthOrHeight"].is_number()) {
-                    SetError(error, "Scene Canvas match value is invalid.");
-                    return false;
-                }
-                component.matchWidthOrHeight =
-                    canvas["matchWidthOrHeight"].get<float>();
-            }
-            if (!std::isfinite(component.matchWidthOrHeight) ||
-                component.matchWidthOrHeight < 0.0f ||
-                component.matchWidthOrHeight > 1.0f) {
-                SetError(error, "Scene Canvas match value is invalid.");
-                return false;
-            }
-            if (canvas.contains("sortingOrder")) {
-                if (!canvas["sortingOrder"].is_number_integer()) {
-                    SetError(error, "Scene Canvas sorting order is invalid.");
-                    return false;
-                }
-                if (canvas["sortingOrder"].is_number_unsigned()) {
-                    const uint64_t sortingOrder =
-                        canvas["sortingOrder"].get<uint64_t>();
-                    if (sortingOrder > 1000000u) {
-                        SetError(error, "Scene Canvas sorting order is invalid.");
-                        return false;
-                    }
-                    component.sortingOrder =
-                        static_cast<int32_t>(sortingOrder);
-                } else {
-                    const int64_t sortingOrder =
-                        canvas["sortingOrder"].get<int64_t>();
-                    if (sortingOrder < -1000000 ||
-                        sortingOrder > 1000000) {
-                        SetError(error, "Scene Canvas sorting order is invalid.");
-                        return false;
-                    }
-                    component.sortingOrder =
-                        static_cast<int32_t>(sortingOrder);
-                }
-            }
-            entity.canvas = component;
+bool DecodeCanvasRequiredFields(const Json& encoded, CanvasComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("referenceResolution") ||
+        !DecodeFloat2(encoded["referenceResolution"], component.referenceResolution) ||
+        component.referenceResolution.x < 1.0f ||
+        component.referenceResolution.y < 1.0f ||
+        component.referenceResolution.x > 16384.0f ||
+        component.referenceResolution.y > 16384.0f) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    return true;
+}
+
+bool DecodeCanvasModes(const Json& encoded, CanvasComponent& component,
+                       std::string* error) {
+    if (encoded.contains("scaleMode") &&
+        !DecodeCanvasScaleMode(encoded["scaleMode"], component.scaleMode)) {
+        SetError(error, "Scene Canvas scale mode is invalid.");
+        return false;
+    }
+    if (encoded.contains("screenMatchMode") &&
+        !DecodeCanvasScreenMatchMode(encoded["screenMatchMode"],
+                                     component.screenMatchMode)) {
+        SetError(error, "Scene Canvas screen match mode is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeCanvasMatch(const Json& encoded, CanvasComponent& component,
+                       std::string* error) {
+    if (encoded.contains("matchWidthOrHeight")) {
+        if (!encoded["matchWidthOrHeight"].is_number()) {
+            SetError(error, "Scene Canvas match value is invalid.");
+            return false;
         }
+        component.matchWidthOrHeight = encoded["matchWidthOrHeight"].get<float>();
+    }
+    if (!std::isfinite(component.matchWidthOrHeight) ||
+        component.matchWidthOrHeight < 0.0f || component.matchWidthOrHeight > 1.0f) {
+        SetError(error, "Scene Canvas match value is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeCanvasSortingOrder(const Json& encoded, CanvasComponent& component,
+                              std::string* error) {
+    if (!encoded.contains("sortingOrder")) {
+        return true;
+    }
+    const Json& value = encoded["sortingOrder"];
+    if (!value.is_number_integer() && !value.is_number_unsigned()) {
+        SetError(error, "Scene Canvas sorting order is invalid.");
+        return false;
+    }
+    if (value.is_number_unsigned()) {
+        const uint64_t decoded = value.get<uint64_t>();
+        if (decoded > 1000000u) {
+            SetError(error, "Scene Canvas sorting order is invalid.");
+            return false;
+        }
+        component.sortingOrder = static_cast<int32_t>(decoded);
+        return true;
+    }
+    const int64_t decoded = value.get<int64_t>();
+    if (decoded < -1000000 || decoded > 1000000) {
+        SetError(error, "Scene Canvas sorting order is invalid.");
+        return false;
+    }
+    component.sortingOrder = static_cast<int32_t>(decoded);
+    return true;
+}
+
+bool DecodeCanvasComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
+    if (!encoded["components"].contains("Canvas")) {
+        return true;
+    }
+    const Json& canvas = encoded["components"]["Canvas"];
+    CanvasComponent component{};
+    if (!DecodeCanvasRequiredFields(canvas, component)) {
+        SetError(error, "Scene Canvas component is invalid.");
+        return false;
+    }
+    if (!DecodeCanvasModes(canvas, component, error) ||
+        !DecodeCanvasMatch(canvas, component, error) ||
+        !DecodeCanvasSortingOrder(canvas, component, error)) {
+        return false;
+    }
+    entity.canvas = component;
     return true;
 }
 
@@ -150,563 +172,568 @@ bool DecodeEventSystemComponent(const Json& encoded, WorldEntity& entity, std::s
     return true;
 }
 
-bool DecodeTextComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Text")) {
-            const Json& encodedText = encoded["components"]["Text"];
-            TextComponent component{};
-            if (!encodedText.is_object() || !encodedText.contains("enabled") ||
-                !encodedText["enabled"].is_boolean() ||
-                !encodedText.contains("text") ||
-                !encodedText["text"].is_string() ||
-                !encodedText.contains("position") ||
-                !DecodeFloat2(encodedText["position"], component.position) ||
-                !encodedText.contains("fontSize") ||
-                !encodedText["fontSize"].is_number() ||
-                !encodedText.contains("color") ||
-                !DecodeFloat4(encodedText["color"], component.color) ||
-                !encodedText.contains("alignment") ||
-                !encodedText["alignment"].is_string()) {
-                SetError(error, "Scene Text component is invalid.");
-                return false;
-            }
-            component.enabled = encodedText["enabled"].get<bool>();
-            component.text = encodedText["text"].get<std::string>();
-            if (encodedText.contains("font")) {
-                if (!encodedText["font"].is_string()) {
-                    SetError(error, "Scene Text font is invalid.");
-                    return false;
-                }
-                component.fontPath = encodedText["font"].get<std::string>();
-            }
-            component.fontSize = encodedText["fontSize"].get<float>();
-            const std::string alignment =
-                encodedText["alignment"].get<std::string>();
-            if (alignment == "Left") {
-                component.alignment = TextAlignment::Left;
-            } else if (alignment == "Center") {
-                component.alignment = TextAlignment::Center;
-            } else if (alignment == "Right") {
-                component.alignment = TextAlignment::Right;
-            } else {
-                SetError(error, "Scene Text alignment is invalid.");
-                return false;
-            }
-            if (encodedText.contains("anchor") &&
-                !DecodeUiAnchor(encodedText["anchor"], component.anchor)) {
-                SetError(error, "Scene Text anchor is invalid.");
-                return false;
-            }
-            if (encodedText.contains("lineSpacing")) {
-                if (!encodedText["lineSpacing"].is_number()) {
-                    SetError(error, "Scene Text line spacing is invalid.");
-                    return false;
-                }
-                component.lineSpacing =
-                    encodedText["lineSpacing"].get<float>();
-            }
-            if (encodedText.contains("wrapWidth")) {
-                if (!encodedText["wrapWidth"].is_number()) {
-                    SetError(error, "Scene Text wrap width is invalid.");
-                    return false;
-                }
-                component.wrapWidth = encodedText["wrapWidth"].get<float>();
-            }
-            if (component.text.size() > 4096u ||
-                component.text.find('\0') != std::string::npos ||
-                component.fontPath.size() > 1024u ||
-                component.fontPath.find('\0') != std::string::npos ||
-                std::abs(component.position.x) > 1000000.0f ||
-                std::abs(component.position.y) > 1000000.0f ||
-                !std::isfinite(component.fontSize) || component.fontSize < 1.0f ||
-                component.fontSize > 512.0f ||
-                !std::isfinite(component.lineSpacing) ||
-                component.lineSpacing < 0.0f ||
-                component.lineSpacing > 512.0f ||
-                !std::isfinite(component.wrapWidth) ||
-                component.wrapWidth < 0.0f ||
-                component.wrapWidth > 16384.0f ||
-                component.color.x < 0.0f ||
-                component.color.x > 1.0f || component.color.y < 0.0f ||
-                component.color.y > 1.0f || component.color.z < 0.0f ||
-                component.color.z > 1.0f || component.color.w < 0.0f ||
-                component.color.w > 1.0f) {
-                SetError(error, "Scene Text settings are invalid.");
-                return false;
-            }
-            entity.text = std::move(component);
+bool IsUnitColor(const DirectX::XMFLOAT4& color) {
+    return color.x >= 0.0f && color.x <= 1.0f &&
+           color.y >= 0.0f && color.y <= 1.0f &&
+           color.z >= 0.0f && color.z <= 1.0f &&
+           color.w >= 0.0f && color.w <= 1.0f;
+}
+
+bool IsBoundedString(const std::string& value, size_t maximumLength) {
+    return value.size() <= maximumLength &&
+           value.find('\0') == std::string::npos;
+}
+
+bool IsFiniteInRange(float value, float minimum, float maximum) {
+    return std::isfinite(value) && value >= minimum && value <= maximum;
+}
+
+bool TryDecodeInt32(const Json& encoded, int32_t& value) {
+    if (!encoded.is_number_integer() && !encoded.is_number_unsigned()) {
+        return false;
+    }
+    if (encoded.is_number_unsigned()) {
+        const uint64_t decoded = encoded.get<uint64_t>();
+        if (decoded > static_cast<uint64_t>((std::numeric_limits<int32_t>::max)())) {
+            return false;
         }
+        value = static_cast<int32_t>(decoded);
+        return true;
+    }
+    const int64_t decoded = encoded.get<int64_t>();
+    if (decoded < static_cast<int64_t>((std::numeric_limits<int32_t>::min)()) ||
+        decoded > static_cast<int64_t>((std::numeric_limits<int32_t>::max)())) {
+        return false;
+    }
+    value = static_cast<int32_t>(decoded);
     return true;
+}
+
+bool IsBoundedPosition(const DirectX::XMFLOAT2& position) {
+    return std::abs(position.x) <= 1000000.0f &&
+           std::abs(position.y) <= 1000000.0f;
+}
+
+bool DecodeOptionalFloat(const Json& object, const char* name, float& value,
+                         const char* message, std::string* error) {
+    if (!object.contains(name)) {
+        return true;
+    }
+    if (!object[name].is_number()) {
+        SetError(error, message);
+        return false;
+    }
+    value = object[name].get<float>();
+    return true;
+}
+
+bool DecodeTextRequiredFields(const Json& encoded, TextComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("text") ||
+        !encoded["text"].is_string() || !encoded.contains("position") ||
+        !DecodeFloat2(encoded["position"], component.position) ||
+        !encoded.contains("fontSize") || !encoded["fontSize"].is_number() ||
+        !encoded.contains("color") ||
+        !DecodeFloat4(encoded["color"], component.color) ||
+        !encoded.contains("alignment") || !encoded["alignment"].is_string()) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.text = encoded["text"].get<std::string>();
+    component.fontSize = encoded["fontSize"].get<float>();
+    return true;
+}
+
+bool DecodeTextAlignment(const Json& encoded, TextAlignment& alignment,
+                         std::string* error) {
+    const std::string value = encoded["alignment"].get<std::string>();
+    if (value == "Left") {
+        alignment = TextAlignment::Left;
+    } else if (value == "Center") {
+        alignment = TextAlignment::Center;
+    } else if (value == "Right") {
+        alignment = TextAlignment::Right;
+    } else {
+        SetError(error, "Scene Text alignment is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeTextOptions(const Json& encoded, TextComponent& component,
+                       std::string* error) {
+    if (encoded.contains("font")) {
+        if (!encoded["font"].is_string()) {
+            SetError(error, "Scene Text font is invalid.");
+            return false;
+        }
+        component.fontPath = encoded["font"].get<std::string>();
+    }
+    if (encoded.contains("anchor") &&
+        !DecodeUiAnchor(encoded["anchor"], component.anchor)) {
+        SetError(error, "Scene Text anchor is invalid.");
+        return false;
+    }
+    return DecodeOptionalFloat(encoded, "lineSpacing", component.lineSpacing,
+                               "Scene Text line spacing is invalid.", error) &&
+           DecodeOptionalFloat(encoded, "wrapWidth", component.wrapWidth,
+                               "Scene Text wrap width is invalid.", error);
+}
+
+bool IsValidTextSettings(const TextComponent& component) {
+    return IsBoundedString(component.text, 4096u) &&
+           IsBoundedString(component.fontPath, 1024u) &&
+           IsBoundedPosition(component.position) &&
+           IsFiniteInRange(component.fontSize, 1.0f, 512.0f) &&
+           IsFiniteInRange(component.lineSpacing, 0.0f, 512.0f) &&
+           IsFiniteInRange(component.wrapWidth, 0.0f, 16384.0f) &&
+           IsUnitColor(component.color);
+}
+
+bool DecodeTextComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
+    if (!encoded["components"].contains("Text")) {
+        return true;
+    }
+    const Json& encodedText = encoded["components"]["Text"];
+    TextComponent component{};
+    if (!DecodeTextRequiredFields(encodedText, component)) {
+        SetError(error, "Scene Text component is invalid.");
+        return false;
+    }
+    if (!DecodeTextAlignment(encodedText, component.alignment, error) ||
+        !DecodeTextOptions(encodedText, component, error)) {
+        return false;
+    }
+    if (!IsValidTextSettings(component)) {
+        SetError(error, "Scene Text settings are invalid.");
+        return false;
+    }
+    entity.text = std::move(component);
+    return true;
+}
+
+bool DecodeImageRequiredFields(const Json& encoded, ImageComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("texture") ||
+        !encoded["texture"].is_string() || !encoded.contains("position") ||
+        !DecodeFloat2(encoded["position"], component.position) ||
+        !encoded.contains("size") || !DecodeFloat2(encoded["size"], component.size) ||
+        !encoded.contains("color") || !DecodeFloat4(encoded["color"], component.color)) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.texturePath = encoded["texture"].get<std::string>();
+    return true;
+}
+
+bool DecodeImageLayoutOptions(const Json& encoded, ImageComponent& component,
+                              std::string* error) {
+    if (encoded.contains("anchor") &&
+        !DecodeUiAnchor(encoded["anchor"], component.anchor)) {
+        SetError(error, "Scene Image anchor is invalid.");
+        return false;
+    }
+    if (encoded.contains("pivot")) {
+        if (!DecodeFloat2(encoded["pivot"], component.pivot)) {
+            SetError(error, "Scene Image pivot is invalid.");
+            return false;
+        }
+    } else {
+        component.pivot = UiAnchorFactor(component.anchor);
+    }
+    return true;
+}
+
+bool DecodeImageFillOptions(const Json& encoded, ImageComponent& component,
+                            std::string* error) {
+    if (encoded.contains("type") &&
+        !DecodeImageType(encoded["type"], component.type)) {
+        SetError(error, "Scene Image type is invalid.");
+        return false;
+    }
+    if (encoded.contains("fillMethod") &&
+        !DecodeImageFillMethod(encoded["fillMethod"], component.fillMethod)) {
+        SetError(error, "Scene Image fill method is invalid.");
+        return false;
+    }
+    if (!DecodeOptionalFloat(encoded, "fillAmount", component.fillAmount,
+                             "Scene Image fill amount is invalid.", error)) {
+        return false;
+    }
+    if (encoded.contains("fillReverse")) {
+        if (!encoded["fillReverse"].is_boolean()) {
+            SetError(error, "Scene Image fill direction is invalid.");
+            return false;
+        }
+        component.fillReverse = encoded["fillReverse"].get<bool>();
+    }
+    if (encoded.contains("preserveAspect")) {
+        if (!encoded["preserveAspect"].is_boolean()) {
+            SetError(error, "Scene Image preserve aspect setting is invalid.");
+            return false;
+        }
+        component.preserveAspect = encoded["preserveAspect"].get<bool>();
+    }
+    return true;
+}
+
+bool IsValidImageSettings(const ImageComponent& component) {
+    const bool validSize = component.size.x >= 0.0f && component.size.x <= 1000000.0f &&
+                           component.size.y >= 0.0f && component.size.y <= 1000000.0f;
+    const bool validPivot = component.pivot.x >= 0.0f && component.pivot.x <= 1.0f &&
+                            component.pivot.y >= 0.0f && component.pivot.y <= 1.0f;
+    return IsBoundedString(component.texturePath, 1024u) && validSize && validPivot &&
+           IsBoundedPosition(component.position) &&
+           IsFiniteInRange(component.fillAmount, 0.0f, 1.0f) &&
+           IsUnitColor(component.color);
 }
 
 bool DecodeImageComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Image")) {
-            const Json& encodedImage = encoded["components"]["Image"];
-            ImageComponent component{};
-            if (!encodedImage.is_object() ||
-                !encodedImage.contains("enabled") ||
-                !encodedImage["enabled"].is_boolean() ||
-                !encodedImage.contains("texture") ||
-                !encodedImage["texture"].is_string() ||
-                !encodedImage.contains("position") ||
-                !DecodeFloat2(encodedImage["position"], component.position) ||
-                !encodedImage.contains("size") ||
-                !DecodeFloat2(encodedImage["size"], component.size) ||
-                !encodedImage.contains("color") ||
-                !DecodeFloat4(encodedImage["color"], component.color)) {
-                SetError(error, "Scene Image component is invalid.");
-                return false;
-            }
-            component.enabled = encodedImage["enabled"].get<bool>();
-            component.texturePath =
-                encodedImage["texture"].get<std::string>();
-            if (encodedImage.contains("anchor") &&
-                !DecodeUiAnchor(encodedImage["anchor"],
-                                component.anchor)) {
-                SetError(error, "Scene Image anchor is invalid.");
-                return false;
-            }
-            if (encodedImage.contains("pivot")) {
-                if (!DecodeFloat2(encodedImage["pivot"], component.pivot)) {
-                    SetError(error, "Scene Image pivot is invalid.");
-                    return false;
-                }
-            } else {
-                component.pivot = UiAnchorFactor(component.anchor);
-            }
-            if (encodedImage.contains("type") &&
-                !DecodeImageType(encodedImage["type"], component.type)) {
-                SetError(error, "Scene Image type is invalid.");
-                return false;
-            }
-            if (encodedImage.contains("fillMethod") &&
-                !DecodeImageFillMethod(encodedImage["fillMethod"],
-                                       component.fillMethod)) {
-                SetError(error, "Scene Image fill method is invalid.");
-                return false;
-            }
-            if (encodedImage.contains("fillAmount")) {
-                if (!encodedImage["fillAmount"].is_number()) {
-                    SetError(error, "Scene Image fill amount is invalid.");
-                    return false;
-                }
-                component.fillAmount =
-                    encodedImage["fillAmount"].get<float>();
-            }
-            if (encodedImage.contains("fillReverse")) {
-                if (!encodedImage["fillReverse"].is_boolean()) {
-                    SetError(error, "Scene Image fill direction is invalid.");
-                    return false;
-                }
-                component.fillReverse =
-                    encodedImage["fillReverse"].get<bool>();
-            }
-            if (encodedImage.contains("preserveAspect")) {
-                if (!encodedImage["preserveAspect"].is_boolean()) {
-                    SetError(error, "Scene Image preserve aspect setting is invalid.");
-                    return false;
-                }
-                component.preserveAspect =
-                    encodedImage["preserveAspect"].get<bool>();
-            }
-            if (component.texturePath.size() > 1024u ||
-                component.texturePath.find('\0') != std::string::npos ||
-                component.size.x < 0.0f || component.size.y < 0.0f ||
-                component.size.x > 1000000.0f ||
-                component.size.y > 1000000.0f ||
-                std::abs(component.position.x) > 1000000.0f ||
-                std::abs(component.position.y) > 1000000.0f ||
-                component.pivot.x < 0.0f || component.pivot.x > 1.0f ||
-                component.pivot.y < 0.0f || component.pivot.y > 1.0f ||
-                !std::isfinite(component.fillAmount) ||
-                component.fillAmount < 0.0f ||
-                component.fillAmount > 1.0f ||
-                component.color.x < 0.0f || component.color.x > 1.0f ||
-                component.color.y < 0.0f || component.color.y > 1.0f ||
-                component.color.z < 0.0f || component.color.z > 1.0f ||
-                component.color.w < 0.0f || component.color.w > 1.0f) {
-                SetError(error, "Scene Image settings are invalid.");
-                return false;
-            }
-            entity.image = std::move(component);
-        }
+    if (!encoded["components"].contains("Image")) {
+        return true;
+    }
+    const Json& encodedImage = encoded["components"]["Image"];
+    ImageComponent component{};
+    if (!DecodeImageRequiredFields(encodedImage, component)) {
+        SetError(error, "Scene Image component is invalid.");
+        return false;
+    }
+    if (!DecodeImageLayoutOptions(encodedImage, component, error) ||
+        !DecodeImageFillOptions(encodedImage, component, error)) {
+        return false;
+    }
+    if (!IsValidImageSettings(component)) {
+        SetError(error, "Scene Image settings are invalid.");
+        return false;
+    }
+    entity.image = std::move(component);
     return true;
 }
 
+bool DecodeButtonRequiredFields(const Json& encoded, ButtonComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("interactable") ||
+        !encoded["interactable"].is_boolean() || !encoded.contains("normalColor") ||
+        !DecodeFloat4(encoded["normalColor"], component.normalColor) ||
+        !encoded.contains("hoveredColor") ||
+        !DecodeFloat4(encoded["hoveredColor"], component.hoveredColor) ||
+        !encoded.contains("pressedColor") ||
+        !DecodeFloat4(encoded["pressedColor"], component.pressedColor)) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.interactable = encoded["interactable"].get<bool>();
+    return true;
+}
+
+bool DecodeButtonOptions(const Json& encoded, ButtonComponent& component,
+                         std::string* error) {
+    if (encoded.contains("disabledColor") &&
+        !DecodeFloat4(encoded["disabledColor"], component.disabledColor)) {
+        SetError(error, "Scene Button component is invalid.");
+        return false;
+    }
+    if (!DecodeOptionalFloat(encoded, "fadeDuration", component.fadeDuration,
+                             "Scene Button component is invalid.", error)) {
+        return false;
+    }
+    if (encoded.contains("navigation") &&
+        !DecodeButtonNavigationMode(encoded["navigation"], component.navigation)) {
+        SetError(error, "Scene Button component is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool DecodeNavigationTarget(const Json& encoded, const char* name, EntityId& target) {
+    if (!encoded.contains(name) || encoded[name].is_null()) {
+        return true;
+    }
+    return encoded[name].is_string() &&
+           EntityId::TryParse(encoded[name].get_ref<const std::string&>(), target);
+}
+
+bool DecodeButtonNavigation(const Json& encoded, ButtonComponent& component) {
+    return DecodeNavigationTarget(encoded, "selectOnLeft", component.selectOnLeft) &&
+           DecodeNavigationTarget(encoded, "selectOnRight", component.selectOnRight) &&
+           DecodeNavigationTarget(encoded, "selectOnUp", component.selectOnUp) &&
+           DecodeNavigationTarget(encoded, "selectOnDown", component.selectOnDown);
+}
+
+bool IsValidButtonSettings(const ButtonComponent& component) {
+    return IsUnitColor(component.normalColor) && IsUnitColor(component.hoveredColor) &&
+           IsUnitColor(component.pressedColor) &&
+           IsUnitColor(component.disabledColor) &&
+           component.navigation >= ButtonNavigationMode::Automatic &&
+           component.navigation <= ButtonNavigationMode::None &&
+           IsFiniteInRange(component.fadeDuration, 0.0f, 10.0f);
+}
+
 bool DecodeButtonComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Button")) {
-            const Json& encodedButton = encoded["components"]["Button"];
-            ButtonComponent component{};
-            if (!encodedButton.is_object() ||
-                !encodedButton.contains("enabled") ||
-                !encodedButton["enabled"].is_boolean() ||
-                !encodedButton.contains("interactable") ||
-                !encodedButton["interactable"].is_boolean() ||
-                !encodedButton.contains("normalColor") ||
-                !DecodeFloat4(encodedButton["normalColor"],
-                              component.normalColor) ||
-                !encodedButton.contains("hoveredColor") ||
-                !DecodeFloat4(encodedButton["hoveredColor"],
-                              component.hoveredColor) ||
-                !encodedButton.contains("pressedColor") ||
-                !DecodeFloat4(encodedButton["pressedColor"],
-                              component.pressedColor)) {
-                SetError(error, "Scene Button component is invalid.");
-                return false;
-            }
-            if (encodedButton.contains("disabledColor") &&
-                !DecodeFloat4(encodedButton["disabledColor"],
-                              component.disabledColor)) {
-                SetError(error, "Scene Button component is invalid.");
-                return false;
-            }
-            if (encodedButton.contains("fadeDuration")) {
-                if (!encodedButton["fadeDuration"].is_number()) {
-                    SetError(error, "Scene Button component is invalid.");
-                    return false;
-                }
-                component.fadeDuration =
-                    encodedButton["fadeDuration"].get<float>();
-            }
-            if (encodedButton.contains("navigation") &&
-                !DecodeButtonNavigationMode(encodedButton["navigation"],
-                                            component.navigation)) {
-                SetError(error, "Scene Button component is invalid.");
-                return false;
-            }
-            const auto decodeNavigationTarget =
-                [&](const char* name, EntityId& target) {
-                    if (!encodedButton.contains(name)) {
-                        return true;
-                    }
-                    const Json& encodedTarget = encodedButton[name];
-                    return encodedTarget.is_null() ||
-                           (encodedTarget.is_string() &&
-                            EntityId::TryParse(
-                                encodedTarget
-                                    .get_ref<const std::string&>(),
-                                target));
-                };
-            if (!decodeNavigationTarget(
-                    "selectOnLeft", component.selectOnLeft) ||
-                !decodeNavigationTarget(
-                    "selectOnRight", component.selectOnRight) ||
-                !decodeNavigationTarget(
-                    "selectOnUp", component.selectOnUp) ||
-                !decodeNavigationTarget(
-                    "selectOnDown", component.selectOnDown)) {
-                SetError(error, "Scene Button navigation is invalid.");
-                return false;
-            }
-            component.enabled = encodedButton["enabled"].get<bool>();
-            component.interactable =
-                encodedButton["interactable"].get<bool>();
-            const auto validColor = [](const DirectX::XMFLOAT4& color) {
-                return color.x >= 0.0f && color.x <= 1.0f &&
-                       color.y >= 0.0f && color.y <= 1.0f &&
-                       color.z >= 0.0f && color.z <= 1.0f &&
-                       color.w >= 0.0f && color.w <= 1.0f;
-            };
-            if (!validColor(component.normalColor) ||
-                !validColor(component.hoveredColor) ||
-                !validColor(component.pressedColor) ||
-                !validColor(component.disabledColor) ||
-                component.navigation < ButtonNavigationMode::Automatic ||
-                component.navigation > ButtonNavigationMode::None ||
-                !std::isfinite(component.fadeDuration) ||
-                component.fadeDuration < 0.0f ||
-                component.fadeDuration > 10.0f) {
-                SetError(error, "Scene Button settings are invalid.");
-                return false;
-            }
-            entity.button = std::move(component);
-        }
+    if (!encoded["components"].contains("Button")) {
+        return true;
+    }
+    const Json& encodedButton = encoded["components"]["Button"];
+    ButtonComponent component{};
+    if (!DecodeButtonRequiredFields(encodedButton, component)) {
+        SetError(error, "Scene Button component is invalid.");
+        return false;
+    }
+    if (!DecodeButtonOptions(encodedButton, component, error)) {
+        return false;
+    }
+    if (!DecodeButtonNavigation(encodedButton, component)) {
+        SetError(error, "Scene Button navigation is invalid.");
+        return false;
+    }
+    if (!IsValidButtonSettings(component)) {
+        SetError(error, "Scene Button settings are invalid.");
+        return false;
+    }
+    entity.button = std::move(component);
+    return true;
+}
+
+bool DecodeToggleFields(const Json& encoded, ToggleComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("isOn") ||
+        !encoded["isOn"].is_boolean() || !encoded.contains("checkmarkColor") ||
+        !DecodeFloat4(encoded["checkmarkColor"], component.checkmarkColor) ||
+        !encoded.contains("checkmarkScale") || !encoded["checkmarkScale"].is_number()) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.isOn = encoded["isOn"].get<bool>();
+    component.checkmarkScale = encoded["checkmarkScale"].get<float>();
     return true;
 }
 
 bool DecodeToggleComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Toggle")) {
-            const Json& encodedToggle = encoded["components"]["Toggle"];
-            ToggleComponent component{};
-            if (!encodedToggle.is_object() ||
-                !encodedToggle.contains("enabled") ||
-                !encodedToggle["enabled"].is_boolean() ||
-                !encodedToggle.contains("isOn") ||
-                !encodedToggle["isOn"].is_boolean() ||
-                !encodedToggle.contains("checkmarkColor") ||
-                !DecodeFloat4(encodedToggle["checkmarkColor"],
-                              component.checkmarkColor) ||
-                !encodedToggle.contains("checkmarkScale") ||
-                !encodedToggle["checkmarkScale"].is_number()) {
-                SetError(error, "Scene Toggle component is invalid.");
-                return false;
-            }
-            component.enabled = encodedToggle["enabled"].get<bool>();
-            component.isOn = encodedToggle["isOn"].get<bool>();
-            component.checkmarkScale =
-                encodedToggle["checkmarkScale"].get<float>();
-            const DirectX::XMFLOAT4& color = component.checkmarkColor;
-            if (color.x < 0.0f || color.x > 1.0f ||
-                color.y < 0.0f || color.y > 1.0f ||
-                color.z < 0.0f || color.z > 1.0f ||
-                color.w < 0.0f || color.w > 1.0f ||
-                !std::isfinite(component.checkmarkScale) ||
-                component.checkmarkScale < 0.0f ||
-                component.checkmarkScale > 1.0f) {
-                SetError(error, "Scene Toggle settings are invalid.");
-                return false;
-            }
-            entity.toggle = std::move(component);
-        }
+    if (!encoded["components"].contains("Toggle")) {
+        return true;
+    }
+    ToggleComponent component{};
+    if (!DecodeToggleFields(encoded["components"]["Toggle"], component)) {
+        SetError(error, "Scene Toggle component is invalid.");
+        return false;
+    }
+    if (!IsUnitColor(component.checkmarkColor) ||
+        !IsFiniteInRange(component.checkmarkScale, 0.0f, 1.0f)) {
+        SetError(error, "Scene Toggle settings are invalid.");
+        return false;
+    }
+    entity.toggle = std::move(component);
     return true;
+}
+
+bool DecodeSliderScalarFields(const Json& encoded, SliderComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("interactable") ||
+        !encoded["interactable"].is_boolean() || !encoded.contains("minValue") ||
+        !encoded["minValue"].is_number() || !encoded.contains("maxValue") ||
+        !encoded["maxValue"].is_number() || !encoded.contains("value") ||
+        !encoded["value"].is_number() || !encoded.contains("wholeNumbers") ||
+        !encoded["wholeNumbers"].is_boolean()) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.interactable = encoded["interactable"].get<bool>();
+    component.minValue = encoded["minValue"].get<float>();
+    component.maxValue = encoded["maxValue"].get<float>();
+    component.value = encoded["value"].get<float>();
+    component.wholeNumbers = encoded["wholeNumbers"].get<bool>();
+    return true;
+}
+
+bool DecodeSliderVisualFields(const Json& encoded, SliderComponent& component) {
+    if (!encoded.contains("direction") ||
+        !DecodeSliderDirection(encoded["direction"], component.direction) ||
+        !encoded.contains("fillColor") ||
+        !DecodeFloat4(encoded["fillColor"], component.fillColor) ||
+        !encoded.contains("handleColor") ||
+        !DecodeFloat4(encoded["handleColor"], component.handleColor) ||
+        !encoded.contains("handleSize") || !encoded["handleSize"].is_number()) {
+        return false;
+    }
+    component.handleSize = encoded["handleSize"].get<float>();
+    return true;
+}
+
+bool IsValidSliderSettings(const SliderComponent& component) {
+    return std::isfinite(component.minValue) && std::isfinite(component.maxValue) &&
+           std::isfinite(component.value) && component.minValue < component.maxValue &&
+           component.value >= component.minValue && component.value <= component.maxValue &&
+           IsUnitColor(component.fillColor) && IsUnitColor(component.handleColor) &&
+           IsFiniteInRange(component.handleSize, 0.0f, 1000000.0f);
 }
 
 bool DecodeSliderComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Slider")) {
-            const Json& encodedSlider =
-                encoded["components"]["Slider"];
-            SliderComponent component{};
-            if (!encodedSlider.is_object() ||
-                !encodedSlider.contains("enabled") ||
-                !encodedSlider["enabled"].is_boolean() ||
-                !encodedSlider.contains("interactable") ||
-                !encodedSlider["interactable"].is_boolean() ||
-                !encodedSlider.contains("minValue") ||
-                !encodedSlider["minValue"].is_number() ||
-                !encodedSlider.contains("maxValue") ||
-                !encodedSlider["maxValue"].is_number() ||
-                !encodedSlider.contains("value") ||
-                !encodedSlider["value"].is_number() ||
-                !encodedSlider.contains("wholeNumbers") ||
-                !encodedSlider["wholeNumbers"].is_boolean() ||
-                !encodedSlider.contains("direction") ||
-                !DecodeSliderDirection(encodedSlider["direction"],
-                                       component.direction) ||
-                !encodedSlider.contains("fillColor") ||
-                !DecodeFloat4(encodedSlider["fillColor"],
-                              component.fillColor) ||
-                !encodedSlider.contains("handleColor") ||
-                !DecodeFloat4(encodedSlider["handleColor"],
-                              component.handleColor) ||
-                !encodedSlider.contains("handleSize") ||
-                !encodedSlider["handleSize"].is_number()) {
-                SetError(error, "Scene Slider component is invalid.");
-                return false;
-            }
-            component.enabled =
-                encodedSlider["enabled"].get<bool>();
-            component.interactable =
-                encodedSlider["interactable"].get<bool>();
-            component.minValue =
-                encodedSlider["minValue"].get<float>();
-            component.maxValue =
-                encodedSlider["maxValue"].get<float>();
-            component.value = encodedSlider["value"].get<float>();
-            component.wholeNumbers =
-                encodedSlider["wholeNumbers"].get<bool>();
-            component.handleSize =
-                encodedSlider["handleSize"].get<float>();
-            const auto validColor =
-                [](const DirectX::XMFLOAT4& color) {
-                    return color.x >= 0.0f && color.x <= 1.0f &&
-                           color.y >= 0.0f && color.y <= 1.0f &&
-                           color.z >= 0.0f && color.z <= 1.0f &&
-                           color.w >= 0.0f && color.w <= 1.0f;
-                };
-            if (!std::isfinite(component.minValue) ||
-                !std::isfinite(component.maxValue) ||
-                !std::isfinite(component.value) ||
-                component.minValue >= component.maxValue ||
-                component.value < component.minValue ||
-                component.value > component.maxValue ||
-                !validColor(component.fillColor) ||
-                !validColor(component.handleColor) ||
-                !std::isfinite(component.handleSize) ||
-                component.handleSize < 0.0f ||
-                component.handleSize > 1000000.0f) {
-                SetError(error, "Scene Slider settings are invalid.");
-                return false;
-            }
-            entity.slider = std::move(component);
-        }
+    if (!encoded["components"].contains("Slider")) {
+        return true;
+    }
+    const Json& encodedSlider = encoded["components"]["Slider"];
+    SliderComponent component{};
+    if (!DecodeSliderScalarFields(encodedSlider, component) ||
+        !DecodeSliderVisualFields(encodedSlider, component)) {
+        SetError(error, "Scene Slider component is invalid.");
+        return false;
+    }
+    if (!IsValidSliderSettings(component)) {
+        SetError(error, "Scene Slider settings are invalid.");
+        return false;
+    }
+    entity.slider = std::move(component);
     return true;
+}
+
+bool DecodeDropdownCoreFields(const Json& encoded, DropdownComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("interactable") ||
+        !encoded["interactable"].is_boolean() || !encoded.contains("options") ||
+        !encoded["options"].is_array() || encoded["options"].empty() ||
+        encoded["options"].size() > 256u || !encoded.contains("value") ||
+        !TryDecodeInt32(encoded["value"], component.value)) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.interactable = encoded["interactable"].get<bool>();
+    return true;
+}
+
+bool DecodeDropdownVisualFields(const Json& encoded, DropdownComponent& component) {
+    if (!encoded.contains("itemColor") ||
+        !DecodeFloat4(encoded["itemColor"], component.itemColor) ||
+        !encoded.contains("highlightedColor") ||
+        !DecodeFloat4(encoded["highlightedColor"], component.highlightedColor) ||
+        !encoded.contains("itemHeight") || !encoded["itemHeight"].is_number()) {
+        return false;
+    }
+    component.itemHeight = encoded["itemHeight"].get<float>();
+    return true;
+}
+
+bool DecodeDropdownOptions(const Json& encoded, DropdownComponent& component,
+                           std::string* error) {
+    component.options.clear();
+    for (const Json& encodedOption : encoded["options"]) {
+        if (!encodedOption.is_string()) {
+            SetError(error, "Scene Dropdown option is invalid.");
+            return false;
+        }
+        std::string option = encodedOption.get<std::string>();
+        if (option.empty() || !IsBoundedString(option, 256u)) {
+            SetError(error, "Scene Dropdown option is invalid.");
+            return false;
+        }
+        component.options.push_back(std::move(option));
+    }
+    return true;
+}
+
+bool IsValidDropdownSettings(const DropdownComponent& component) {
+    return component.value >= 0 &&
+           static_cast<size_t>(component.value) < component.options.size() &&
+           IsUnitColor(component.itemColor) &&
+           IsUnitColor(component.highlightedColor) &&
+           std::isfinite(component.itemHeight) && component.itemHeight > 0.0f &&
+           component.itemHeight <= 1000000.0f;
 }
 
 bool DecodeDropdownComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("Dropdown")) {
-            const Json& encodedDropdown =
-                encoded["components"]["Dropdown"];
-            DropdownComponent component{};
-            if (!encodedDropdown.is_object() ||
-                !encodedDropdown.contains("enabled") ||
-                !encodedDropdown["enabled"].is_boolean() ||
-                !encodedDropdown.contains("interactable") ||
-                !encodedDropdown["interactable"].is_boolean() ||
-                !encodedDropdown.contains("options") ||
-                !encodedDropdown["options"].is_array() ||
-                encodedDropdown["options"].empty() ||
-                encodedDropdown["options"].size() > 256u ||
-                !encodedDropdown.contains("value") ||
-                !encodedDropdown["value"].is_number_integer() ||
-                !encodedDropdown.contains("itemColor") ||
-                !DecodeFloat4(encodedDropdown["itemColor"],
-                              component.itemColor) ||
-                !encodedDropdown.contains("highlightedColor") ||
-                !DecodeFloat4(encodedDropdown["highlightedColor"],
-                              component.highlightedColor) ||
-                !encodedDropdown.contains("itemHeight") ||
-                !encodedDropdown["itemHeight"].is_number()) {
-                SetError(error, "Scene Dropdown component is invalid.");
-                return false;
-            }
-            component.options.clear();
-            for (const Json& encodedOption :
-                 encodedDropdown["options"]) {
-                if (!encodedOption.is_string()) {
-                    SetError(error,
-                             "Scene Dropdown option is invalid.");
-                    return false;
-                }
-                std::string option =
-                    encodedOption.get<std::string>();
-                if (option.empty() || option.size() > 256u ||
-                    option.find('\0') != std::string::npos) {
-                    SetError(error,
-                             "Scene Dropdown option is invalid.");
-                    return false;
-                }
-                component.options.push_back(std::move(option));
-            }
-            component.enabled =
-                encodedDropdown["enabled"].get<bool>();
-            component.interactable =
-                encodedDropdown["interactable"].get<bool>();
-            component.value =
-                encodedDropdown["value"].get<int32_t>();
-            component.itemHeight =
-                encodedDropdown["itemHeight"].get<float>();
-            const auto validColor =
-                [](const DirectX::XMFLOAT4& color) {
-                    return color.x >= 0.0f && color.x <= 1.0f &&
-                           color.y >= 0.0f && color.y <= 1.0f &&
-                           color.z >= 0.0f && color.z <= 1.0f &&
-                           color.w >= 0.0f && color.w <= 1.0f;
-                };
-            if (component.value < 0 ||
-                static_cast<size_t>(component.value) >=
-                    component.options.size() ||
-                !validColor(component.itemColor) ||
-                !validColor(component.highlightedColor) ||
-                !std::isfinite(component.itemHeight) ||
-                component.itemHeight <= 0.0f ||
-                component.itemHeight > 1000000.0f) {
-                SetError(error,
-                         "Scene Dropdown settings are invalid.");
-                return false;
-            }
-            entity.dropdown = std::move(component);
-        }
+    if (!encoded["components"].contains("Dropdown")) {
+        return true;
+    }
+    const Json& encodedDropdown = encoded["components"]["Dropdown"];
+    DropdownComponent component{};
+    if (!DecodeDropdownCoreFields(encodedDropdown, component) ||
+        !DecodeDropdownVisualFields(encodedDropdown, component)) {
+        SetError(error, "Scene Dropdown component is invalid.");
+        return false;
+    }
+    if (!DecodeDropdownOptions(encodedDropdown, component, error)) {
+        return false;
+    }
+    if (!IsValidDropdownSettings(component)) {
+        SetError(error, "Scene Dropdown settings are invalid.");
+        return false;
+    }
+    entity.dropdown = std::move(component);
     return true;
 }
 
+bool DecodeInputFieldRequiredFields(const Json& encoded,
+                                    InputFieldComponent& component) {
+    if (!encoded.is_object() || !encoded.contains("enabled") ||
+        !encoded["enabled"].is_boolean() || !encoded.contains("interactable") ||
+        !encoded["interactable"].is_boolean() || !encoded.contains("text") ||
+        !encoded["text"].is_string() || !encoded.contains("placeholder") ||
+        !encoded["placeholder"].is_string() || !encoded.contains("characterLimit") ||
+        !TryDecodeInt32(encoded["characterLimit"], component.characterLimit) ||
+        !encoded.contains("contentType") || !encoded["contentType"].is_string()) {
+        return false;
+    }
+    component.enabled = encoded["enabled"].get<bool>();
+    component.interactable = encoded["interactable"].get<bool>();
+    component.text = encoded["text"].get<std::string>();
+    component.placeholder = encoded["placeholder"].get<std::string>();
+    return true;
+}
+
+bool DecodeInputFieldContentType(const Json& encoded,
+                                 InputFieldContentType& contentType) {
+    const std::string value = encoded["contentType"].get<std::string>();
+    if (value == "Standard") {
+        contentType = InputFieldContentType::Standard;
+        return true;
+    }
+    if (value == "Password") {
+        contentType = InputFieldContentType::Password;
+        return true;
+    }
+    return false;
+}
+
+bool IsValidInputFieldSettings(const InputFieldComponent& component) {
+    return IsBoundedString(component.text, 4096u) &&
+           IsBoundedString(component.placeholder, 1024u) &&
+           component.characterLimit >= 0 && component.characterLimit <= 4096;
+}
+
 bool DecodeInputFieldComponent(const Json& encoded, WorldEntity& entity, std::string* error) {
-        if (encoded["components"].contains("InputField")) {
-            const Json& encodedInputField =
-                encoded["components"]["InputField"];
-            InputFieldComponent component{};
-            if (!encodedInputField.is_object() ||
-                !encodedInputField.contains("enabled") ||
-                !encodedInputField["enabled"].is_boolean() ||
-                !encodedInputField.contains("interactable") ||
-                !encodedInputField["interactable"].is_boolean() ||
-                !encodedInputField.contains("text") ||
-                !encodedInputField["text"].is_string() ||
-                !encodedInputField.contains("placeholder") ||
-                !encodedInputField["placeholder"].is_string() ||
-                !encodedInputField.contains("characterLimit") ||
-                !encodedInputField["characterLimit"]
-                     .is_number_integer() ||
-                !encodedInputField.contains("contentType") ||
-                !encodedInputField["contentType"].is_string()) {
-                SetError(error,
-                         "Scene InputField component is invalid.");
-                return false;
-            }
-            component.enabled =
-                encodedInputField["enabled"].get<bool>();
-            component.interactable =
-                encodedInputField["interactable"].get<bool>();
-            component.text =
-                encodedInputField["text"].get<std::string>();
-            component.placeholder =
-                encodedInputField["placeholder"]
-                    .get<std::string>();
-            component.characterLimit =
-                encodedInputField["characterLimit"]
-                    .get<int32_t>();
-            const std::string contentType =
-                encodedInputField["contentType"]
-                    .get<std::string>();
-            if (contentType == "Standard") {
-                component.contentType =
-                    InputFieldContentType::Standard;
-            } else if (contentType == "Password") {
-                component.contentType =
-                    InputFieldContentType::Password;
-            } else {
-                SetError(error,
-                         "Scene InputField content type is invalid.");
-                return false;
-            }
-            if (component.text.size() > 4096u ||
-                component.text.find('\0') != std::string::npos ||
-                component.placeholder.size() > 1024u ||
-                component.placeholder.find('\0') !=
-                    std::string::npos ||
-                component.characterLimit < 0 ||
-                component.characterLimit > 4096) {
-                SetError(error,
-                         "Scene InputField settings are invalid.");
-                return false;
-            }
-            entity.inputField = std::move(component);
-        }
+    if (!encoded["components"].contains("InputField")) {
+        return true;
+    }
+    const Json& encodedInputField = encoded["components"]["InputField"];
+    InputFieldComponent component{};
+    if (!DecodeInputFieldRequiredFields(encodedInputField, component)) {
+        SetError(error, "Scene InputField component is invalid.");
+        return false;
+    }
+    if (!DecodeInputFieldContentType(encodedInputField, component.contentType)) {
+        SetError(error, "Scene InputField content type is invalid.");
+        return false;
+    }
+    if (!IsValidInputFieldSettings(component)) {
+        SetError(error, "Scene InputField settings are invalid.");
+        return false;
+    }
+    entity.inputField = std::move(component);
     return true;
 }
 
 } // namespace
 
 bool DecodeUiComponents(const Json& encoded, WorldEntity& entity, std::string* error) {
-    if (!DecodeCanvasComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeCanvasGroupComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeEventSystemComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeTextComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeImageComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeButtonComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeToggleComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeSliderComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeDropdownComponent(encoded, entity, error)) {
-        return false;
-    }
-    if (!DecodeInputFieldComponent(encoded, entity, error)) {
-        return false;
-    }
-    return true;
+    return DecodeCanvasComponent(encoded, entity, error) &&
+           DecodeCanvasGroupComponent(encoded, entity, error) &&
+           DecodeEventSystemComponent(encoded, entity, error) &&
+           DecodeTextComponent(encoded, entity, error) &&
+           DecodeImageComponent(encoded, entity, error) &&
+           DecodeButtonComponent(encoded, entity, error) &&
+           DecodeToggleComponent(encoded, entity, error) &&
+           DecodeSliderComponent(encoded, entity, error) &&
+           DecodeDropdownComponent(encoded, entity, error) &&
+           DecodeInputFieldComponent(encoded, entity, error);
 }
 
 } // namespace WorldSerializerDecoding

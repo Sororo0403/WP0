@@ -56,37 +56,57 @@ std::string PathToUtf8(const std::filesystem::path& path) {
                         static_cast<int>(value.size()), result.data(), length, nullptr, nullptr);
     return result;
 }
+
+bool IsReadableRecentProjectsFile(const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        return false;
+    }
+    const uintmax_t size = std::filesystem::file_size(path, error);
+    return !error && size <= kMaxSettingsBytes;
+}
+
+bool HasValidRecentProjectsStructure(const nlohmann::json& json) {
+    return json.is_object() && json.contains("version") &&
+           json["version"].is_number_unsigned() && json["version"].get<uint64_t>() == 1u &&
+           json.contains("projects") && json["projects"].is_array();
+}
+
+bool TryDecodeRecentProject(const nlohmann::json& item, RecentProject& project) {
+    if (!item.is_object() || !item.contains("name") || !item["name"].is_string() ||
+        !item.contains("manifest") || !item["manifest"].is_string()) {
+        return false;
+    }
+    project.name = item["name"].get<std::string>();
+    project.manifestPath =
+        NormalizeExistingManifest(Utf8ToPath(item["manifest"].get<std::string>()));
+    return !project.name.empty() && !project.manifestPath.empty();
+}
 } // namespace
 
 RecentProjectsStore::RecentProjectsStore(std::filesystem::path path) : path_(std::move(path)) {}
 
 std::vector<RecentProject> RecentProjectsStore::Load() const {
     std::vector<RecentProject> projects;
-    std::error_code error;
-    if (!std::filesystem::is_regular_file(path_, error) || error ||
-        std::filesystem::file_size(path_, error) > kMaxSettingsBytes || error) {
+    if (!IsReadableRecentProjectsFile(path_)) {
         return projects;
     }
     try {
         std::ifstream stream(path_);
         nlohmann::json json;
         stream >> json;
-        if (!json.is_object() || json.value("version", 0u) != 1u ||
-            !json.contains("projects") || !json["projects"].is_array()) {
+        if (!HasValidRecentProjectsStructure(json)) {
             return {};
         }
         for (const auto& item : json["projects"]) {
-            if (projects.size() >= kMaxRecentProjects || !item.is_object() ||
-                !item.contains("name") || !item["name"].is_string() ||
-                !item.contains("manifest") || !item["manifest"].is_string()) {
+            if (projects.size() >= kMaxRecentProjects) {
+                break;
+            }
+            RecentProject project;
+            if (!TryDecodeRecentProject(item, project)) {
                 continue;
             }
-            const std::string name = item["name"].get<std::string>();
-            const auto manifest = NormalizeExistingManifest(
-                Utf8ToPath(item["manifest"].get<std::string>()));
-            if (!name.empty() && !manifest.empty()) {
-                projects.push_back({name, manifest});
-            }
+            projects.push_back(std::move(project));
         }
     } catch (const std::exception&) {
         return {};

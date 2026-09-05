@@ -7,19 +7,18 @@
 
 #include <utility>
 
-void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
-    const auto makePair = [](EntityId first, EntityId second) {
-        const bool secondComesFirst =
-            second.high != first.high ? second.high < first.high : second.low < first.low;
-        if (secondComesFirst) {
-            std::swap(first, second);
-        }
-        return Pair{first, second};
-    };
+TriggerSystem::Pair TriggerSystem::MakePair(EntityId first, EntityId second) {
+    const bool secondComesFirst =
+        second.high != first.high ? second.high < first.high : second.low < first.low;
+    if (secondComesFirst) {
+        std::swap(first, second);
+    }
+    return {first, second};
+}
 
-    std::set<Pair> currentPairs;
+void TriggerSystem::CollectBoxTriggerPairs(const World& world,
+                                           std::set<Pair>& pairs) {
     const std::vector<WorldEntity>& entities = world.Entities();
-
     for (size_t firstIndex = 0u; firstIndex < entities.size(); ++firstIndex) {
         const WorldEntity& first = entities[firstIndex];
         if (!world.IsActiveInHierarchy(first.id) || !first.boxCollider ||
@@ -40,11 +39,15 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
             if (TryBuildWorldBoxCollider(world, first.id, firstBox) &&
                 TryBuildWorldBoxCollider(world, second.id, secondBox) &&
                 CollisionUtil::CheckOBB(firstBox, secondBox)) {
-                currentPairs.insert(makePair(first.id, second.id));
+                pairs.insert(MakePair(first.id, second.id));
             }
         }
     }
+}
 
+void TriggerSystem::CollectCharacterTriggerPairs(const World& world,
+                                                 std::set<Pair>& pairs) {
+    const std::vector<WorldEntity>& entities = world.Entities();
     for (const WorldEntity& character : entities) {
         if (!world.IsActiveInHierarchy(character.id) || !character.characterController ||
             !character.characterController->enabled) {
@@ -57,11 +60,14 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
                 continue;
             }
             if (CheckCharacterControllerBoxOverlap(world, character.id, trigger.id)) {
-                currentPairs.insert(makePair(character.id, trigger.id));
+                pairs.insert(MakePair(character.id, trigger.id));
             }
         }
     }
+}
 
+void TriggerSystem::DispatchPairChanges(const std::set<Pair>& currentPairs,
+                                        BehaviorSystem& behaviors) const {
     for (const Pair& pair : currentPairs) {
         const BehaviorSystem::TriggerEvent event = activePairs_.contains(pair)
                                                        ? BehaviorSystem::TriggerEvent::Stay
@@ -78,6 +84,13 @@ void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
         behaviors.DispatchTriggerEvent(BehaviorSystem::TriggerEvent::Exit, pair.second,
                                        pair.first);
     }
+}
+
+void TriggerSystem::Update(const World& world, BehaviorSystem& behaviors) {
+    std::set<Pair> currentPairs;
+    CollectBoxTriggerPairs(world, currentPairs);
+    CollectCharacterTriggerPairs(world, currentPairs);
+    DispatchPairChanges(currentPairs, behaviors);
     activePairs_ = std::move(currentPairs);
 }
 

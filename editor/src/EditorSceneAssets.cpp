@@ -60,6 +60,55 @@
 
 using namespace EditorSceneAssetUtils;
 
+namespace {
+bool AssetReferenceMatches(std::string_view reference,
+                           const std::filesystem::path& relativePath, bool directory) {
+    const std::optional<std::filesystem::path> referenced =
+        AssetRelativeFromReference(reference);
+    return referenced && AssetPathMatches(*referenced, relativePath, directory);
+}
+
+bool MaterialReferencesAsset(const MaterialOverrideComponent* material,
+                             const std::filesystem::path& relativePath, bool directory) {
+    if (material == nullptr) {
+        return false;
+    }
+    const std::array<std::string_view, 4> references = {
+        material->baseColorTexturePath,
+        material->normalTexturePath,
+        material->roughnessTexturePath,
+        material->metallicTexturePath,
+    };
+    return std::ranges::any_of(references, [&](std::string_view reference) {
+        return AssetReferenceMatches(reference, relativePath, directory);
+    });
+}
+
+bool ScriptsReferenceAsset(const std::vector<BehaviorComponent>& scripts,
+                           const std::filesystem::path& relativePath, bool directory) {
+    return std::ranges::any_of(scripts, [&](const BehaviorComponent& script) {
+        return AssetReferenceMatches(script.scriptAssetPath, relativePath, directory);
+    });
+}
+
+bool EntityReferencesAsset(const WorldEntity& entity,
+                           const std::filesystem::path& relativePath, bool directory) {
+    const bool modelMatches =
+        entity.meshRenderer && entity.meshRenderer->sourceType == MeshSourceType::Model &&
+        AssetReferenceMatches(entity.meshRenderer->modelPath, relativePath, directory);
+    return modelMatches ||
+           MaterialReferencesAsset(entity.materialOverride ? &*entity.materialOverride : nullptr,
+                                   relativePath, directory) ||
+           ScriptsReferenceAsset(entity.scripts, relativePath, directory) ||
+           (entity.audioSource &&
+            AssetReferenceMatches(entity.audioSource->clipPath, relativePath, directory)) ||
+           (entity.image &&
+            AssetReferenceMatches(entity.image->texturePath, relativePath, directory)) ||
+           (entity.text &&
+            AssetReferenceMatches(entity.text->fontPath, relativePath, directory));
+}
+} // namespace
+
 void EditorScene::DrawAssetBrowserEntry(const std::filesystem::path& relativePath,
                                         bool directory) {
     const std::filesystem::path logicalPath =
@@ -511,65 +560,7 @@ void EditorScene::SelectAssetReferences(const std::filesystem::path& relativePat
     hierarchySelection_.clear();
     selection_ = {};
     for (const WorldEntity& entity : world_.Entities()) {
-        const std::optional<std::filesystem::path> modelReference =
-            entity.meshRenderer && entity.meshRenderer->sourceType == MeshSourceType::Model
-                ? AssetRelativeFromReference(entity.meshRenderer->modelPath)
-                : std::nullopt;
-        const std::optional<std::filesystem::path> textureReference =
-            entity.materialOverride
-                ? AssetRelativeFromReference(entity.materialOverride->baseColorTexturePath)
-                : std::nullopt;
-        const std::optional<std::filesystem::path> normalReference =
-            entity.materialOverride
-                ? AssetRelativeFromReference(entity.materialOverride->normalTexturePath)
-                : std::nullopt;
-        const std::optional<std::filesystem::path> roughnessReference =
-            entity.materialOverride
-                ? AssetRelativeFromReference(entity.materialOverride->roughnessTexturePath)
-                : std::nullopt;
-        const std::optional<std::filesystem::path> metallicReference =
-            entity.materialOverride
-                ? AssetRelativeFromReference(entity.materialOverride->metallicTexturePath)
-                : std::nullopt;
-        const bool matchesModel =
-            modelReference && AssetPathMatches(*modelReference, relativePath, directory);
-        const bool matchesTexture =
-            textureReference && AssetPathMatches(*textureReference, relativePath, directory);
-        const bool matchesNormal =
-            normalReference && AssetPathMatches(*normalReference, relativePath, directory);
-        const bool matchesRoughness =
-            roughnessReference && AssetPathMatches(*roughnessReference, relativePath, directory);
-        const bool matchesMetallic =
-            metallicReference && AssetPathMatches(*metallicReference, relativePath, directory);
-        const bool matchesScript = std::ranges::any_of(
-            entity.scripts, [&](const BehaviorComponent& script) {
-                const std::optional<std::filesystem::path> referenced =
-                    AssetRelativeFromReference(script.scriptAssetPath);
-                return referenced && AssetPathMatches(*referenced, relativePath, directory);
-            });
-        const std::optional<std::filesystem::path> audioReference =
-            entity.audioSource
-                ? AssetRelativeFromReference(entity.audioSource->clipPath)
-                : std::nullopt;
-        const bool matchesAudio =
-            audioReference && AssetPathMatches(*audioReference, relativePath, directory);
-        const std::optional<std::filesystem::path> imageReference =
-            entity.image
-                ? AssetRelativeFromReference(entity.image->texturePath)
-                : std::nullopt;
-        const bool matchesImage =
-            imageReference &&
-            AssetPathMatches(*imageReference, relativePath, directory);
-        const std::optional<std::filesystem::path> fontReference =
-            entity.text
-                ? AssetRelativeFromReference(entity.text->fontPath)
-                : std::nullopt;
-        const bool matchesFont =
-            fontReference &&
-            AssetPathMatches(*fontReference, relativePath, directory);
-        if (!matchesModel && !matchesTexture && !matchesNormal && !matchesRoughness &&
-            !matchesMetallic && !matchesScript && !matchesAudio &&
-            !matchesImage && !matchesFont) {
+        if (!EntityReferencesAsset(entity, relativePath, directory)) {
             continue;
         }
         hierarchySelection_.insert(entity.id);
@@ -593,72 +584,10 @@ bool EditorScene::IsAssetReferenced(const std::filesystem::path& relativePath,
 
 size_t EditorScene::CountAssetReferences(const std::filesystem::path& relativePath,
                                          bool directory) const {
-    size_t references = 0;
-    for (const WorldEntity& entity : world_.Entities()) {
-        bool referencedByEntity = false;
-        if (entity.meshRenderer && entity.meshRenderer->sourceType == MeshSourceType::Model) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.meshRenderer->modelPath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.materialOverride) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.materialOverride->baseColorTexturePath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.materialOverride) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.materialOverride->roughnessTexturePath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.materialOverride) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.materialOverride->metallicTexturePath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.materialOverride) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.materialOverride->normalTexturePath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity) {
-            referencedByEntity = std::ranges::any_of(
-                entity.scripts, [&](const BehaviorComponent& script) {
-                    const std::optional<std::filesystem::path> referenced =
-                        AssetRelativeFromReference(script.scriptAssetPath);
-                    return referenced &&
-                           AssetPathMatches(*referenced, relativePath, directory);
-                });
-        }
-        if (!referencedByEntity && entity.audioSource) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.audioSource->clipPath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.image) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.image->texturePath);
-            referencedByEntity =
-                referenced && AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (!referencedByEntity && entity.text) {
-            const std::optional<std::filesystem::path> referenced =
-                AssetRelativeFromReference(entity.text->fontPath);
-            referencedByEntity =
-                referenced &&
-                AssetPathMatches(*referenced, relativePath, directory);
-        }
-        if (referencedByEntity) {
-            ++references;
-        }
-    }
-    return references;
+    return static_cast<size_t>(std::ranges::count_if(
+        world_.Entities(), [&](const WorldEntity& entity) {
+            return EntityReferencesAsset(entity, relativePath, directory);
+        }));
 }
 
 size_t EditorScene::UpdateAssetReferences(const std::filesystem::path& oldRelativePath,

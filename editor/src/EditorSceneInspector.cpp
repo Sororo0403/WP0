@@ -162,122 +162,129 @@ void EditorScene::DrawScriptsInspector(WorldEntity* entity) {
 bool EditorScene::DrawScriptEntryInspector(WorldEntity* entity, size_t scriptIndex) {
     ImGui::PushID(static_cast<int>(scriptIndex));
     ImGui::SeparatorText("Script");
+    if (DrawScriptOrderControls(entity, scriptIndex)) {
+        ImGui::PopID();
+        return true;
+    }
+    ImGui::TextDisabled("Execution Order: %zu", scriptIndex + 1u);
+    BehaviorComponent& behavior = entity->scripts[scriptIndex];
+    const EntityId selectionBefore = selection_;
+    std::string before = WorldSerializer::Serialize(world_);
+    if (ImGui::Checkbox("Enabled", &behavior.enabled)) {
+        RecordImmediateEdit("Toggle Script", std::move(before), selectionBefore);
+    }
+    DrawScriptAssetPicker(behavior, scriptIndex);
+    ImGui::TextDisabled("Runtime type: %s", behavior.type.empty() ? "None" : behavior.type.c_str());
+    DrawScriptRequirements(entity, behavior, selectionBefore);
+    DrawScriptPropertiesInspector(entity, behavior, selectionBefore);
+    if (behavior.type == "FirstPersonController" && !entity->characterController) {
+        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.25f, 1.0f),
+                           "Character Controller is required for collision movement.");
+    }
+    ImGui::PopID();
+    return false;
+}
+
+bool EditorScene::DrawScriptOrderControls(WorldEntity* entity, size_t scriptIndex) {
     if (ImGui::Button("Remove Script")) {
         const std::string before = WorldSerializer::Serialize(world_);
         const EntityId selectionBefore = selection_;
         entity->scripts.erase(entity->scripts.begin() + static_cast<std::ptrdiff_t>(scriptIndex));
         RecordImmediateEdit("Remove Script", before, selectionBefore);
         status_ = "Removed Script component.";
-        ImGui::PopID();
         return true;
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(scriptIndex == 0u);
+    const bool moveUp = ImGui::Button("Move Up");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(scriptIndex + 1u >= entity->scripts.size());
+    const bool moveDown = ImGui::Button("Move Down");
+    ImGui::EndDisabled();
+    if (!moveUp && !moveDown) {
+        return false;
+    }
+    const std::string before = WorldSerializer::Serialize(world_);
+    const EntityId selectionBefore = selection_;
+    const size_t destination = moveUp ? scriptIndex - 1u : scriptIndex + 1u;
+    std::swap(entity->scripts[scriptIndex], entity->scripts[destination]);
+    RecordImmediateEdit("Reorder Scripts", before, selectionBefore);
+    status_ = "Changed Script execution order.";
+    return true;
+}
+
+void EditorScene::DrawScriptAssetPicker(const BehaviorComponent& behavior, size_t scriptIndex) {
+    const std::string scriptLabel = behavior.scriptAssetPath.empty()
+                                        ? "None (drop a Script asset)"
+                                        : behavior.scriptAssetPath;
+    ImGui::TextUnformatted("Script");
+    ImGui::SameLine();
+    if (ImGui::Button(scriptLabel.c_str(), {-FLT_MIN, 0.0f})) {
+        ImGui::OpenPopup("ScriptAssetPicker");
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
+            payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
+            static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
+            AssignScriptAsset(selection_, static_cast<const char*>(payload->Data), scriptIndex);
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (!ImGui::BeginPopup("ScriptAssetPicker")) {
+        return;
+    }
+    if (ImGui::MenuItem("None", nullptr, behavior.scriptAssetPath.empty(),
+                        !behavior.scriptAssetPath.empty())) {
+        ClearScriptAsset(selection_, scriptIndex);
+    }
+    ImGui::Separator();
+    if (scriptAssets_.empty()) {
+        ImGui::TextDisabled("No Script assets found.");
     } else {
-        ImGui::SameLine();
-        ImGui::BeginDisabled(scriptIndex == 0u);
-        const bool moveUp = ImGui::Button("Move Up");
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        ImGui::BeginDisabled(scriptIndex + 1u >= entity->scripts.size());
-        const bool moveDown = ImGui::Button("Move Down");
-        ImGui::EndDisabled();
-        if (moveUp || moveDown) {
-            const std::string before = WorldSerializer::Serialize(world_);
-            const EntityId selectionBefore = selection_;
-            const size_t destination = moveUp ? scriptIndex - 1u : scriptIndex + 1u;
-            std::swap(entity->scripts[scriptIndex], entity->scripts[destination]);
-            RecordImmediateEdit("Reorder Scripts", before, selectionBefore);
-            status_ = "Changed Script execution order.";
-            ImGui::PopID();
-            return true;
-        }
-        ImGui::TextDisabled("Execution Order: %zu", scriptIndex + 1u);
-        BehaviorComponent& behavior = entity->scripts[scriptIndex];
-        const EntityId selectionBefore = selection_;
-        std::string before = WorldSerializer::Serialize(world_);
-        if (ImGui::Checkbox("Enabled", &behavior.enabled)) {
-            RecordImmediateEdit("Toggle Script", std::move(before), selectionBefore);
-        }
-        const std::string scriptLabel = behavior.scriptAssetPath.empty()
-                                            ? "None (drop a Script asset)"
-                                            : behavior.scriptAssetPath;
-        ImGui::TextUnformatted("Script");
-        ImGui::SameLine();
-        if (ImGui::Button(scriptLabel.c_str(), {-FLT_MIN, 0.0f})) {
-            ImGui::OpenPopup("ScriptAssetPicker");
-        }
-        if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetDragPayload);
-                payload != nullptr && payload->IsDelivery() && payload->DataSize > 1 &&
-                static_cast<const char*>(payload->Data)[payload->DataSize - 1] == '\0') {
-                AssignScriptAsset(selection_, static_cast<const char*>(payload->Data), scriptIndex);
+        for (const std::filesystem::path& scriptAsset : scriptAssets_) {
+            const std::string assetPath = scriptAsset.generic_string();
+            const std::string assetReference =
+                "asset://" + scriptAsset.lexically_relative("assets").generic_string();
+            const std::string label = scriptAsset.filename().generic_string() + "##" + assetPath;
+            if (ImGui::MenuItem(label.c_str(), nullptr,
+                                behavior.scriptAssetPath == assetReference)) {
+                AssignScriptAsset(selection_, scriptAsset, scriptIndex);
             }
-            ImGui::EndDragDropTarget();
-        }
-        if (ImGui::BeginPopup("ScriptAssetPicker")) {
-            if (ImGui::MenuItem("None", nullptr, behavior.scriptAssetPath.empty(),
-                                !behavior.scriptAssetPath.empty())) {
-                ClearScriptAsset(selection_, scriptIndex);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", assetPath.c_str());
             }
-            ImGui::Separator();
-            if (scriptAssets_.empty()) {
-                ImGui::TextDisabled("No Script assets found.");
-            } else {
-                for (const std::filesystem::path& scriptAsset : scriptAssets_) {
-                    const std::string assetPath = scriptAsset.generic_string();
-                    const std::string assetReference =
-                        "asset://" + scriptAsset.lexically_relative("assets").generic_string();
-                    const std::string label =
-                        scriptAsset.filename().generic_string() + "##" + assetPath;
-                    if (ImGui::MenuItem(label.c_str(), nullptr,
-                                        behavior.scriptAssetPath == assetReference)) {
-                        AssignScriptAsset(selection_, scriptAsset, scriptIndex);
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%s", assetPath.c_str());
-                    }
-                }
-            }
-            ImGui::EndPopup();
-        }
-        ImGui::TextDisabled("Runtime type: %s",
-                            behavior.type.empty() ? "None" : behavior.type.c_str());
-        if (behavior.type.empty() || behavior.scriptAssetPath.empty()) {
-            ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f}, "Assign a C++ Script asset.");
-        } else {
-            std::string requirementError;
-            if (!behaviorRegistry_.ValidateRequirements(behavior.type, *entity,
-                                                        &requirementError)) {
-                ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s", requirementError.c_str());
-                const BehaviorRequirements* requirements =
-                    behaviorRegistry_.Requirements(behavior.type);
-                if (requirements != nullptr && ImGui::Button("Add Required Components")) {
-                    const std::string requirementBefore = WorldSerializer::Serialize(world_);
-                    if (behaviorRegistry_.EnsureRequirements(behavior.type, *entity)) {
-                        RecordImmediateEdit("Add Script Requirements", requirementBefore,
-                                            selectionBefore);
-                        status_ = "Added required components for Script.";
-                    } else {
-                        status_ = "Script requirements could not be added.";
-                    }
-                }
-            } else {
-                const std::string_view registeredSource =
-                    behaviorRegistry_.SourceAsset(behavior.type);
-                if (registeredSource.empty() || registeredSource != behavior.scriptAssetPath) {
-                    ImGui::TextColored(
-                        {1.0f, 0.45f, 0.35f, 1.0f},
-                        "The Script asset does not match its registered runtime type.");
-                }
-            }
-        }
-        DrawScriptPropertiesInspector(entity, behavior, selectionBefore);
-        if (behavior.type == "FirstPersonController" && !entity->characterController) {
-            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.25f, 1.0f),
-                               "Character Controller is required for collision movement.");
         }
     }
-    ImGui::PopID();
+    ImGui::EndPopup();
+}
 
-    return false;
+void EditorScene::DrawScriptRequirements(WorldEntity* entity, BehaviorComponent& behavior,
+                                         EntityId selectionBefore) {
+    if (behavior.type.empty() || behavior.scriptAssetPath.empty()) {
+        ImGui::TextColored({1.0f, 0.72f, 0.25f, 1.0f}, "Assign a C++ Script asset.");
+        return;
+    }
+    std::string requirementError;
+    if (!behaviorRegistry_.ValidateRequirements(behavior.type, *entity, &requirementError)) {
+        ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s", requirementError.c_str());
+        const BehaviorRequirements* requirements = behaviorRegistry_.Requirements(behavior.type);
+        if (requirements != nullptr && ImGui::Button("Add Required Components")) {
+            const std::string before = WorldSerializer::Serialize(world_);
+            if (behaviorRegistry_.EnsureRequirements(behavior.type, *entity)) {
+                RecordImmediateEdit("Add Script Requirements", before, selectionBefore);
+                status_ = "Added required components for Script.";
+            } else {
+                status_ = "Script requirements could not be added.";
+            }
+        }
+        return;
+    }
+    const std::string_view registeredSource = behaviorRegistry_.SourceAsset(behavior.type);
+    if (registeredSource.empty() || registeredSource != behavior.scriptAssetPath) {
+        ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f},
+                           "The Script asset does not match its registered runtime type.");
+    }
 }
 
 void EditorScene::DrawScriptPropertiesInspector(WorldEntity* entity, BehaviorComponent& behavior,

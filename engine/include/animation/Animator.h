@@ -31,5 +31,4 @@ private:
     /// <summary>
     /// モデルをバインドポーズへ戻す
     /// </summary>
-    static void ApplyBindPose(Model& model);
 };

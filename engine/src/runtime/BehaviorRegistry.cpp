@@ -4,7 +4,77 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <utility>
+
+namespace {
+bool IsBoundedString(const std::string& value, size_t maximumLength) {
+    return value.size() <= maximumLength &&
+           value.find('\0') == std::string::npos;
+}
+
+bool IsValidFloatDefinition(const ScriptPropertyDefinition& property) {
+    return std::isfinite(property.defaultFloat) &&
+           std::isfinite(property.minimumFloat) &&
+           std::isfinite(property.maximumFloat) &&
+           property.minimumFloat <= property.maximumFloat &&
+           property.defaultFloat >= property.minimumFloat &&
+           property.defaultFloat <= property.maximumFloat;
+}
+
+bool IsValidIntegerDefinition(const ScriptPropertyDefinition& property) {
+    return property.minimumInteger <= property.maximumInteger &&
+           property.defaultInteger >= property.minimumInteger &&
+           property.defaultInteger <= property.maximumInteger;
+}
+
+bool IsValidVector3Definition(const ScriptPropertyDefinition& property) {
+    return std::isfinite(property.defaultVector3.x) &&
+           std::isfinite(property.defaultVector3.y) &&
+           std::isfinite(property.defaultVector3.z);
+}
+
+bool IsValidInputActionKind(const ScriptPropertyDefinition& property) {
+    if (property.inputActionKind < ScriptInputActionKind::Any ||
+        property.inputActionKind > ScriptInputActionKind::Axis) {
+        return false;
+    }
+    return property.type == ScriptPropertyType::InputAction ||
+           property.inputActionKind == ScriptInputActionKind::Any;
+}
+
+bool IsValidDefaultValue(const ScriptPropertyDefinition& property) {
+    switch (property.type) {
+    case ScriptPropertyType::Float:
+        return IsValidFloatDefinition(property);
+    case ScriptPropertyType::Integer:
+        return IsValidIntegerDefinition(property);
+    case ScriptPropertyType::Vector3:
+        return IsValidVector3Definition(property);
+    case ScriptPropertyType::String:
+    case ScriptPropertyType::AnimationClip:
+    case ScriptPropertyType::Scene:
+        return IsBoundedString(property.defaultString, 1024u);
+    case ScriptPropertyType::InputAction:
+        return IsBoundedString(property.defaultString, 64u);
+    case ScriptPropertyType::Entity:
+    case ScriptPropertyType::Boolean:
+        return true;
+    }
+    return false;
+}
+
+bool IsValidPropertyDefinition(
+    const ScriptPropertyDefinition& property,
+    const std::vector<ScriptPropertyDefinition>& properties) {
+    return !property.name.empty() && IsBoundedString(property.name, 128u) &&
+           std::ranges::count(properties, property.name,
+                              &ScriptPropertyDefinition::name) == 1 &&
+           property.type >= ScriptPropertyType::Float &&
+           property.type <= ScriptPropertyType::Scene &&
+           IsValidDefaultValue(property) && IsValidInputActionKind(property);
+}
+} // namespace
 
 bool BehaviorRegistry::Register(std::string type, Factory factory,
                                 BehaviorRequirements requirements,
@@ -12,53 +82,11 @@ bool BehaviorRegistry::Register(std::string type, Factory factory,
                                 std::vector<ScriptPropertyDefinition> properties) {
     const bool invalidProperty = std::ranges::any_of(
         properties, [&properties](const ScriptPropertyDefinition& property) {
-            const bool duplicate = std::ranges::count(
-                                       properties, property.name,
-                                       &ScriptPropertyDefinition::name) != 1;
-            const bool invalidFloat =
-                property.type == ScriptPropertyType::Float &&
-                (!std::isfinite(property.defaultFloat) ||
-                 !std::isfinite(property.minimumFloat) ||
-                 !std::isfinite(property.maximumFloat) ||
-                 property.minimumFloat > property.maximumFloat ||
-                 property.defaultFloat < property.minimumFloat ||
-                 property.defaultFloat > property.maximumFloat);
-            const bool invalidInteger =
-                property.type == ScriptPropertyType::Integer &&
-                (property.minimumInteger > property.maximumInteger ||
-                 property.defaultInteger < property.minimumInteger ||
-                 property.defaultInteger > property.maximumInteger);
-            const bool invalidVector3 =
-                property.type == ScriptPropertyType::Vector3 &&
-                (!std::isfinite(property.defaultVector3.x) ||
-                 !std::isfinite(property.defaultVector3.y) ||
-                 !std::isfinite(property.defaultVector3.z));
-            const bool invalidString =
-                (property.type == ScriptPropertyType::String ||
-                 property.type == ScriptPropertyType::AnimationClip ||
-                 property.type == ScriptPropertyType::Scene) &&
-                (property.defaultString.size() > 1024u ||
-                 property.defaultString.find('\0') != std::string::npos);
-            const bool invalidInputAction =
-                property.type == ScriptPropertyType::InputAction &&
-                (property.defaultString.size() > 64u ||
-                 property.defaultString.find('\0') != std::string::npos);
-            const bool invalidInputActionKind =
-                property.inputActionKind < ScriptInputActionKind::Any ||
-                property.inputActionKind > ScriptInputActionKind::Axis ||
-                (property.type != ScriptPropertyType::InputAction &&
-                 property.inputActionKind != ScriptInputActionKind::Any);
-            return property.name.empty() || property.name.size() > 128u ||
-                   property.name.find('\0') != std::string::npos || duplicate ||
-                   property.type < ScriptPropertyType::Float ||
-                   property.type > ScriptPropertyType::Scene || invalidFloat ||
-                   invalidInteger || invalidVector3 || invalidString ||
-                   invalidInputAction || invalidInputActionKind;
+            return !IsValidPropertyDefinition(property, properties);
         });
-    if (type.empty() || type.size() > 128u || type.find('\0') != std::string::npos ||
-        !factory || sourceAsset.size() > 1024u ||
-        sourceAsset.find('\0') != std::string::npos ||
-        properties.size() > 128u || invalidProperty ||
+    if (type.empty() || !IsBoundedString(type, 128u) || !factory ||
+        !IsBoundedString(sourceAsset, 1024u) || properties.size() > 128u ||
+        invalidProperty ||
         std::ranges::any_of(entries_, [&type](const Entry& entry) {
             return entry.type == type;
         }) ||
@@ -81,9 +109,8 @@ std::unique_ptr<Behavior> BehaviorRegistry::Create(std::string_view type) const 
 std::vector<std::string_view> BehaviorRegistry::Types() const {
     std::vector<std::string_view> types;
     types.reserve(entries_.size());
-    for (const Entry& entry : entries_) {
-        types.push_back(entry.type);
-    }
+    std::ranges::transform(entries_, std::back_inserter(types),
+                           [](const Entry& entry) { return std::string_view(entry.type); });
     return types;
 }
 

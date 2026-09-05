@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <exception>
 #include <new>
+#include <numeric>
 #include <vector>
 
 namespace {
@@ -215,139 +216,166 @@ float GetAdvance(FontManager& fontManager, FontHandle font,
     return glyph != nullptr ? glyph->advanceX : 0.0f;
 }
 
-TextLayout CalculateTextLayout(
-    FontManager& fontManager, FontHandle font, float pixelSize,
-    const std::vector<char32_t>& codepoints, float wrapWidth) {
-    TextLayout layout;
-    try {
-        layout.lineWidths.reserve(
-            1u + static_cast<size_t>(std::count(codepoints.begin(),
-                                                codepoints.end(), U'\n')));
-        layout.lineWidths.push_back(0.0f);
-        layout.glyphs.reserve(codepoints.size());
-    } catch (const std::exception&) {
-        return {};
+class TextLayoutBuilder {
+public:
+    TextLayoutBuilder(FontManager& fontManager, FontHandle font, float pixelSize,
+                      const std::vector<char32_t>& codepoints, float wrapWidth)
+        : fontManager_(fontManager), font_(font), pixelSize_(pixelSize),
+          codepoints_(codepoints), wrapWidth_(wrapWidth) {}
+
+    TextLayout Build() {
+        if (!Initialize()) {
+            return {};
+        }
+        size_t index = 0u;
+        while (index < codepoints_.size()) {
+            const char32_t codepoint = codepoints_[index];
+            if (codepoint == U'\r') {
+                ++index;
+            } else if (codepoint == U'\n') {
+                if (!AppendLine()) {
+                    return {};
+                }
+                ++index;
+            } else if (IsWrapWhitespace(codepoint)) {
+                if (!ConsumeWhitespace(index)) {
+                    return {};
+                }
+            } else if (!ConsumeWord(index)) {
+                return {};
+            }
+        }
+        return std::move(layout_);
     }
 
-    const auto appendLine = [&layout]() {
+private:
+    bool Initialize() {
         try {
-            layout.lineWidths.push_back(0.0f);
+            layout_.lineWidths.reserve(
+                1u + static_cast<size_t>(std::count(codepoints_.begin(),
+                                                    codepoints_.end(), U'\n')));
+            layout_.lineWidths.push_back(0.0f);
+            layout_.glyphs.reserve(codepoints_.size());
             return true;
         } catch (const std::exception&) {
             return false;
         }
-    };
-    const auto appendGlyph =
-        [&layout, &fontManager, font, pixelSize](char32_t codepoint) {
-            const float advance =
-                GetAdvance(fontManager, font, pixelSize, codepoint);
-            try {
-                layout.glyphs.push_back(
-                    {codepoint, layout.lineWidths.size() - 1u,
-                     layout.lineWidths.back()});
-            } catch (const std::exception&) {
+    }
+
+    bool AppendLine() {
+        try {
+            layout_.lineWidths.push_back(0.0f);
+            return true;
+        } catch (const std::exception&) {
+            return false;
+        }
+    }
+
+    bool AppendGlyph(char32_t codepoint) {
+        const float advance = GetAdvance(fontManager_, font_, pixelSize_, codepoint);
+        try {
+            layout_.glyphs.push_back(
+                {codepoint, layout_.lineWidths.size() - 1u,
+                 layout_.lineWidths.back()});
+        } catch (const std::exception&) {
+            return false;
+        }
+        layout_.lineWidths.back() += advance;
+        return true;
+    }
+
+    float MeasureRange(size_t begin, size_t end) {
+        return std::accumulate(
+            codepoints_.begin() + static_cast<std::ptrdiff_t>(begin),
+            codepoints_.begin() + static_cast<std::ptrdiff_t>(end), 0.0f,
+            [this](float width, char32_t codepoint) {
+                return width + GetAdvance(fontManager_, font_, pixelSize_, codepoint);
+            });
+    }
+
+    size_t FindWhitespaceEnd(size_t begin) const {
+        size_t end = begin;
+        while (end < codepoints_.size() && IsWrapWhitespace(codepoints_[end])) {
+            ++end;
+        }
+        return end;
+    }
+
+    size_t FindWordEnd(size_t begin) const {
+        size_t end = begin;
+        while (end < codepoints_.size() && codepoints_[end] != U'\r' &&
+               codepoints_[end] != U'\n' && !IsWrapWhitespace(codepoints_[end])) {
+            ++end;
+        }
+        return end;
+    }
+
+    bool AppendRange(size_t& begin, size_t end) {
+        while (begin < end) {
+            if (!AppendGlyph(codepoints_[begin])) {
                 return false;
             }
-            layout.lineWidths.back() += advance;
+            ++begin;
+        }
+        return true;
+    }
+
+    bool ConsumeWhitespace(size_t& index) {
+        const size_t whitespaceEnd = FindWhitespaceEnd(index);
+        if (wrapWidth_ <= 0.0f) {
+            return AppendRange(index, whitespaceEnd);
+        }
+        const size_t wordEnd = FindWordEnd(whitespaceEnd);
+        if (wordEnd == whitespaceEnd) {
+            index = whitespaceEnd;
             return true;
-        };
-    const auto measureRange =
-        [&fontManager, font, pixelSize,
-         &codepoints](size_t begin, size_t end) {
-            float width = 0.0f;
-            for (size_t index = begin; index < end; ++index) {
-                width += GetAdvance(fontManager, font, pixelSize,
-                                    codepoints[index]);
-            }
-            return width;
-        };
-
-    size_t index = 0u;
-    while (index < codepoints.size()) {
-        const char32_t codepoint = codepoints[index];
-        if (codepoint == U'\r') {
-            ++index;
-            continue;
         }
-        if (codepoint == U'\n') {
-            if (!appendLine()) {
-                return {};
+        const float requiredWidth = MeasureRange(index, whitespaceEnd) +
+                                    MeasureRange(whitespaceEnd, wordEnd);
+        if (layout_.lineWidths.back() + requiredWidth > wrapWidth_) {
+            if (layout_.lineWidths.back() > 0.0f && !AppendLine()) {
+                return false;
             }
-            ++index;
-            continue;
+            index = whitespaceEnd;
+            return true;
         }
+        return AppendRange(index, whitespaceEnd);
+    }
 
-        if (IsWrapWhitespace(codepoint)) {
-            size_t whitespaceEnd = index;
-            while (whitespaceEnd < codepoints.size() &&
-                   IsWrapWhitespace(codepoints[whitespaceEnd])) {
-                ++whitespaceEnd;
-            }
-            if (wrapWidth <= 0.0f) {
-                while (index < whitespaceEnd) {
-                    if (!appendGlyph(codepoints[index++])) {
-                        return {};
-                    }
-                }
-                continue;
-            }
-
-            size_t wordEnd = whitespaceEnd;
-            while (wordEnd < codepoints.size() &&
-                   codepoints[wordEnd] != U'\r' &&
-                   codepoints[wordEnd] != U'\n' &&
-                   !IsWrapWhitespace(codepoints[wordEnd])) {
-                ++wordEnd;
-            }
-            if (wordEnd == whitespaceEnd) {
-                index = whitespaceEnd;
-                continue;
-            }
-            const float requiredWidth =
-                measureRange(index, whitespaceEnd) +
-                measureRange(whitespaceEnd, wordEnd);
-            if (layout.lineWidths.back() + requiredWidth > wrapWidth) {
-                if (layout.lineWidths.back() > 0.0f && !appendLine()) {
-                    return {};
-                }
-                index = whitespaceEnd;
-                continue;
-            }
-            while (index < whitespaceEnd) {
-                if (!appendGlyph(codepoints[index++])) {
-                    return {};
-                }
-            }
-            continue;
-        }
-
-        size_t wordEnd = index;
-        while (wordEnd < codepoints.size() &&
-               codepoints[wordEnd] != U'\r' &&
-               codepoints[wordEnd] != U'\n' &&
-               !IsWrapWhitespace(codepoints[wordEnd])) {
-            ++wordEnd;
-        }
-        const float wordWidth = measureRange(index, wordEnd);
-        if (wrapWidth > 0.0f && layout.lineWidths.back() > 0.0f &&
-            layout.lineWidths.back() + wordWidth > wrapWidth &&
-            !appendLine()) {
-            return {};
+    bool ConsumeWord(size_t& index) {
+        const size_t wordEnd = FindWordEnd(index);
+        const float wordWidth = MeasureRange(index, wordEnd);
+        if (wrapWidth_ > 0.0f && layout_.lineWidths.back() > 0.0f &&
+            layout_.lineWidths.back() + wordWidth > wrapWidth_ && !AppendLine()) {
+            return false;
         }
         while (index < wordEnd) {
             const float advance =
-                GetAdvance(fontManager, font, pixelSize, codepoints[index]);
-            if (wrapWidth > 0.0f && layout.lineWidths.back() > 0.0f &&
-                layout.lineWidths.back() + advance > wrapWidth &&
-                !appendLine()) {
-                return {};
+                GetAdvance(fontManager_, font_, pixelSize_, codepoints_[index]);
+            if (wrapWidth_ > 0.0f && layout_.lineWidths.back() > 0.0f &&
+                layout_.lineWidths.back() + advance > wrapWidth_ && !AppendLine()) {
+                return false;
             }
-            if (!appendGlyph(codepoints[index++])) {
-                return {};
+            if (!AppendGlyph(codepoints_[index])) {
+                return false;
             }
+            ++index;
         }
+        return true;
     }
-    return layout;
+
+    FontManager& fontManager_;
+    FontHandle font_{};
+    float pixelSize_ = 0.0f;
+    const std::vector<char32_t>& codepoints_;
+    float wrapWidth_ = 0.0f;
+    TextLayout layout_;
+};
+
+TextLayout CalculateTextLayout(
+    FontManager& fontManager, FontHandle font, float pixelSize,
+    const std::vector<char32_t>& codepoints, float wrapWidth) {
+    return TextLayoutBuilder(fontManager, font, pixelSize, codepoints, wrapWidth).Build();
 }
 
 float ResolveHorizontalAlignment(TextHorizontalAlignment alignment) {

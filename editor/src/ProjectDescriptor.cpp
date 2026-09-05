@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <system_error>
 
 namespace {
@@ -76,6 +77,133 @@ std::string CreateProjectId() {
     });
     return result;
 }
+
+bool HasRequiredManifestFields(const nlohmann::json& json) {
+    return json.is_object() && json.contains("schemaVersion") &&
+           json["schemaVersion"].is_number_unsigned() && json.contains("projectId") &&
+           json["projectId"].is_string() && json.contains("name") &&
+           json["name"].is_string() && json.contains("assetRoot") &&
+           json["assetRoot"].is_string() && json.contains("sceneRoot") &&
+           json["sceneRoot"].is_string() && json.contains("startupScene") &&
+           json["startupScene"].is_string();
+}
+
+bool DecodeSchemaVersion(const nlohmann::json& json, uint32_t& schemaVersion) {
+    const uint64_t decoded = json["schemaVersion"].get<uint64_t>();
+    if (decoded > static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)())) {
+        return false;
+    }
+    schemaVersion = static_cast<uint32_t>(decoded);
+    return true;
+}
+
+bool ResolveManifestPaths(const nlohmann::json& json,
+                          const std::filesystem::path& manifest,
+                          ProjectDescriptor& descriptor) {
+    descriptor.manifestPath = std::filesystem::absolute(manifest).lexically_normal();
+    descriptor.root = descriptor.manifestPath.parent_path();
+    const auto assetRelative = std::filesystem::path(json["assetRoot"].get<std::string>());
+    const auto sceneRelative = std::filesystem::path(json["sceneRoot"].get<std::string>());
+    const auto startupRelative =
+        std::filesystem::path(json["startupScene"].get<std::string>());
+    if (!IsSafeRelative(assetRelative) || !IsSafeRelative(sceneRelative) ||
+        !IsSafeRelative(startupRelative) || startupRelative.extension() != L".likescene") {
+        return false;
+    }
+    descriptor.assetRoot = (descriptor.root / assetRelative).lexically_normal();
+    descriptor.sceneRoot = (descriptor.root / sceneRelative).lexically_normal();
+    descriptor.startupScene = (descriptor.root / startupRelative).lexically_normal();
+    return true;
+}
+
+bool HasSafeResolvedPaths(const ProjectDescriptor& descriptor) {
+    return IsInside(descriptor.root, descriptor.assetRoot) &&
+           IsInside(descriptor.root, descriptor.sceneRoot) &&
+           IsInside(descriptor.sceneRoot, descriptor.startupScene);
+}
+
+struct ProjectCreationPaths {
+    std::filesystem::path manifest;
+    std::filesystem::path temporary;
+    std::filesystem::path ignore;
+    std::filesystem::path assets;
+    std::filesystem::path scenes;
+};
+
+bool BuildProjectCreationPaths(const std::filesystem::path& root,
+                               ProjectCreationPaths& paths) {
+    try {
+        const std::filesystem::path manifestName =
+            root.filename().wstring() + L".likeproject";
+        paths.manifest = root / manifestName;
+        paths.temporary = paths.manifest.wstring() + L".tmp";
+        paths.ignore = root / L".gitignore";
+        paths.assets = root / L"assets";
+        paths.scenes = root / L"scenes";
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+void CleanupProjectCreation(const ProjectCreationPaths& paths) {
+    std::error_code error;
+    std::filesystem::remove(paths.temporary, error);
+    std::filesystem::remove(paths.ignore, error);
+    std::filesystem::remove(paths.scenes, error);
+    std::filesystem::remove(paths.assets, error);
+}
+
+bool WriteTextFile(const std::filesystem::path& path, std::string_view text) {
+    try {
+        std::ofstream stream(path, std::ios::trunc);
+        stream << text;
+        stream.close();
+        return static_cast<bool>(stream);
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool WriteJsonFile(const std::filesystem::path& path, const nlohmann::json& json) {
+    try {
+        return WriteTextFile(path, json.dump(2) + '\n');
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool ResolveEmptyProjectRoot(const std::filesystem::path& directory,
+                             std::filesystem::path& root, std::string& error) {
+    std::error_code filesystemError;
+    root = std::filesystem::absolute(directory, filesystemError).lexically_normal();
+    if (filesystemError || !std::filesystem::is_directory(root, filesystemError) ||
+        filesystemError) {
+        error = "Project directory does not exist.";
+        return false;
+    }
+    if (!std::filesystem::is_empty(root, filesystemError) || filesystemError) {
+        error = "Select a new or empty directory for the project.";
+        return false;
+    }
+    return true;
+}
+
+bool CreateProjectDirectories(const ProjectCreationPaths& paths, std::string& error) {
+    std::error_code filesystemError;
+    std::filesystem::create_directory(paths.assets, filesystemError);
+    if (filesystemError) {
+        error = "Could not create the assets directory.";
+        return false;
+    }
+    std::filesystem::create_directory(paths.scenes, filesystemError);
+    if (!filesystemError) {
+        return true;
+    }
+    CleanupProjectCreation(paths);
+    error = "Could not create the scenes directory.";
+    return false;
+}
 } // namespace
 
 bool ProjectDescriptor::Load(const std::filesystem::path& path, ProjectDescriptor& descriptor,
@@ -93,40 +221,27 @@ bool ProjectDescriptor::Load(const std::filesystem::path& path, ProjectDescripto
     nlohmann::json json;
     try {
         stream >> json;
-        if (!json.is_object() || !json.contains("schemaVersion") ||
-            !json["schemaVersion"].is_number_unsigned() || !json.contains("projectId") ||
-            !json["projectId"].is_string() || !json.contains("name") ||
-            !json["name"].is_string() || !json.contains("assetRoot") ||
-            !json["assetRoot"].is_string() || !json.contains("sceneRoot") ||
-            !json["sceneRoot"].is_string() || !json.contains("startupScene") ||
-            !json["startupScene"].is_string()) {
+        if (!HasRequiredManifestFields(json)) {
             error = "Project manifest has missing or invalid fields.";
             return false;
         }
-        descriptor.schemaVersion = json["schemaVersion"].get<uint32_t>();
-        descriptor.projectId = json["projectId"].get<std::string>();
-        descriptor.name = json["name"].get<std::string>();
-        descriptor.manifestPath = std::filesystem::absolute(manifest).lexically_normal();
-        descriptor.root = descriptor.manifestPath.parent_path();
-        const auto assetRelative = std::filesystem::path(json["assetRoot"].get<std::string>());
-        const auto sceneRelative = std::filesystem::path(json["sceneRoot"].get<std::string>());
-        const auto startupRelative = std::filesystem::path(json["startupScene"].get<std::string>());
-        if (descriptor.schemaVersion != 1u || descriptor.projectId.empty() ||
-            descriptor.name.empty() || !IsSafeRelative(assetRelative) ||
-            !IsSafeRelative(sceneRelative) || !IsSafeRelative(startupRelative) ||
-            startupRelative.extension() != L".likescene") {
+        ProjectDescriptor candidate;
+        if (!DecodeSchemaVersion(json, candidate.schemaVersion)) {
             error = "Project manifest contains unsupported or unsafe values.";
             return false;
         }
-        descriptor.assetRoot = (descriptor.root / assetRelative).lexically_normal();
-        descriptor.sceneRoot = (descriptor.root / sceneRelative).lexically_normal();
-        descriptor.startupScene = (descriptor.root / startupRelative).lexically_normal();
-        if (!IsInside(descriptor.root, descriptor.assetRoot) ||
-            !IsInside(descriptor.root, descriptor.sceneRoot) ||
-            !IsInside(descriptor.sceneRoot, descriptor.startupScene)) {
+        candidate.projectId = json["projectId"].get<std::string>();
+        candidate.name = json["name"].get<std::string>();
+        if (candidate.schemaVersion != 1u || candidate.projectId.empty() ||
+            candidate.name.empty() || !ResolveManifestPaths(json, manifest, candidate)) {
+            error = "Project manifest contains unsupported or unsafe values.";
+            return false;
+        }
+        if (!HasSafeResolvedPaths(candidate)) {
             error = "Project paths escape the project directory.";
             return false;
         }
+        descriptor = std::move(candidate);
     } catch (const std::exception&) {
         error = "Project manifest is not valid JSON.";
         return false;
@@ -142,16 +257,8 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
         return false;
     }
 
-    std::error_code filesystemError;
-    const std::filesystem::path root = std::filesystem::absolute(directory, filesystemError)
-                                           .lexically_normal();
-    if (filesystemError || !std::filesystem::is_directory(root, filesystemError) ||
-        filesystemError) {
-        error = "Project directory does not exist.";
-        return false;
-    }
-    if (!std::filesystem::is_empty(root, filesystemError) || filesystemError) {
-        error = "Select a new or empty directory for the project.";
+    std::filesystem::path root;
+    if (!ResolveEmptyProjectRoot(directory, root, error)) {
         return false;
     }
 
@@ -160,18 +267,11 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
         error = "Could not generate a project identifier.";
         return false;
     }
-    std::filesystem::path manifestName;
-    try {
-        manifestName = root.filename().wstring() + L".likeproject";
-    } catch (const std::exception&) {
+    ProjectCreationPaths paths;
+    if (!BuildProjectCreationPaths(root, paths)) {
         error = "Project directory name is invalid.";
         return false;
     }
-    const std::filesystem::path manifest = root / manifestName;
-    const std::filesystem::path temporary = manifest.wstring() + L".tmp";
-    const std::filesystem::path ignore = root / L".gitignore";
-    const std::filesystem::path assets = root / L"assets";
-    const std::filesystem::path scenes = root / L"scenes";
     const nlohmann::json json = {
         {"schemaVersion", 1u},
         {"projectId", projectId},
@@ -182,54 +282,26 @@ bool ProjectDescriptor::Create(const std::filesystem::path& directory, const std
         {"engineVersion", "0.1.0"},
     };
 
-    std::filesystem::create_directory(assets, filesystemError);
-    if (filesystemError) {
-        error = "Could not create the assets directory.";
+    if (!CreateProjectDirectories(paths, error)) {
         return false;
     }
-    std::filesystem::create_directory(scenes, filesystemError);
-    if (filesystemError) {
-        std::filesystem::remove(assets, filesystemError);
-        error = "Could not create the scenes directory.";
-        return false;
-    }
-    try {
-        std::ofstream ignoreStream(ignore, std::ios::trunc);
-        ignoreStream << "/library/\n/build/\n";
-        ignoreStream.close();
-        if (!ignoreStream) {
-            throw std::ios_base::failure("project ignore write failed");
-        }
-    } catch (const std::exception&) {
-        std::filesystem::remove(scenes, filesystemError);
-        std::filesystem::remove(assets, filesystemError);
+    if (!WriteTextFile(paths.ignore, "/library/\n/build/\n")) {
+        CleanupProjectCreation(paths);
         error = "Could not write the project ignore file.";
         return false;
     }
-    try {
-        std::ofstream stream(temporary, std::ios::trunc);
-        stream << json.dump(2) << '\n';
-        stream.close();
-        if (!stream) {
-            throw std::ios_base::failure("project manifest write failed");
-        }
-    } catch (const std::exception&) {
-        std::filesystem::remove(temporary, filesystemError);
-        std::filesystem::remove(ignore, filesystemError);
-        std::filesystem::remove(scenes, filesystemError);
-        std::filesystem::remove(assets, filesystemError);
+    if (!WriteJsonFile(paths.temporary, json)) {
+        CleanupProjectCreation(paths);
         error = "Could not write the project manifest.";
         return false;
     }
-    if (!MoveFileExW(temporary.c_str(), manifest.c_str(), MOVEFILE_WRITE_THROUGH)) {
-        std::filesystem::remove(temporary, filesystemError);
-        std::filesystem::remove(ignore, filesystemError);
-        std::filesystem::remove(scenes, filesystemError);
-        std::filesystem::remove(assets, filesystemError);
+    if (!MoveFileExW(paths.temporary.c_str(), paths.manifest.c_str(),
+                     MOVEFILE_WRITE_THROUGH)) {
+        CleanupProjectCreation(paths);
         error = "Could not finish writing the project manifest.";
         return false;
     }
-    return Load(manifest, descriptor, error);
+    return Load(paths.manifest, descriptor, error);
 }
 
 bool ProjectDescriptor::SetStartupScene(const std::filesystem::path& project,

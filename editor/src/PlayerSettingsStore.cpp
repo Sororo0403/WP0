@@ -21,6 +21,48 @@ bool Validate(const PlayerSettings& settings, std::string& error) {
     error.clear();
     return true;
 }
+
+bool IsReadableSettingsFile(const std::filesystem::path& path, std::string& error) {
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(path, filesystemError) || filesystemError) {
+        error = "Player settings file is missing, invalid, or too large.";
+        return false;
+    }
+    const uintmax_t size = std::filesystem::file_size(path, filesystemError);
+    if (filesystemError || size > kMaxSettingsBytes) {
+        error = "Player settings file is missing, invalid, or too large.";
+        return false;
+    }
+    return true;
+}
+
+bool HasValidSettingsStructure(const nlohmann::json& json) {
+    return json.is_object() && json.contains("version") &&
+           json["version"].is_number_unsigned() && json["version"].get<uint64_t>() == 1u &&
+           json.contains("width") && json["width"].is_number_integer() &&
+           json.contains("height") && json["height"].is_number_integer() &&
+           json.contains("fullscreen") && json["fullscreen"].is_boolean();
+}
+
+bool TryDecodeInt(const nlohmann::json& json, int& value) {
+    if (json.is_number_unsigned()) {
+        const uint64_t decoded = json.get<uint64_t>();
+        if (decoded > static_cast<uint64_t>(INT_MAX)) {
+            return false;
+        }
+        value = static_cast<int>(decoded);
+        return true;
+    }
+    if (!json.is_number_integer()) {
+        return false;
+    }
+    const int64_t decoded = json.get<int64_t>();
+    if (decoded < INT_MIN || decoded > INT_MAX) {
+        return false;
+    }
+    value = static_cast<int>(decoded);
+    return true;
+}
 } // namespace
 
 PlayerSettingsStore::PlayerSettingsStore(std::filesystem::path path)
@@ -33,37 +75,27 @@ bool PlayerSettingsStore::Load(PlayerSettings& settings, std::string& error) con
     if (!std::filesystem::exists(path_, filesystemError) && !filesystemError) {
         return true;
     }
-    if (filesystemError ||
-        !std::filesystem::is_regular_file(path_, filesystemError) ||
-        filesystemError ||
-        std::filesystem::file_size(path_, filesystemError) > kMaxSettingsBytes ||
-        filesystemError) {
-        error = "Player settings file is missing, invalid, or too large.";
+    if (filesystemError || !IsReadableSettingsFile(path_, error)) {
+        if (error.empty()) {
+            error = "Player settings file is missing, invalid, or too large.";
+        }
         return false;
     }
     try {
         std::ifstream stream(path_);
         nlohmann::json json;
         stream >> json;
-        if (!stream || !json.is_object() || json.value("version", 0u) != 1u ||
-            !json.contains("width") || !json["width"].is_number_integer() ||
-            !json.contains("height") || !json["height"].is_number_integer() ||
-            !json.contains("fullscreen") || !json["fullscreen"].is_boolean()) {
+        if (!stream || !HasValidSettingsStructure(json)) {
             error = "Player settings JSON structure is invalid.";
             return false;
         }
-        const int64_t width = json["width"].get<int64_t>();
-        const int64_t height = json["height"].get<int64_t>();
-        if (width < INT_MIN || width > INT_MAX || height < INT_MIN ||
-            height > INT_MAX) {
+        PlayerSettings loaded{};
+        if (!TryDecodeInt(json["width"], loaded.width) ||
+            !TryDecodeInt(json["height"], loaded.height)) {
             error = "Player resolution is out of range.";
             return false;
         }
-        PlayerSettings loaded{
-            .width = static_cast<int>(width),
-            .height = static_cast<int>(height),
-            .fullscreen = json["fullscreen"].get<bool>(),
-        };
+        loaded.fullscreen = json["fullscreen"].get<bool>();
         if (!Validate(loaded, error)) {
             return false;
         }

@@ -325,16 +325,16 @@ std::string GenerateProject(const std::filesystem::path& projectRoot,
     <IntDir>)" << project << R"(/library/ScriptBuild/obj/$(Platform)/$(Configuration)/</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary><DebugInformationFormat>OldStyle</DebugInformationFormat><AdditionalIncludeDirectories>)"
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary><DebugInformationFormat>OldStyle</DebugInformationFormat><MultiProcessorCompilation>false</MultiProcessorCompilation><AdditionalIncludeDirectories>)"
            << project << "/assets/Scripts;" << engine << "/engine/public;" << engine
            << R"(/engine/include;)" << engine << R"(/engine/externals;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions></ClCompile>
     <Link><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreaded</RuntimeLibrary><AdditionalIncludeDirectories>)"
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp20</LanguageStandard><TreatWarningAsError>true</TreatWarningAsError><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><DebugInformationFormat>None</DebugInformationFormat><MultiProcessorCompilation>false</MultiProcessorCompilation><AdditionalIncludeDirectories>)"
            << project << "/assets/Scripts;" << engine << "/engine/public;" << engine
            << R"(/engine/include;)" << engine << R"(/engine/externals;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions></ClCompile>
-    <Link><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+    <Link><GenerateDebugInformation>false</GenerateDebugInformation><AdditionalDependencies>dinput8.lib;dxguid.lib;xinput.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
   </ItemDefinitionGroup>
   <ItemGroup>
 )" << sources.str() << R"(  </ItemGroup>

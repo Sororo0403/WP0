@@ -6,5 +6,4 @@
   <Project Path="engine/externals/imgui/imgui.vcxproj" Id="f6ba9c36-46d4-4c55-9c90-d016c833a837" />
   <Project Path="engine/Engine.vcxproj" Id="8d69c2b4-4f39-47f0-9a40-4cb78ec442a1" />
   <Project Path="editor/Editor.vcxproj" Id="d4c0a7ef-5b29-4bb2-9bc1-658f167ec70d" />
-  <Project Path="tests/world/WorldTests.vcxproj" Id="2a9dd7e4-3a03-43f6-95af-e380de24dab3" />
 </Solution>

@@ -34,5 +34,12 @@ private:
         }
     };
 
+    [[nodiscard]] static Pair MakePair(EntityId first, EntityId second);
+    static void CollectBoxTriggerPairs(const World& world, std::set<Pair>& pairs);
+    static void CollectCharacterTriggerPairs(const World& world,
+                                             std::set<Pair>& pairs);
+    void DispatchPairChanges(const std::set<Pair>& currentPairs,
+                             BehaviorSystem& behaviors) const;
+
     std::set<Pair> activePairs_;
 };

@@ -77,7 +77,7 @@
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)externals;$(MSBuildThisFileDirectory)externals\assimp\include;$(MSBuildThisFileDirectory)externals\assimp\include\assimp;$(MSBuildThisFileDirectory)externals\DirectX-Headers;$(MSBuildThisFileDirectory)externals\DirectXTex;$(MSBuildThisFileDirectory)externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(IntDir)$(ProjectName).pdb</ProgramDataBaseFileName>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -92,7 +92,7 @@
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)include;$(MSBuildThisFileDirectory)externals;$(MSBuildThisFileDirectory)externals\assimp\include;$(MSBuildThisFileDirectory)externals\assimp\include\assimp;$(MSBuildThisFileDirectory)externals\DirectX-Headers;$(MSBuildThisFileDirectory)externals\DirectXTex;$(MSBuildThisFileDirectory)externals\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(IntDir)$(ProjectName).pdb</ProgramDataBaseFileName>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
   </ItemDefinitionGroup>

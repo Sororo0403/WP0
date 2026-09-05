@@ -264,5 +264,4 @@ void EditorScene::DrawEditorTitle() {
         editorLabel += runtimeStatus;
     }
     ImGui::TextUnformatted(editorLabel.c_str());
-    ImGui::EndMainMenuBar();
 }

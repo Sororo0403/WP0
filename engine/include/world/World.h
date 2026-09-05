@@ -396,20 +396,20 @@ public:
     bool SetParent(EntityId child, EntityId parent);
     bool MoveEntityBefore(EntityId entity, EntityId sibling);
     bool MoveEntityAfter(EntityId entity, EntityId sibling);
-    bool SetPrimaryCamera(EntityId entity);
-    bool PlayAudioSource(EntityId entity);
-    bool PlayAudioSourceOneShot(EntityId entity);
-    bool StopAudioSource(EntityId entity);
-    [[nodiscard]] bool IsAudioSourcePlaying(EntityId entity) const;
-    bool PlayAnimation(EntityId entity, std::string clip, bool loop = true);
-    bool CrossFadeAnimation(EntityId entity, std::string clip, float duration,
+    bool SetPrimaryCamera(EntityId id);
+    bool PlayAudioSource(EntityId id);
+    bool PlayAudioSourceOneShot(EntityId id);
+    bool StopAudioSource(EntityId id);
+    [[nodiscard]] bool IsAudioSourcePlaying(EntityId id) const;
+    bool PlayAnimation(EntityId id, std::string clip, bool loop = true);
+    bool CrossFadeAnimation(EntityId id, std::string clip, float duration,
                             bool loop = true);
-    bool StopAnimation(EntityId entity);
-    [[nodiscard]] bool IsAnimationPlaying(EntityId entity) const;
-    [[nodiscard]] bool IsAnimationFinished(EntityId entity) const;
-    [[nodiscard]] std::string GetCurrentAnimation(EntityId entity) const;
-    [[nodiscard]] float GetAnimationNormalizedTime(EntityId entity) const;
-    [[nodiscard]] bool IsAnimationTransitioning(EntityId entity) const;
+    bool StopAnimation(EntityId id);
+    [[nodiscard]] bool IsAnimationPlaying(EntityId id) const;
+    [[nodiscard]] bool IsAnimationFinished(EntityId id) const;
+    [[nodiscard]] std::string GetCurrentAnimation(EntityId id) const;
+    [[nodiscard]] float GetAnimationNormalizedTime(EntityId id) const;
+    [[nodiscard]] bool IsAnimationTransitioning(EntityId id) const;
     bool RequestSceneLoad(std::string scene);
     [[nodiscard]] std::optional<std::string> ConsumeSceneLoadRequest();
 

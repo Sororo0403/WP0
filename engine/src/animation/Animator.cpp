@@ -142,6 +142,77 @@ XMMATRIX RemoveRootTranslation(FXMMATRIX root) {
            XMMatrixRotationQuaternion(XMQuaternionNormalize(rootRotation));
 }
 
+void ApplyBindPoseInternal(Model& model) {
+    std::vector<XMMATRIX> localMatrices;
+    SkeletonPoseBuilder::BuildBindPoseLocals(model, localMatrices);
+    if (localMatrices.size() == model.bones.size()) {
+        SkeletonPoseBuilder::UpdateSkeleton(model, localMatrices);
+    }
+}
+
+void ApplyBindPoseIfPresent(Model& model) {
+    ResetRootAnimation(model);
+    if (!model.bones.empty()) {
+        ApplyBindPoseInternal(model);
+    }
+}
+
+struct BlendState {
+    const AnimationClip* source = nullptr;
+    float weight = 1.0f;
+};
+
+BlendState UpdateBlend(Model& model, float deltaTime) {
+    const auto source = model.animations.find(model.blendSourceAnimation);
+    if (source == model.animations.end() || model.blendDuration <= 0.0f ||
+        model.blendTime >= model.blendDuration) {
+        return {};
+    }
+    AdvanceBlendSource(model, source->second, deltaTime);
+    const float safeDeltaTime =
+        std::isfinite(deltaTime) ? (std::max)(deltaTime, 0.0f) : 0.0f;
+    model.blendTime =
+        (std::min)(model.blendTime + safeDeltaTime, model.blendDuration);
+    return {&source->second,
+            std::clamp(model.blendTime / model.blendDuration, 0.0f, 1.0f)};
+}
+
+void ApplyRootAnimation(Model& model, const AnimationClip& clip,
+                        const BlendState& blend) {
+    ResetRootAnimation(model);
+    XMMATRIX targetRoot{};
+    if (!TrySampleRootMatrix(clip, model.animationTime, targetRoot)) {
+        return;
+    }
+    XMMATRIX root = targetRoot;
+    XMMATRIX sourceRoot{};
+    if (blend.source != nullptr &&
+        TrySampleRootMatrix(*blend.source, model.blendSourceTime, sourceRoot)) {
+        root = BlendRootMatrices(sourceRoot, targetRoot, blend.weight);
+    }
+    if (model.lockRootAnimationPosition) {
+        root = RemoveRootTranslation(root);
+    }
+    XMStoreFloat4x4(&model.rootAnimationMatrix, root);
+    model.hasRootAnimation = true;
+}
+
+void ApplyBoneAnimation(Model& model, const AnimationClip& clip,
+                        const BlendState& blend) {
+    std::vector<XMMATRIX> localMatrices;
+    if (blend.source != nullptr) {
+        SkeletonPoseBuilder::BuildBlendedLocals(
+            model, *blend.source, model.blendSourceTime, clip, model.animationTime,
+            blend.weight, localMatrices);
+    } else {
+        SkeletonPoseBuilder::BuildAnimatedLocals(model, clip, model.animationTime,
+                                                 localMatrices);
+    }
+    if (localMatrices.size() == model.bones.size()) {
+        SkeletonPoseBuilder::UpdateSkeleton(model, localMatrices);
+    }
+}
+
 } // namespace
 
 void Animator::Play(Model& model, const std::string& animationName, bool loop) {
@@ -192,96 +263,38 @@ bool Animator::IsFinished(const Model& model) {
     return model.animationFinished;
 }
 
-void Animator::ApplyBindPose(Model& model) {
-    const size_t boneCount = model.bones.size();
-
-    std::vector<XMMATRIX> localMatrices;
-    SkeletonPoseBuilder::BuildBindPoseLocals(model, localMatrices);
-    if (localMatrices.size() != boneCount) {
-        return;
-    }
-    SkeletonPoseBuilder::UpdateSkeleton(model, localMatrices);
-}
-
 void Animator::Update(Model& model, float deltaTime) {
-    const auto applyBindPoseIfPresent = [](Model& target) {
-        ResetRootAnimation(target);
-        if (!target.bones.empty()) {
-            Animator::ApplyBindPose(target);
-        }
-    };
-
     if (model.currentAnimation.empty()) {
-        applyBindPoseIfPresent(model);
+        ApplyBindPoseIfPresent(model);
         return;
     }
 
     auto clipIt = model.animations.find(model.currentAnimation);
     if (clipIt == model.animations.end()) {
-        applyBindPoseIfPresent(model);
+        ApplyBindPoseIfPresent(model);
         return;
     }
 
     const AnimationClip& clip = clipIt->second;
     if (!std::isfinite(clip.duration) || clip.duration <= 0.0f) {
-        applyBindPoseIfPresent(model);
+        ApplyBindPoseIfPresent(model);
         return;
     }
 
     AdvancePlayback(model, clip, deltaTime);
 
-    const auto blendSource = model.animations.find(model.blendSourceAnimation);
-    const bool blending = blendSource != model.animations.end() &&
-                          model.blendDuration > 0.0f &&
-                          model.blendTime < model.blendDuration;
-    float blend = 1.0f;
-    if (blending) {
-        AdvanceBlendSource(model, blendSource->second, deltaTime);
-        const float safeDeltaTime =
-            std::isfinite(deltaTime) ? (std::max)(deltaTime, 0.0f) : 0.0f;
-        model.blendTime = (std::min)(model.blendTime + safeDeltaTime, model.blendDuration);
-        blend = std::clamp(model.blendTime / model.blendDuration, 0.0f, 1.0f);
-    }
+    const BlendState blend = UpdateBlend(model, deltaTime);
 
     if (model.bones.empty()) {
-        ResetRootAnimation(model);
-        XMMATRIX targetRoot{};
-        if (TrySampleRootMatrix(clip, model.animationTime, targetRoot)) {
-            XMMATRIX root = targetRoot;
-            XMMATRIX sourceRoot{};
-            if (blending && TrySampleRootMatrix(blendSource->second, model.blendSourceTime,
-                                                sourceRoot)) {
-                root = BlendRootMatrices(sourceRoot, targetRoot, blend);
-            }
-            if (model.lockRootAnimationPosition) {
-                root = RemoveRootTranslation(root);
-            }
-            XMStoreFloat4x4(&model.rootAnimationMatrix, root);
-            model.hasRootAnimation = true;
-        }
-
-        if (blend >= 1.0f) {
+        ApplyRootAnimation(model, clip, blend);
+        if (blend.weight >= 1.0f) {
             ResetBlend(model);
         }
-
         return;
     }
 
-    const size_t boneCount = model.bones.size();
-
-    std::vector<XMMATRIX> localMatrices;
-    if (blending) {
-        SkeletonPoseBuilder::BuildBlendedLocals(
-            model, blendSource->second, model.blendSourceTime, clip, model.animationTime,
-            blend, localMatrices);
-    } else {
-        SkeletonPoseBuilder::BuildAnimatedLocals(model, clip, model.animationTime, localMatrices);
-    }
-    if (localMatrices.size() != boneCount) {
-        return;
-    }
-    SkeletonPoseBuilder::UpdateSkeleton(model, localMatrices);
-    if (blend >= 1.0f) {
+    ApplyBoneAnimation(model, clip, blend);
+    if (blend.weight >= 1.0f) {
         ResetBlend(model);
     }
 }

@@ -227,51 +227,73 @@ bool HaveEqualContentsInternal(const std::filesystem::path& left,
     return leftStream.eof() && rightStream.eof();
 }
 
+void SkipAssetReferenceWhitespace(std::string_view line, size_t& index) {
+    while (index < line.size() &&
+           std::isspace(static_cast<unsigned char>(line[index]))) {
+        ++index;
+    }
+}
+
+bool IsEscapableAssetReferenceCharacter(char character) {
+    return std::isspace(static_cast<unsigned char>(character)) || character == '"' ||
+           character == '\'' || character == '\\' || character == '#';
+}
+
+bool TryAppendEscapedAssetReferenceCharacter(std::string_view line, size_t& index,
+                                             std::string& token) {
+    if (line[index] != '\\' || index + 1u >= line.size() ||
+        !IsEscapableAssetReferenceCharacter(line[index + 1u])) {
+        return false;
+    }
+    token.push_back(line[index + 1u]);
+    index += 2u;
+    return true;
+}
+
+std::string ReadAssetReferenceToken(std::string_view line, size_t& index) {
+    std::string token;
+    char quote = '\0';
+    if (line[index] == '"' || line[index] == '\'') {
+        quote = line[index++];
+    }
+    while (index < line.size()) {
+        const char character = line[index];
+        if (quote != '\0' && character == quote) {
+            ++index;
+            break;
+        }
+        if (quote == '\0' &&
+            (std::isspace(static_cast<unsigned char>(character)) || character == '#')) {
+            break;
+        }
+        if (!TryAppendEscapedAssetReferenceCharacter(line, index, token)) {
+            token.push_back(character);
+            ++index;
+        }
+    }
+    return token;
+}
+
+void SkipAssetReferenceRemainder(std::string_view line, size_t& index) {
+    while (index < line.size() &&
+           !std::isspace(static_cast<unsigned char>(line[index])) && line[index] != '#') {
+        ++index;
+    }
+}
+
 std::vector<std::string> TokenizeAssetReferenceLine(std::string_view line) {
     std::vector<std::string> tokens;
     size_t index = 0;
     while (index < line.size()) {
-        while (index < line.size() &&
-               std::isspace(static_cast<unsigned char>(line[index]))) {
-            ++index;
-        }
+        SkipAssetReferenceWhitespace(line, index);
         if (index == line.size() || line[index] == '#') {
             break;
         }
-        std::string token;
-        char quote = '\0';
-        if (line[index] == '"' || line[index] == '\'') {
-            quote = line[index++];
-        }
-        while (index < line.size()) {
-            const char character = line[index];
-            if (quote != '\0' && character == quote) {
-                ++index;
-                break;
-            }
-            if (quote == '\0' &&
-                (std::isspace(static_cast<unsigned char>(character)) || character == '#')) {
-                break;
-            }
-            if (character == '\\' && index + 1u < line.size()) {
-                const char escaped = line[index + 1u];
-                if (std::isspace(static_cast<unsigned char>(escaped)) || escaped == '"' ||
-                    escaped == '\'' || escaped == '\\' || escaped == '#') {
-                    token.push_back(escaped);
-                    index += 2u;
-                    continue;
-                }
-            }
-            token.push_back(character);
-            ++index;
-        }
+        std::string token = ReadAssetReferenceToken(line, index);
         if (!token.empty()) {
             tokens.push_back(std::move(token));
         }
-        while (index < line.size() &&
-               !std::isspace(static_cast<unsigned char>(line[index])) && line[index] != '#') {
-            ++index;
-        }
+        SkipAssetReferenceRemainder(line, index);
     }
     return tokens;
 }
